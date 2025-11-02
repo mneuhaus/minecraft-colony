@@ -1,4 +1,5 @@
 import { Bot } from 'mineflayer';
+import { goals } from 'mineflayer-pathfinder';
 
 export interface FeedEntityParams {
   entity_type: string; // e.g., "cow", "sheep", "pig", "chicken"
@@ -91,7 +92,7 @@ export async function feed_entity(
     if (nearestDistance > 3) {
       try {
         await bot.pathfinder.goto(
-          new (require('mineflayer-pathfinder').goals.GoalNear)(
+          new goals.GoalNear(
             nearestEntity.position.x,
             nearestEntity.position.y,
             nearestEntity.position.z,

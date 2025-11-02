@@ -1,5 +1,6 @@
 import { MinecraftBot } from '../../bot/MinecraftBot.js';
 import { Vec3 } from 'vec3';
+import minecraftData from 'minecraft-data';
 
 export interface FindBlockParams {
   blockType: string;
@@ -31,7 +32,7 @@ export async function find_block(
   }
 
   try {
-    const mcData = require('minecraft-data')(bot.version);
+    const mcData = minecraftData(bot.version);
     const blockId = mcData.blocksByName[blockType]?.id;
 
     if (!blockId) {

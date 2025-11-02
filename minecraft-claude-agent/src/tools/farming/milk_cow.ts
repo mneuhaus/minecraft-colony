@@ -1,4 +1,5 @@
 import { Bot } from 'mineflayer';
+import { goals } from 'mineflayer-pathfinder';
 
 export interface MilkCowParams {
   max_distance?: number;
@@ -70,7 +71,7 @@ export async function milk_cow(
     if (nearestDistance > 3) {
       try {
         await bot.pathfinder.goto(
-          new (require('mineflayer-pathfinder').goals.GoalNear)(
+          new goals.GoalNear(
             nearestCow.position.x,
             nearestCow.position.y,
             nearestCow.position.z,

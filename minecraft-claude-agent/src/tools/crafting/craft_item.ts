@@ -1,4 +1,5 @@
 import { Bot } from 'mineflayer';
+import minecraftData from 'minecraft-data';
 
 export interface CraftItemParams {
   item_name: string;
@@ -30,7 +31,7 @@ export async function craft_item(
     }
 
     // Get the item ID from registry
-    const mcData = require('minecraft-data')(bot.version);
+    const mcData = minecraftData(bot.version);
     const item = mcData.itemsByName[item_name];
 
     if (!item) {

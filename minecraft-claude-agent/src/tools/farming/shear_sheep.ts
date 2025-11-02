@@ -1,4 +1,5 @@
 import { Bot } from 'mineflayer';
+import { goals } from 'mineflayer-pathfinder';
 
 export interface ShearSheepParams {
   max_distance?: number;
@@ -65,7 +66,7 @@ export async function shear_sheep(
     if (nearestDistance > 3) {
       try {
         await bot.pathfinder.goto(
-          new (require('mineflayer-pathfinder').goals.GoalNear)(
+          new goals.GoalNear(
             nearestSheep.position.x,
             nearestSheep.position.y,
             nearestSheep.position.z,
@@ -93,7 +94,7 @@ export async function shear_sheep(
 
     // Collect nearby items
     await bot.pathfinder.goto(
-      new (require('mineflayer-pathfinder').goals.GoalNear)(
+      new goals.GoalNear(
         nearestSheep.position.x,
         nearestSheep.position.y,
         nearestSheep.position.z,

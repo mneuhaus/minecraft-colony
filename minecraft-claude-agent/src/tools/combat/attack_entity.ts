@@ -1,4 +1,5 @@
 import { Bot } from 'mineflayer';
+import { goals } from 'mineflayer-pathfinder';
 
 export interface AttackEntityParams {
   entity_type?: string; // e.g., "zombie", "skeleton", "creeper"
@@ -69,7 +70,7 @@ export async function attack_entity(
     if (nearestDistance > 3.5) {
       try {
         await bot.pathfinder.goto(
-          new (require('mineflayer-pathfinder').goals.GoalNear)(
+          new goals.GoalNear(
             nearestEntity.position.x,
             nearestEntity.position.y,
             nearestEntity.position.z,

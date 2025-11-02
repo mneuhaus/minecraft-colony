@@ -2,6 +2,7 @@ import express, { Express } from 'express';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import mcAssets from 'minecraft-assets';
 import {
   loadConfig,
@@ -9,6 +10,9 @@ import {
   getAllStatuses,
   BotStatus,
 } from './botControl.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const MINECRAFT_VERSION = process.env.MINECRAFT_VERSION || '1.20';
 const assets: any = mcAssets(MINECRAFT_VERSION);
@@ -106,6 +110,12 @@ export function createDashboardApp(): Express {
     } catch (error: any) {
       return res.status(500).json({ error: error.message });
     }
+  });
+
+  // Serve dashboard HTML
+  app.get('/', (_req, res) => {
+    const dashboardPath = path.resolve(__dirname, 'dashboard.html');
+    res.sendFile(dashboardPath);
   });
 
   return app;

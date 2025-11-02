@@ -1,4 +1,5 @@
 import { Bot } from 'mineflayer';
+import minecraftData from 'minecraft-data';
 
 export interface SmeltItemParams {
   item_name: string;
@@ -30,7 +31,7 @@ export async function smelt_item(
       return `Error: Count must be between 1 and 64 (requested: ${count}).`;
     }
 
-    const mcData = require('minecraft-data')(bot.version);
+    const mcData = minecraftData(bot.version);
 
     // Verify item exists and is smeltable
     const inputItem = mcData.itemsByName[item_name];
@@ -128,7 +129,7 @@ export async function smelt_item(
     const fuelNeeded = Math.ceil(count / 8); // Simplified: assume coal efficiency
     const fuelToAdd = Math.min(fuelNeeded, fuelItem.count);
 
-    const mcDataForFuel = require('minecraft-data')(bot.version);
+    const mcDataForFuel = minecraftData(bot.version);
     const fuelItemData = mcDataForFuel.itemsByName[fuelName];
     await furnace.putFuel(fuelItemData.id, null, fuelToAdd);
 

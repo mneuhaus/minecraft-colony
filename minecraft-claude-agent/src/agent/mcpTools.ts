@@ -23,6 +23,9 @@ import { withdraw_items } from '../tools/inventory/withdraw_items.js';
 import { findStone } from '../tools/mining/find_stone.js';
 import { find_block } from '../tools/mining/find_block.js';
 import { dig_block } from '../tools/mining/dig_block.js';
+import { detectTimeOfDay } from '../tools/world/detect_time_of_day.js';
+import { detect_biome, scan_biomes_in_area } from '../tools/world/detect_biome.js';
+import { getNearbyBlocks } from '../tools/world/get_nearby_blocks.js';
 import { get_block_info } from '../tools/mining/get_block_info.js';
 import { report_status } from '../tools/colony/report_status.js';
 
@@ -425,47 +428,7 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
       // ====================
       // Block Interaction Tools
       // ====================
-      tool(
-        'dig_block',
-        'Mine/dig a block at specific coordinates',
-        {
-          x: z.number().describe('X coordinate of block'),
-          y: z.number().describe('Y coordinate of block'),
-          z: z.number().describe('Z coordinate of block'),
-        },
-        async (params) => {
-          try {
-            const { x, y, z } = params;
-            const block = bot.blockAt(new Vec3(x, y, z));
-
-            if (!block) {
-              return {
-                content: [{ type: 'text', text: `No block found at (${x}, ${y}, ${z})` }],
-                isError: true,
-              };
-            }
-
-            if (block.name === 'air') {
-              return {
-                content: [{ type: 'text', text: `Block at (${x}, ${y}, ${z}) is already air` }],
-              };
-            }
-
-            await bot.dig(block);
-            const result = `Successfully dug ${block.name} at (${x}, ${y}, ${z})`;
-            logToolExecution('dig_block', params, result);
-            return {
-              content: [{ type: 'text', text: result }],
-            };
-          } catch (error: any) {
-            logToolExecution('dig_block', params, undefined, error);
-            return {
-              content: [{ type: 'text', text: `Failed to dig block: ${error.message}` }],
-              isError: true,
-            };
-          }
-        }
-      ),
+      // (dig_block moved to Mining Tools section below)
 
       tool(
         'place_block',
@@ -543,52 +506,7 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
         }
       ),
 
-      tool(
-        'find_block',
-        'Find the nearest block of a specific type',
-        {
-          block_type: z.string().describe('Type of block to find (e.g., "oak_log", "stone")'),
-          max_distance: z.number().optional().describe('Maximum search distance (default: 16)'),
-        },
-        async (params) => {
-          try {
-            const { block_type, max_distance = 16 } = params;
-            const mcData = minecraftData(bot.version);
-            const blockType = mcData.blocksByName[block_type];
-
-            if (!blockType) {
-              return {
-                content: [{ type: 'text', text: `Unknown block type: ${block_type}` }],
-                isError: true,
-              };
-            }
-
-            const block = bot.findBlock({
-              matching: blockType.id,
-              maxDistance: max_distance,
-            });
-
-            if (!block) {
-              return {
-                content: [{ type: 'text', text: `No ${block_type} found within ${max_distance} blocks` }],
-              };
-            }
-
-            const distance = Math.floor(bot.entity.position.distanceTo(block.position));
-            const result = `Found ${block_type} at (${block.position.x}, ${block.position.y}, ${block.position.z}) - ${distance} blocks away`;
-            logToolExecution('find_block', params, result);
-            return {
-              content: [{ type: 'text', text: result }],
-            };
-          } catch (error: any) {
-            logToolExecution('find_block', params, undefined, error);
-            return {
-              content: [{ type: 'text', text: `Error finding block: ${error.message}` }],
-              isError: true,
-            };
-          }
-        }
-      ),
+      // find_block tool is defined later in the mining section (line ~1015) using the imported function
 
       // ====================
       // Entity Interaction Tools
@@ -1119,6 +1037,107 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
             logToolExecution('get_block_info', params, undefined, error);
             return {
               content: [{ type: 'text', text: `Error getting block info: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      // ====================
+      // World Information Tools
+      // ====================
+      tool(
+        'detect_time_of_day',
+        'Get current Minecraft time, day/night status, and safety information for mob spawning. Critical for night safety protocols.',
+        {},
+        async () => {
+          try {
+            const result = await detectTimeOfDay(bot);
+            logToolExecution('detect_time_of_day', {}, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('detect_time_of_day', {}, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error detecting time: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'detect_biome',
+        'Detect the biome at current position or specified coordinates. Returns biome name, temperature, rainfall, and characteristics (surface blocks, trees, water).',
+        {
+          x: z.number().optional().describe('X coordinate (defaults to bot position)'),
+          y: z.number().optional().describe('Y coordinate (defaults to bot position)'),
+          z: z.number().optional().describe('Z coordinate (defaults to bot position)'),
+        },
+        async (params) => {
+          try {
+            const { x, y, z } = params;
+            const result = await detect_biome(bot, x, y, z);
+            logToolExecution('detect_biome', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('detect_biome', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error detecting biome: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'scan_biomes_in_area',
+        'Scan a radius around current position to find all unique biomes nearby. Useful for exploration, finding biome boundaries, and locating specific biomes.',
+        {
+          centerX: z.number().optional().describe('Center X coordinate (defaults to bot position)'),
+          centerZ: z.number().optional().describe('Center Z coordinate (defaults to bot position)'),
+          radius: z.number().optional().default(50).describe('Scan radius in blocks (default: 50)'),
+        },
+        async (params) => {
+          try {
+            const { centerX, centerZ, radius = 50 } = params;
+            const result = await scan_biomes_in_area(bot, centerX, centerZ, radius);
+            logToolExecution('scan_biomes_in_area', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('scan_biomes_in_area', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error scanning biomes: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'get_nearby_blocks',
+        'Get information about all blocks in a radius around the bot. Shows block distribution and interesting blocks with coordinates. Essential for understanding immediate surroundings.',
+        {
+          radius: z.number().optional().default(5).describe('Search radius in blocks (default: 5)'),
+          includeAir: z.boolean().optional().default(false).describe('Include air blocks in results (default: false)'),
+        },
+        async (params) => {
+          try {
+            const { radius = 5, includeAir = false } = params;
+            const result = await getNearbyBlocks(bot, radius, includeAir);
+            logToolExecution('get_nearby_blocks', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('get_nearby_blocks', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error getting nearby blocks: ${error.message}` }],
               isError: true,
             };
           }

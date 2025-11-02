@@ -8,6 +8,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **detect_biome tool** - Identify biome at current or specified position
+  - Returns biome name, temperature, rainfall, and characteristics
+  - Analyzes surface blocks, vegetation types (trees), and water presence
+  - Provides context for biome-specific resource planning
+  - Essential for exploration missions and settlement location decisions
+  - Location: `src/tools/world/detect_biome.ts`
+
+- **scan_biomes_in_area tool** - Scan for all unique biomes within radius
+  - Scans configurable radius (default: 50 blocks) for biome diversity
+  - Returns list of biomes with sample counts and nearest positions
+  - Shows temperature and rainfall data for each biome
+  - Useful for finding biome boundaries and locating specific biomes
+  - Supports exploration strategy: scan → navigate → confirm → waypoint
+  - Location: `src/tools/world/detect_biome.ts`
+
+- **Enhanced exploration skill** - Updated with biome detection workflows
+  - Added detect_biome and scan_biomes_in_area to allowed tools
+  - New biome survey mission type with practical examples
+  - Biome expedition workflow: scan → navigate → confirm → waypoint
+  - Updated Available Tools section with biome detection category
+  - Location: `.claude/skills/exploration/SKILL.md`
+
+- **get_nearby_blocks tool** - Provides spatial awareness of immediate surroundings
+  - Scans all blocks within specified radius (default: 5 blocks)
+  - Returns block distribution showing most common blocks in area
+  - Lists interesting blocks (non-terrain) with coordinates and distances
+  - Essential for "blind bot" spatial awareness and decision-making
+  - Follows design principle: always return coordinates for actionable data
+  - Location: `src/tools/world/get_nearby_blocks.ts`
+
 - **report_status tool** - Comprehensive bot status reporting for colony coordination
   - Generates detailed status reports (health, food, position, inventory summary)
   - Identifies key items (tools, food, materials) in inventory

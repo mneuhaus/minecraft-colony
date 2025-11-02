@@ -1,7 +1,7 @@
 ---
 name: exploration
 description: Scout and explore the world to discover resources, biomes, structures, and points of interest. Use for reconnaissance missions, resource location, mapping new territory, and reporting findings to other bots.
-allowed-tools: get_position, move_to_position, look_at, find_block, find_entity, find_trees, list_inventory, send_chat, send_bot_message, set_waypoint, list_waypoints, delete_waypoint, read_bot_messages
+allowed-tools: get_position, move_to_position, look_at, find_block, find_entity, find_trees, detect_biome, scan_biomes_in_area, list_inventory, send_chat, send_bot_message, set_waypoint, list_waypoints, delete_waypoint, read_bot_messages
 ---
 
 # Exploration Skill – Resource Discovery and Scouting
@@ -19,6 +19,10 @@ This skill teaches you how to explore the Minecraft world systematically, locate
 - **find_block(block_type, max_distance)** – locate specific block types (ore, water, lava, etc.)
 - **find_entity(entityType, maxDistance)** – locate mobs, animals, players
 - **find_trees(radius, types)** – find trees for woodcutting operations
+
+### Biome Detection
+- **detect_biome(x, y, z)** – identify biome at specific coordinates or current position
+- **scan_biomes_in_area(centerX, centerZ, radius)** – scan for all biomes within radius
 
 ### Navigation Management
 - **set_waypoint(name, x, y, z, description)** – mark important locations
@@ -91,25 +95,47 @@ This skill teaches you how to explore the Minecraft world systematically, locate
 
 **Objective:** Identify different biomes and their characteristics
 
-**Procedure:**
+**NEW: Use Biome Detection Tools**
 ```
-1. Start at known position: pos = get_position()
-2. Choose direction (North/South/East/West)
-3. Travel 100 blocks in chosen direction:
+1. Detect current biome:
+   detect_biome() → Shows biome name, temperature, rainfall, surface blocks, vegetation
+
+2. Scan surrounding area for biome variety:
+   scan_biomes_in_area(radius=100) → Lists all biomes within 100 blocks, with distances
+
+3. For interesting biomes found:
+   - Navigate: move_to_position(biome_x, biome_y, biome_z)
+   - Confirm: detect_biome() at new location
+   - Waypoint: set_waypoint("biome_[type]_1", x, y, z, "Description")
+```
+
+**Example – Biome Expedition:**
+```
+1. Start: get_position() → (0, 64, 0)
+2. Scan area: scan_biomes_in_area(radius=50)
+   → Finds: Plains (current), Oak Forest (35 blocks NE), River (28 blocks E)
+3. Visit Forest: move_to_position(35, 64, 35)
+4. Verify: detect_biome() → "Forest biome, oak_log trees, grass surface"
+5. Mark: set_waypoint("forest_oak_1", 35, 64, 35, "Oak forest - 50 blocks from base")
+6. Scan again: scan_biomes_in_area(radius=50) → Find new biomes from forest position
+7. Continue exploration based on findings
+```
+
+**Manual Observation (when tools unavailable):**
+```
+1. Travel 100 blocks in chosen direction:
    move_to_position(pos.x + 100, pos.y, pos.z)  # East
-4. Observe surroundings:
+2. Observe surroundings:
    - Tree types: find_trees(30)
    - Water presence: find_block("water", 20)
    - Animal types: find_entity("any", 30)
-5. Identify biome characteristics:
+3. Identify biome characteristics manually:
    - Plains: Grass, few trees, horses, cows, sheep
    - Forest: Dense trees (oak, birch)
    - Jungle: Tall trees, dense foliage, jungle_log
    - Desert: Sand, cacti, no trees
    - Taiga: Spruce trees, wolves
-6. Set waypoint: set_waypoint("biome_plains_1", x, y, z, "Plains biome - good for farming")
-7. Continue in same direction or change direction
-8. Repeat for 500+ block exploration
+4. Set waypoint: set_waypoint("biome_plains_1", x, y, z, "Plains biome - good for farming")
 ```
 
 #### Mission Type C: Structure Discovery

@@ -1,5 +1,6 @@
 import { Bot } from 'mineflayer';
 import { Vec3 } from 'vec3';
+import { goals } from 'mineflayer-pathfinder';
 
 export interface UseBoneMealParams {
   x: number;
@@ -71,7 +72,7 @@ export async function use_bone_meal(
     if (distance > 4) {
       try {
         await bot.pathfinder.goto(
-          new (require('mineflayer-pathfinder').goals.GoalNear)(x, y, z, 3)
+          new goals.GoalNear(x, y, z, 3)
         );
       } catch (pathError) {
         return `Cannot reach block at (${x}, ${y}, ${z}) to use bone meal. Distance: ${distance.toFixed(1)} blocks.`;

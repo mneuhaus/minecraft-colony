@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Colony Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+        }
+
+        h1 {
+            color: white;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .refresh-info {
+            color: rgba(255,255,255,0.9);
+            margin-top: 10px;
+        }
+
+        .bots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .bot-card {
+            background: #2a2a2a;
+            border-radius: 10px;
+            padding: 20px;
+            border: 2px solid #3a3a3a;
+            transition: all 0.3s ease;
+        }
+
+        .bot-card:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(102, 126, 234, 0.2);
+        }
+
+        .bot-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #3a3a3a;
+        }
+
+        .bot-name {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .status-badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .status-connected {
+            background: #10b981;
+            color: white;
+        }
+
+        .status-connecting {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .status-error {
+            background: #ef4444;
+            color: white;
+        }
+
+        .status-disconnected {
+            background: #6b7280;
+            color: white;
+        }
+
+        .bot-info {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .info-item {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .info-label {
+            font-size: 0.75em;
+            color: #888;
+            text-transform: uppercase;
+            margin-bottom: 3px;
+        }
+
+        .info-value {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #e0e0e0;
+        }
+
+        .health-bar, .food-bar {
+            width: 100%;
+            height: 8px;
+            background: #1a1a1a;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+
+        .health-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ef4444, #10b981);
+            transition: width 0.3s ease;
+        }
+
+        .food-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #f59e0b, #10b981);
+            transition: width 0.3s ease;
+        }
+
+        .inventory-section {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+
+        .inventory-title {
+            font-size: 0.9em;
+            color: #888;
+            margin-bottom: 8px;
+        }
+
+        .inventory-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .inventory-item {
+            display: flex;
+            align-items: center;
+            background: #2a2a2a;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.85em;
+        }
+
+        .item-icon {
+            width: 16px;
+            height: 16px;
+            margin-right: 5px;
+            image-rendering: pixelated;
+        }
+
+        .viewer-link {
+            display: block;
+            text-align: center;
+            margin-top: 10px;
+            padding: 8px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 0.9em;
+            transition: background 0.3s ease;
+        }
+
+        .viewer-link:hover {
+            background: #764ba2;
+        }
+
+        .no-viewer {
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+
+        .error-message {
+            background: #ef4444;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 1.2em;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 Minecraft Colony Dashboard</h1>
+        <div class="refresh-info">Auto-refreshing every 5 seconds</div>
+    </div>
+
+    <div id="error-container"></div>
+    <div id="bots-container" class="loading">Loading bots...</div>
+
+    <script>
+        async function fetchBots() {
+            try {
+                const response = await fetch('/api/bots');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const bots = await response.json();
+                renderBots(bots);
+                document.getElementById('error-container').innerHTML = '';
+            } catch (error) {
+                document.getElementById('error-container').innerHTML =
+                    `<div class="error-message">Error loading bots: ${error.message}</div>`;
+                console.error('Error fetching bots:', error);
+            }
+        }
+
+        function renderBots(bots) {
+            if (bots.length === 0) {
+                document.getElementById('bots-container').innerHTML =
+                    '<div class="loading">No bots configured</div>';
+                return;
+            }
+
+            const html = bots.map(bot => `
+                <div class="bot-card">
+                    <div class="bot-header">
+                        <div class="bot-name">${bot.name}</div>
+                        <div class="status-badge status-${bot.connectionStatus}">
+                            ${bot.connectionStatus}
+                        </div>
+                    </div>
+
+                    <div class="bot-info">
+                        <div class="info-item">
+                            <div class="info-label">Health</div>
+                            <div class="info-value">${bot.health || '?'}/20</div>
+                            <div class="health-bar">
+                                <div class="health-fill" style="width: ${(bot.health || 0) / 20 * 100}%"></div>
+                            </div>
+                        </div>
+
+                        <div class="info-item">
+                            <div class="info-label">Food</div>
+                            <div class="info-value">${bot.food || '?'}/20</div>
+                            <div class="food-bar">
+                                <div class="food-fill" style="width: ${(bot.food || 0) / 20 * 100}%"></div>
+                            </div>
+                        </div>
+
+                        <div class="info-item">
+                            <div class="info-label">Position</div>
+                            <div class="info-value">
+                                ${bot.position ? `${bot.position.x}, ${bot.position.y}, ${bot.position.z}` : 'Unknown'}
+                            </div>
+                        </div>
+
+                        <div class="info-item">
+                            <div class="info-label">Game Mode</div>
+                            <div class="info-value">${bot.gameMode || 'Unknown'}</div>
+                        </div>
+                    </div>
+
+                    ${bot.inventory && bot.inventory.length > 0 ? `
+                        <div class="inventory-section">
+                            <div class="inventory-title">Inventory (${bot.inventory.length} types)</div>
+                            <div class="inventory-items">
+                                ${bot.inventory.slice(0, 8).map(item => `
+                                    <div class="inventory-item">
+                                        <img class="item-icon" src="/api/texture/${item.name}"
+                                             onerror="this.style.display='none'" alt="${item.name}">
+                                        ${item.name} x${item.count}
+                                    </div>
+                                `).join('')}
+                                ${bot.inventory.length > 8 ? '<div class="inventory-item">...</div>' : ''}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${bot.viewerUrl ?
+                        `<a href="${bot.viewerUrl}" target="_blank" class="viewer-link">
+                            Open 3D Viewer
+                        </a>` :
+                        '<div class="no-viewer">No viewer available</div>'
+                    }
+
+                    ${bot.lastUpdate ? `
+                        <div style="text-align: center; color: #666; font-size: 0.75em; margin-top: 10px;">
+                            Last update: ${new Date(bot.lastUpdate).toLocaleTimeString()}
+                            ${bot.timeSinceUpdate ? ` (${bot.timeSinceUpdate}s ago)` : ''}
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+
+            document.getElementById('bots-container').innerHTML =
+                `<div class="bots-grid">${html}</div>`;
+        }
+
+        // Initial fetch
+        fetchBots();
+
+        // Auto-refresh every 5 seconds
+        setInterval(fetchBots, 5000);
+    </script>
+</body>
+</html>

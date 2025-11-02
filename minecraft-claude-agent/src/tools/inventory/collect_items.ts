@@ -1,4 +1,5 @@
 import { Bot } from 'mineflayer';
+import minecraftData from 'minecraft-data';
 
 export interface CollectItemsParams {
   item_name?: string;
@@ -42,7 +43,7 @@ export async function collect_items(
         const itemData = entity.metadata[8];
         // ItemStack metadata contains item info
         if (typeof itemData === 'object' && itemData.itemId) {
-          const mcData = require('minecraft-data')(bot.version);
+          const mcData = minecraftData(bot.version);
           const item = mcData.items[itemData.itemId];
           if (item && item.name !== item_name) return false;
         }
