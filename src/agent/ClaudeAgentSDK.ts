@@ -148,7 +148,7 @@ export class ClaudeAgentSDK {
         settingSources: ['user', 'project'],
         permissionMode: 'bypassPermissions',
         cwd: process.cwd(),
-        maxTurns: 10,
+        maxTurns: 100,
         allowedTools: this.allowedTools,
         stderr: (data: string) => {
           const trimmed = data.trim();

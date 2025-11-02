@@ -1,10 +1,15 @@
 # Claude Minecraft Bot - Development Guide
 
+## 📖 Read AGENTS.md
+
+**For the main AI agent programming guide, read [AGENTS.md](./AGENTS.md).**
+
+This file contains legacy development details and debugging methodology.
+
 ## Project Documentation
 
-This project follows standard open-source documentation practices:
-
-- **CLAUDE.md** (this file) - Technical development guide and debugging methodology
+- **AGENTS.md** - **AI agent programming guide (READ THIS FIRST)**
+- **CLAUDE.md** (this file) - Legacy development guide and debugging methodology  
 - **TODO.md** - Roadmap of planned features and tasks
 - **CHANGELOG.md** - Version history following [Keep a Changelog](https://keepachangelog.com/) format
 - **README.md** - User-facing documentation (coming soon)
