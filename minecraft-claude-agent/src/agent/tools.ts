@@ -34,6 +34,15 @@ import { collect_items } from '../tools/inventory/collect_items.js';
 import { open_chest } from '../tools/inventory/open_chest.js';
 import { deposit_items } from '../tools/inventory/deposit_items.js';
 import { withdraw_items } from '../tools/inventory/withdraw_items.js';
+import { findStone } from '../tools/mining/find_stone.js';
+import { get_block_info } from '../tools/mining/get_block_info.js';
+import { report_status } from '../tools/colony/report_status.js';
+import { detectTimeOfDay } from '../tools/world/detect_time_of_day.js';
+import { detect_biome, scan_biomes_in_area } from '../tools/world/detect_biome.js';
+import { getNearbyBlocks } from '../tools/world/get_nearby_blocks.js';
+import { find_ores } from '../tools/exploration/find_ores.js';
+import { find_water } from '../tools/exploration/find_water.js';
+import { find_flat_area } from '../tools/exploration/find_flat_area.js';
 
 /**
  * Tool definitions for Claude Agent SDK
@@ -1433,6 +1442,292 @@ export function createTools(minecraftBot: MinecraftBot): ToolDefinition[] {
         } catch (error: any) {
           const errorMsg = `Failed to withdraw items: ${error.message}`;
           logToolExecution('withdraw_items', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    // Mining and Exploration Tools
+    {
+      name: 'find_stone',
+      description: 'Find accessible stone deposits (surface, cliff, cave) within search radius. Returns coordinates, distance, accessibility, and estimated yield for each deposit. Use for Phase 2 stone gathering.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          radius: {
+            type: 'number',
+            description: 'Search radius in blocks (default: 32)'
+          },
+          stone_types: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Specific stone types to find (e.g., ["stone", "cobblestone"]). If not specified, finds all stone types'
+          }
+        }
+      },
+      execute: async (params: { radius?: number; stone_types?: string[] }) => {
+        try {
+          const result = await findStone(bot, params.radius, params.stone_types);
+          logToolExecution('find_stone', params, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to find stone: ${error.message}`;
+          logToolExecution('find_stone', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    {
+      name: 'get_block_info',
+      description: 'Get detailed information about a block at specific coordinates (type, hardness, tool requirements, reachability). Essential for "blind bot" spatial awareness.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          x: { type: 'number', description: 'X coordinate' },
+          y: { type: 'number', description: 'Y coordinate' },
+          z: { type: 'number', description: 'Z coordinate' }
+        },
+        required: ['x', 'y', 'z']
+      },
+      execute: async (params: { x: number; y: number; z: number }) => {
+        try {
+          const result = await get_block_info(minecraftBot, params);
+          logToolExecution('get_block_info', params, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to get block info: ${error.message}`;
+          logToolExecution('get_block_info', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    {
+      name: 'find_ores',
+      description: 'Find ore blocks (coal, iron, diamond, etc.) within radius. Returns exact coordinates and distances sorted by proximity. Use for locating mining resources.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          oreType: {
+            type: 'string',
+            description: 'Specific ore type: "coal_ore", "iron_ore", "diamond_ore", etc. Omit to find all ores'
+          },
+          maxDistance: {
+            type: 'number',
+            description: 'Maximum search radius in blocks (default: 32)'
+          },
+          count: {
+            type: 'number',
+            description: 'Maximum number of results to return (default: 10)'
+          }
+        }
+      },
+      execute: async (params: { oreType?: string; maxDistance?: number; count?: number }) => {
+        try {
+          const result = await find_ores(minecraftBot, params);
+          logToolExecution('find_ores', params, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to find ores: ${error.message}`;
+          logToolExecution('find_ores', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    {
+      name: 'find_water',
+      description: 'Find water sources within radius. Returns coordinates, distances, and water depth. Useful for fishing, farming, or boat navigation.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          maxDistance: {
+            type: 'number',
+            description: 'Maximum search radius in blocks (default: 64)'
+          },
+          minDepth: {
+            type: 'number',
+            description: 'Minimum water depth required (default: 2, suitable for fishing/boats)'
+          },
+          count: {
+            type: 'number',
+            description: 'Maximum number of results to return (default: 5)'
+          }
+        }
+      },
+      execute: async (params: { maxDistance?: number; minDepth?: number; count?: number }) => {
+        try {
+          const result = await find_water(minecraftBot, params);
+          logToolExecution('find_water', params, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to find water: ${error.message}`;
+          logToolExecution('find_water', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    {
+      name: 'find_flat_area',
+      description: 'Find flat areas suitable for building structures. Returns coordinates, dimensions, and distances. Use before building bases or farms.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          minSize: {
+            type: 'number',
+            description: 'Minimum flat area size in blocks (default: 5, creates 5x5 area)'
+          },
+          maxDistance: {
+            type: 'number',
+            description: 'Maximum search radius in blocks (default: 32)'
+          },
+          count: {
+            type: 'number',
+            description: 'Maximum number of results to return (default: 3)'
+          }
+        }
+      },
+      execute: async (params: { minSize?: number; maxDistance?: number; count?: number }) => {
+        try {
+          const result = await find_flat_area(minecraftBot, params);
+          logToolExecution('find_flat_area', params, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to find flat area: ${error.message}`;
+          logToolExecution('find_flat_area', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    // World Awareness Tools
+    {
+      name: 'detect_time_of_day',
+      description: 'Get current Minecraft time, day/night status, and safety information for mob spawning. Critical for night safety protocols.',
+      input_schema: {
+        type: 'object',
+        properties: {}
+      },
+      execute: async () => {
+        try {
+          const result = await detectTimeOfDay(bot);
+          logToolExecution('detect_time_of_day', {}, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to detect time: ${error.message}`;
+          logToolExecution('detect_time_of_day', {}, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    {
+      name: 'detect_biome',
+      description: 'Detect the biome at current position or specified coordinates. Returns biome name, temperature, rainfall, and characteristics (surface blocks, trees, water).',
+      input_schema: {
+        type: 'object',
+        properties: {
+          x: { type: 'number', description: 'X coordinate (defaults to bot position)' },
+          y: { type: 'number', description: 'Y coordinate (defaults to bot position)' },
+          z: { type: 'number', description: 'Z coordinate (defaults to bot position)' }
+        }
+      },
+      execute: async (params: { x?: number; y?: number; z?: number }) => {
+        try {
+          const result = await detect_biome(bot, params.x, params.y, params.z);
+          logToolExecution('detect_biome', params, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to detect biome: ${error.message}`;
+          logToolExecution('detect_biome', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    {
+      name: 'scan_biomes_in_area',
+      description: 'Scan a radius around current position to find all unique biomes nearby. Useful for exploration, finding biome boundaries, and locating specific biomes.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          radius: {
+            type: 'number',
+            description: 'Scan radius in blocks (default: 50)'
+          },
+          centerX: {
+            type: 'number',
+            description: 'Center X coordinate (defaults to bot position)'
+          },
+          centerZ: {
+            type: 'number',
+            description: 'Center Z coordinate (defaults to bot position)'
+          }
+        }
+      },
+      execute: async (params: { radius?: number; centerX?: number; centerZ?: number }) => {
+        try {
+          const result = await scan_biomes_in_area(bot, params.radius, params.centerX, params.centerZ);
+          logToolExecution('scan_biomes_in_area', params, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to scan biomes: ${error.message}`;
+          logToolExecution('scan_biomes_in_area', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    {
+      name: 'get_nearby_blocks',
+      description: 'Get information about all blocks in a radius around the bot. Shows block distribution and interesting blocks with coordinates. Essential for understanding immediate surroundings.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          radius: {
+            type: 'number',
+            description: 'Search radius in blocks (default: 5)'
+          },
+          includeAir: {
+            type: 'boolean',
+            description: 'Include air blocks in results (default: false)'
+          }
+        }
+      },
+      execute: async (params: { radius?: number; includeAir?: boolean }) => {
+        try {
+          const result = await getNearbyBlocks(bot, params.radius, params.includeAir);
+          logToolExecution('get_nearby_blocks', params, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to get nearby blocks: ${error.message}`;
+          logToolExecution('get_nearby_blocks', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    // Colony Coordination Tools
+    {
+      name: 'report_status',
+      description: 'Generate comprehensive bot status report for colony coordination. Shows health, position, inventory, current task, and warnings. Can broadcast to other bots.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          include_inventory: {
+            type: 'boolean',
+            description: 'Include detailed inventory summary (default: true)'
+          },
+          include_waypoints: {
+            type: 'boolean',
+            description: 'Include waypoints in report (default: false)'
+          },
+          broadcast: {
+            type: 'boolean',
+            description: 'Broadcast status summary to chat (default: false)'
+          }
+        }
+      },
+      execute: async (params: { include_inventory?: boolean; include_waypoints?: boolean; broadcast?: boolean }) => {
+        try {
+          const result = await report_status(bot, params);
+          logToolExecution('report_status', params, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to report status: ${error.message}`;
+          logToolExecution('report_status', params, undefined, error);
           return errorMsg;
         }
       },

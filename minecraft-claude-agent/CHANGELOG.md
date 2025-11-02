@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Tool Integration - Phase 2 Complete** - Integrated 10 new tools into main tools.ts
+  - `find_stone`: Find accessible stone deposits (surface, cliff, cave) for mining
+  - `get_block_info`: Get detailed block information at coordinates (type, hardness, reachability)
+  - `find_ores`: Locate ore blocks (coal, iron, diamond) within radius
+  - `find_water`: Find water sources for fishing, farming, or navigation
+  - `find_flat_area`: Locate flat areas suitable for building
+  - `detect_time_of_day`: Get Minecraft time and safety status for night protocols
+  - `detect_biome`: Identify biome at position with characteristics
+  - `scan_biomes_in_area`: Scan radius for all unique biomes
+  - `get_nearby_blocks`: Understand immediate surroundings (block distribution)
+  - `report_status`: Generate comprehensive bot status for colony coordination
+  - Total tool count now: **54 tools** (was 44)
+  - All tools follow "blind bot" design principle with coordinates and actionable data
+
 - **night-safety skill** - Critical survival skill for protecting bots during nighttime
   - Monitors time of day and detects dangerous conditions (hostile mob spawning)
   - Three-tier safety response: return to shelter, find shelter, or create emergency shelter
