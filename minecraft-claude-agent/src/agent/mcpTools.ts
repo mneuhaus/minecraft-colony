@@ -25,6 +25,7 @@ import { find_block } from '../tools/mining/find_block.js';
 import { dig_block } from '../tools/mining/dig_block.js';
 import { dig_upward } from '../tools/mining/dig_upward.js';
 import { dig_straight_up } from '../tools/mining/dig_straight_up.js';
+import { dig_staircase_step } from '../tools/mining/dig_staircase_step.js';
 import { debug_dig } from '../tools/mining/debug_dig.js';
 import { detectTimeOfDay } from '../tools/world/detect_time_of_day.js';
 import { detect_biome, scan_biomes_in_area } from '../tools/world/detect_biome.js';
@@ -1205,6 +1206,27 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
             logToolExecution('dig_straight_up', params, undefined, error);
             return {
               content: [{ type: 'text', text: `Error digging straight up: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'dig_staircase_step',
+        'RECOMMENDED: Dig ONE step of an upward staircase following proper Minecraft player mechanics (2-block tall player, 3-block clearance). Digs forward, above-forward, and above-head, then moves up. Call repeatedly until reaching surface (light >= 10). Much more reliable than other dig tools!',
+        {},
+        async () => {
+          try {
+            const result = await dig_staircase_step(minecraftBot);
+            logToolExecution('dig_staircase_step', {}, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('dig_staircase_step', {}, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error digging staircase step: ${error.message}` }],
               isError: true,
             };
           }
