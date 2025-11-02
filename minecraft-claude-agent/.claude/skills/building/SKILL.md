@@ -1,7 +1,7 @@
 ---
 name: building
-description: Build basic structures like walls, platforms, pillars, and simple shelters. Use this for construction tasks and creating safe spaces.
-allowed-tools: get_position, move_to_position, look_at, list_inventory, find_item, place_block, break_block_and_wait, build_pillar, descend_pillar_safely, send_chat
+description: Build basic structures like walls, platforms, pillars, and simple shelters. Use this for construction tasks and creating safe spaces. Supports multi-bot coordination for large builds.
+allowed-tools: get_position, move_to_position, look_at, list_inventory, find_item, place_block, break_block_and_wait, build_pillar, descend_pillar_safely, send_chat, send_bot_message, read_bot_messages, find_entity
 ---
 
 # Building Skill – Basic Construction
@@ -124,6 +124,90 @@ This skill teaches you how to build simple structures in Minecraft using availab
 - **Block placement fails**: Check if space is occupied, break existing block first
 - **Lost position**: Use `get_position()` to reorient, navigate back to build site
 
+## Multi-Bot Coordination for Large Builds
+
+When building projects require >200 blocks or multiple simultaneous structures:
+
+### 1. Project Planning Phase
+```
+Build coordinator (usually BauBot):
+1. Announce project: send_chat("Starting 20x20 platform build at (100, 64, 100)")
+2. Calculate materials: 20×20 = 400 blocks needed
+3. Request materials: send_bot_message("SammelBot", "Need 400 cobblestone for platform project", "high")
+4. Wait for material delivery confirmation
+5. Divide work zones
+```
+
+### 2. Work Zone Division
+Split large builds into non-overlapping zones to prevent bots from interfering:
+
+**Example: 20x20 Platform Split Between 2 Bots**
+```
+Bot A (BauBot): Rows X=100 to X=109 (west half)
+Bot B (HandelBot): Rows X=110 to X=119 (east half)
+
+Announce divisions:
+send_bot_message("HandelBot", "You build east half (X=110-119), I'll build west half (X=100-109)", "high")
+```
+
+**Example: 4-Wall Structure Split Between 3 Bots**
+```
+BauBot: North wall (Z=100, X=100-120)
+HandelBot: East wall (X=120, Z=100-115)
+GräberBot: South + West walls (remaining)
+```
+
+### 3. Coordination Protocol
+```
+Before starting your section:
+1. Confirm assignment: send_chat("Starting on east wall section")
+2. Move to starting position: move_to_position(zone_start_x, y, zone_start_z)
+3. Begin building in your zone ONLY
+
+While building:
+4. Progress updates every 50 blocks: send_chat("East wall 50% complete")
+5. If you finish early: read_bot_messages() to check if others need help
+6. If blocked/stuck: send_bot_message("BauBot", "Need help, stuck at (X,Y,Z)", "high")
+
+After completing section:
+7. Announce completion: send_chat("East wall section complete")
+8. Offer to help: "My zone done, who needs assistance?"
+9. Return excess materials: see resource-management skill
+```
+
+### 4. Preventing Conflicts
+**Space separation**: Keep 3+ blocks between bots to avoid placement conflicts
+**Synchronization points**: "Everyone finish current row before moving to next level"
+**Material handoffs**: Use designated drop zones, not direct bot-to-bot while building
+
+### 5. Progress Tracking
+Project coordinator maintains status:
+```
+send_chat("Platform build status: West 75%, East 60%, Total 67%")
+```
+
+Other bots report completion:
+```
+send_chat("My section complete. 128 cobblestone used, 12 remaining")
+```
+
+### 6. Common Multi-Bot Patterns
+
+**Parallel Walls (2 bots):**
+- Bot A builds north/south walls
+- Bot B builds east/west walls
+- Meet at corners, coordinate final blocks
+
+**Layer-by-Layer (3+ bots):**
+- All bots work on same Y-level
+- Divide XZ plane into quadrants
+- Move up together: "Everyone ready for Y=65?"
+
+**Assembly Line (material + builder):**
+- SammelBot continuously gathers/delivers materials
+- BauBot focuses purely on placing blocks
+- HandelBot handles finishing touches (torches, doors)
+
 ## When Not to Use This Skill
 
 - Complex redstone contraptions → requires specialized redstone skill
@@ -133,8 +217,15 @@ This skill teaches you how to build simple structures in Minecraft using availab
 
 ## Example Commands
 
+**Single Bot:**
 - "Build a 5x5 dirt platform here"
 - "Make a wall 10 blocks long and 3 blocks high"
 - "Build a simple 3x3 shelter with a door"
 - "Create a pillar 15 blocks tall"
 - "Build a bridge connecting these two points"
+
+**Multi-Bot Coordination:**
+- "BauBot and HandelBot, build a 20x20 platform at spawn. Divide work zones"
+- "I'll build the north wall, HandelBot takes east wall, GräberBot south/west"
+- "Everyone working on large community hall - check your assigned section"
+- "Coordinate with BauBot on shared corner placement at (100,64,100)"
