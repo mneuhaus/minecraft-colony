@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **night-safety skill** - Critical survival skill for protecting bots during nighttime
+  - Monitors time of day and detects dangerous conditions (hostile mob spawning)
+  - Three-tier safety response: return to shelter, find shelter, or create emergency shelter
+  - Special handling for underground mining (safe during night below Y=50)
+  - Bot-to-bot communication protocol for coordinated shelter seeking
+  - Comprehensive time reference guide (day/night cycle, mob spawning conditions)
+  - Integration with building, mining, combat, and navigation skills
+  - Location: `.claude/skills/night-safety/SKILL.md`
+
+- **resource-collection skill** - Coordinated resource gathering and storage system
+  - Four-phase workflow: identify need → locate resource → gather → store
+  - Storage organization strategy with categorized chests and waypoints
+  - Bot-to-bot resource sharing protocol (requesting, offering, direct handoff)
+  - Resource-specific gathering methods for stone, ores, wood, water, and food
+  - Efficiency best practices: batch collection, tool durability, inventory management
+  - Multi-bot coordination patterns: dedicated gatherer, builder requesting, emergency rush
+  - Complete example workflow for coordinated operations
+  - Location: `.claude/skills/resource-collection/SKILL.md`
+
+### Changed
+- **Enhanced system testing** - Verified all exploration and mining tools work correctly
+  - Tested find_ores, find_water, find_flat_area with actual bot (Kubo)
+  - Tested find_block, dig_block, get_block_info successfully
+  - Verified detect_time_of_day, detect_biome, get_nearby_blocks functionality
+  - Confirmed all tools return proper coordinates and actionable data
+  - Screenshot verification of bot behavior in desert biome environment
+
 ### Fixed
 - **ES6 Module Compatibility** - Fixed all `require()` calls to use ES6 `import` statements
   - Converted `require('minecraft-data')` to `import minecraftData from 'minecraft-data'` in 9 files
