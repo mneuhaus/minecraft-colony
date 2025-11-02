@@ -16,9 +16,14 @@ This skill teaches you how to mine blocks safely and efficiently to gather resou
 - **check_reachable(x, y, z)** – Verify if block is within mining reach (~4.5 blocks)
 
 ### Mining Operations
-- **dig_block(x, y, z)** – Mine a single block quickly
-- **break_block_and_wait(x, y, z)** – Mine a block and wait for item drops (more reliable for collecting)
-- **collect_nearby_items(item_types, radius)** – Pick up mined resources
+
+**CRITICAL: Always use break_block_and_wait for mining resources!**
+- **break_block_and_wait(x, y, z)** – ✅ **Use this!** Mines block, waits for drops, auto-collects items. Best for all resource gathering.
+- **dig_block(x, y, z)** – ❌ Only breaks blocks, does NOT collect items. Don't use for mining resources!
+- **collect_nearby_items(item_types, radius)** – Pick up dropped items if you accidentally used dig_block
+
+**Why break_block_and_wait is essential:**
+When mining ores, stone, or any resource, the item drops on the ground. If you use dig_block, the item drops but you won't auto-collect it. You'll lose your resources! Always use break_block_and_wait to ensure proper collection.
 
 ### Movement & Position
 - **get_position()** – Know your current coordinates before starting
