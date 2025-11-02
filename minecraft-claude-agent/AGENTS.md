@@ -94,13 +94,6 @@ Use semantic versioning (MAJOR.MINOR.PATCH):
 - Stay inside the current phase (Phase 1) unless you can justify—with evidence—why a Phase 2 action is required now; Phase 1 success = steady resource flow, wheat farm running, and a furnished starter house (bed, crafting table, furnace, chest).
 - Only advance the recorded `last_git_sha` when a human validates behaviour in-game or via automated acceptance checks.
 
-## Colony Runtime Orchestration
-
-- `pnpm colony` launches every bot defined in `bots.yaml` and the shared dashboard (default http://localhost:4242).
-- Use `pnpm colony-ctl <mode>` for granular control (`start`, `stop`, `restart`, `status`) without touching the dashboard.
-- Workspace-level make targets mirror the same flow: `make start-colony`, `make stop-colony`, `make status-colony`.
-- Bot state files (`logs/<BotName>.state.json`) feed the dashboard; keep them up to date when adding new telemetry.
-
 ## Critical Development Principles
 
 ### 0. DESIGNING FOR A BLIND BOT

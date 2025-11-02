@@ -4,3 +4,7 @@ node_modules/
 /.claude/
 CleanShot*.png
 *.pid
+minecraft-server/server/world/
+minecraft-server/server/world_nether/
+minecraft-server/server/world_the_end/
+minecraft-server/server/usercache.json

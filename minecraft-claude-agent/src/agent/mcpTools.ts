@@ -28,6 +28,16 @@ import { detect_biome, scan_biomes_in_area } from '../tools/world/detect_biome.j
 import { getNearbyBlocks } from '../tools/world/get_nearby_blocks.js';
 import { get_block_info } from '../tools/mining/get_block_info.js';
 import { report_status } from '../tools/colony/report_status.js';
+import { find_ores } from '../tools/exploration/find_ores.js';
+import { find_water } from '../tools/exploration/find_water.js';
+import { find_flat_area } from '../tools/exploration/find_flat_area.js';
+import {
+  set_waypoint,
+  list_waypoints,
+  delete_waypoint,
+  get_waypoint,
+  find_nearest_waypoint,
+} from '../tools/navigation/waypoints.js';
 
 /**
  * Create MCP server with all Minecraft tools for the Claude Agent SDK
@@ -119,6 +129,139 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
             logToolExecution('look_at', params, undefined, error);
             return {
               content: [{ type: 'text', text: `Failed to look at position: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      // ====================
+      // Navigation & Waypoint Tools
+      // ====================
+      tool(
+        'set_waypoint',
+        'Create or update a waypoint at specific coordinates. Waypoints persist between sessions and help with navigation and exploration.',
+        {
+          name: z.string().describe('Unique waypoint name (e.g., "home", "oak_forest_1")'),
+          x: z.number().describe('X coordinate'),
+          y: z.number().describe('Y coordinate'),
+          z: z.number().describe('Z coordinate'),
+          description: z
+            .string()
+            .optional()
+            .describe('Optional description (e.g., "Main base with crafting table")'),
+        },
+        async (params) => {
+          try {
+            const { name, x, y, z, description } = params;
+            const result = await set_waypoint(bot, bot.username, name, x, y, z, description);
+            logToolExecution('set_waypoint', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('set_waypoint', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error setting waypoint: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'list_waypoints',
+        'List all saved waypoints with distances from current position. Shows waypoints grouped by dimension.',
+        {},
+        async () => {
+          try {
+            const result = await list_waypoints(bot, bot.username);
+            logToolExecution('list_waypoints', {}, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('list_waypoints', {}, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error listing waypoints: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'delete_waypoint',
+        'Delete a waypoint by name. Use this to remove outdated or temporary waypoints.',
+        {
+          name: z.string().describe('Name of waypoint to delete'),
+        },
+        async (params) => {
+          try {
+            const { name } = params;
+            const result = await delete_waypoint(bot.username, name);
+            logToolExecution('delete_waypoint', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('delete_waypoint', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error deleting waypoint: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'get_waypoint',
+        'Get coordinates of a specific waypoint by name. Useful for navigation planning.',
+        {
+          name: z.string().describe('Name of waypoint to retrieve'),
+        },
+        async (params) => {
+          try {
+            const { name } = params;
+            const waypoint = await get_waypoint(bot.username, name);
+
+            if (!waypoint) {
+              return {
+                content: [{ type: 'text', text: `Waypoint "${name}" not found` }],
+              };
+            }
+
+            const desc = waypoint.description ? ` - ${waypoint.description}` : '';
+            const result = `Waypoint "${name}": (${waypoint.x}, ${waypoint.y}, ${waypoint.z})${desc}`;
+            logToolExecution('get_waypoint', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('get_waypoint', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error getting waypoint: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'find_nearest_waypoint',
+        'Find the nearest waypoint to current position in the current dimension.',
+        {},
+        async () => {
+          try {
+            const result = await find_nearest_waypoint(bot, bot.username);
+            logToolExecution('find_nearest_waypoint', {}, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('find_nearest_waypoint', {}, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error finding nearest waypoint: ${error.message}` }],
               isError: true,
             };
           }
@@ -1037,6 +1180,84 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
             logToolExecution('get_block_info', params, undefined, error);
             return {
               content: [{ type: 'text', text: `Error getting block info: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      // ====================
+      // Exploration & Scouting Tools
+      // ====================
+      tool(
+        'find_ores',
+        'Find ore blocks (coal, iron, diamond, etc.) within radius. Returns exact coordinates and distances sorted by proximity. Use for locating mining resources.',
+        {
+          oreType: z.string().optional().describe('Specific ore type: "coal_ore", "iron_ore", "diamond_ore", etc. Omit to find all ores'),
+          maxDistance: z.number().optional().describe('Maximum search radius in blocks (default: 32)'),
+          count: z.number().optional().describe('Maximum number of results to return (default: 10)'),
+        },
+        async (params) => {
+          try {
+            const result = await find_ores(minecraftBot, params);
+            logToolExecution('find_ores', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('find_ores', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error finding ores: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'find_water',
+        'Find water sources within radius. Returns coordinates, distances, and water depth. Useful for fishing, farming, or boat navigation.',
+        {
+          maxDistance: z.number().optional().describe('Maximum search radius in blocks (default: 64)'),
+          count: z.number().optional().describe('Maximum number of results to return (default: 5)'),
+          minDepth: z.number().optional().describe('Minimum water depth required (default: 2, suitable for fishing/boats)'),
+        },
+        async (params) => {
+          try {
+            const result = await find_water(minecraftBot, params);
+            logToolExecution('find_water', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('find_water', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error finding water: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'find_flat_area',
+        'Find flat areas suitable for building structures. Returns coordinates, dimensions, and distances. Use before building bases or farms.',
+        {
+          minSize: z.number().optional().describe('Minimum flat area size in blocks (default: 5, creates 5x5 area)'),
+          maxDistance: z.number().optional().describe('Maximum search radius in blocks (default: 32)'),
+          count: z.number().optional().describe('Maximum number of results to return (default: 3)'),
+        },
+        async (params) => {
+          try {
+            const result = await find_flat_area(minecraftBot, params);
+            logToolExecution('find_flat_area', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('find_flat_area', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error finding flat area: ${error.message}` }],
               isError: true,
             };
           }
