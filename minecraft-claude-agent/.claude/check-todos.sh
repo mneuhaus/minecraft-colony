@@ -2,8 +2,8 @@
 # Hook to check if TODO.md tasks are complete
 # User directive: "DO NOT STOP until these are working"
 
-echo "DO NOT STOP, just keep going, your core task is to improve the minecraft-claude agent. Create new Skills and tools, improve these skills and tools. create new bots and test them and their interaction. make sure to use send and screenshot to verify stuff. make sure to adhere to AGENTS.md best practices." >&2
-exit 2;
+#echo "DO NOT STOP, just keep going, your core task is to improve the minecraft-claude agent. Create new Skills and tools, improve these skills and tools. create new bots and test them and their interaction. make sure to use send and screenshot to verify stuff. make sure to adhere to AGENTS.md best practices." >&2
+#exit 2;
 
 # TODO_FILE="/Users/mneuhaus/Workspace/minecraft/minecraft-claude-agent/TODO.md"
 

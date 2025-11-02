@@ -23,6 +23,8 @@ import { withdraw_items } from '../tools/inventory/withdraw_items.js';
 import { findStone } from '../tools/mining/find_stone.js';
 import { find_block } from '../tools/mining/find_block.js';
 import { dig_block } from '../tools/mining/dig_block.js';
+import { dig_upward } from '../tools/mining/dig_upward.js';
+import { dig_straight_up } from '../tools/mining/dig_straight_up.js';
 import { detectTimeOfDay } from '../tools/world/detect_time_of_day.js';
 import { detect_biome, scan_biomes_in_area } from '../tools/world/detect_biome.js';
 import { getNearbyBlocks } from '../tools/world/get_nearby_blocks.js';
@@ -1155,6 +1157,53 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
             logToolExecution('dig_block', params, undefined, error);
             return {
               content: [{ type: 'text', text: `Error digging block: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'dig_upward',
+        'Dig upward to escape underground/caves and reach the surface. Creates safe staircase (default) or digs straight up. Detects light level to know when surface is reached.',
+        {
+          steps: z.number().optional().describe('Number of staircase steps to dig (default: 5)'),
+          mode: z.enum(['staircase', 'straight']).optional().describe('Mode: staircase (safe, default) or straight (risky)'),
+        },
+        async (params) => {
+          try {
+            const result = await dig_upward(minecraftBot, params);
+            logToolExecution('dig_upward', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('dig_upward', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error digging upward: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'dig_straight_up',
+        'SIMPLER alternative to dig_upward. Digs straight up by breaking blocks 1-2 spaces above the bot. More reliable for escaping caves/underground. Detects light level to know when reaching surface.',
+        {
+          blocks: z.number().optional().describe('Number of blocks to dig upward (default: 10)'),
+        },
+        async (params) => {
+          try {
+            const result = await dig_straight_up(minecraftBot, params);
+            logToolExecution('dig_straight_up', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('dig_straight_up', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error digging straight up: ${error.message}` }],
               isError: true,
             };
           }
