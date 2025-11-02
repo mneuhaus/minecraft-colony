@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **report_status tool** - Comprehensive bot status reporting for colony coordination
+  - Generates detailed status reports (health, food, position, inventory summary)
+  - Identifies key items (tools, food, materials) in inventory
+  - Tracks current task from message inbox
+  - Determines bot status (idle/working/emergency/offline)
+  - Saves status to state file for dashboard integration
+  - Optional broadcast mode for colony-wide status updates
+  - Warns about critical conditions (low health, low food, full inventory)
+  - Location: `src/tools/colony/report_status.ts`
+
 - **TODO.md** - Comprehensive roadmap tracking Phase 1-5 progression with 100+ actionable tasks
   - Documents all 5 bots in active colony (HandelBot, SammelBot, BauBot, GräberBot, SpähBot)
   - Phase 2 priorities: tree-felling expansion, stone acquisition, shelter completion

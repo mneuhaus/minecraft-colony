@@ -24,6 +24,7 @@ import { findStone } from '../tools/mining/find_stone.js';
 import { find_block } from '../tools/mining/find_block.js';
 import { dig_block } from '../tools/mining/dig_block.js';
 import { get_block_info } from '../tools/mining/get_block_info.js';
+import { report_status } from '../tools/colony/report_status.js';
 
 /**
  * Create MCP server with all Minecraft tools for the Claude Agent SDK
@@ -1118,6 +1119,34 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
             logToolExecution('get_block_info', params, undefined, error);
             return {
               content: [{ type: 'text', text: `Error getting block info: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      // ====================
+      // Colony Coordination Tools
+      // ====================
+      tool(
+        'report_status',
+        'Generate comprehensive bot status report for colony coordination. Shows health, position, inventory, current task, and warnings. Can broadcast to other bots.',
+        {
+          include_inventory: z.boolean().optional().describe('Include detailed inventory summary (default: true)'),
+          include_waypoints: z.boolean().optional().describe('Include waypoints in report (default: false)'),
+          broadcast: z.boolean().optional().describe('Broadcast status summary to chat (default: false)'),
+        },
+        async (params) => {
+          try {
+            const result = await report_status(bot, params);
+            logToolExecution('report_status', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('report_status', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error generating status report: ${error.message}` }],
               isError: true,
             };
           }
