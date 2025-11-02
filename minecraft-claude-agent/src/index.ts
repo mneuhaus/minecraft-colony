@@ -13,9 +13,12 @@ import logger from './logger.js';
 async function main() {
   logger.info('Starting Claude Minecraft Agent');
 
+  // Load backstory from environment if provided
+  const backstory = process.env.BOT_BACKSTORY;
+
   // Create instances
   const minecraftBot = new MinecraftBot(config);
-  const claudeAgent = new ClaudeAgentSDK(config, minecraftBot);
+  const claudeAgent = new ClaudeAgentSDK(config, minecraftBot, backstory);
 
   // Handle bot errors to prevent crashes
   minecraftBot.on('error', (error) => {

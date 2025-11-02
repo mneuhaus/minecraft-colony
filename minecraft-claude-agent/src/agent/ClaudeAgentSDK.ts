@@ -23,10 +23,12 @@ export class ClaudeAgentSDK {
   private readonly forkSessions =
     process.env.CLAUDE_FORK_SESSION?.toLowerCase() === 'true';
   private allowedTools: string[] = ['Skill'];
+  private readonly backstory?: string;
 
   constructor(
     private config: Config,
-    private minecraftBot: MinecraftBot
+    private minecraftBot: MinecraftBot,
+    backstory?: string
   ) {
     logger.info('Claude Agent SDK initialized', {
       model: this.model,
@@ -34,6 +36,7 @@ export class ClaudeAgentSDK {
     this.botName = this.config.minecraft.username || 'ClaudeBot';
     this.botNameLower = this.botName.toLowerCase();
     this.atBotName = `@${this.botNameLower}`;
+    this.backstory = backstory;
   }
 
   /**
@@ -378,7 +381,10 @@ Key expectations:
 - When information is missing or conflicting, stop, verify, and adapt instead of guessing.
 - Speak like a fellow player: concise, grounded, and focused on the task at hand.`;
 
+    const backstorySection = this.backstory ? `\n\n=== YOUR BACKSTORY ===\n${this.backstory}\n` : '';
+
     return `${identity}` +
+      backstorySection +
       languageInstruction +
       `
 

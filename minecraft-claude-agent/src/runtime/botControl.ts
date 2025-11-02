@@ -9,6 +9,7 @@ export interface BotConfig {
   logs_dir: string;
   viewer_port?: number | null;
   env?: Record<string, string>;
+  backstory?: string;
 }
 
 interface ConfigFile {
@@ -73,6 +74,9 @@ function buildEnv(bot: BotConfig) {
   }
   env.LOG_PATH = logFile(bot);
   env.DIARY_PATH = path.resolve(bot.logs_dir, 'diary.md');
+  if (bot.backstory) {
+    env.BOT_BACKSTORY = bot.backstory;
+  }
   return env;
 }
 
