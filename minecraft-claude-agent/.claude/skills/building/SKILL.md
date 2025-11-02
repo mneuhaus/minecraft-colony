@@ -16,10 +16,13 @@ This skill teaches you how to build simple structures in Minecraft using availab
 - **list_inventory()** – Check what building materials you have.
 - **find_item(name)** – Verify you have enough blocks for the project.
 - **place_block(x, y, z, block_type)** – Place a single block at coordinates.
-- **break_block_and_wait(x, y, z)** – Remove misplaced blocks.
+- **break_block_and_wait(x, y, z)** – Remove misplaced blocks AND collect the dropped items. **IMPORTANT**: Always use this instead of dig_block when you need to recover building materials!
 - **build_pillar(height)** – Quickly build vertical pillars.
 - **descend_pillar_safely()** – Come back down after building high.
 - **send_chat(message)** – Confirm progress and ask for clarification.
+- **send_bot_message(recipient, message, priority)** – Send direct messages to other bots for coordination.
+- **read_bot_messages()** – Check for messages from other bots.
+- **find_entity(type, max_distance)** – Find nearby players or bots to coordinate with.
 
 ## Building Workflow
 
@@ -81,11 +84,30 @@ This skill teaches you how to build simple structures in Minecraft using availab
 
 ## Best Practices
 
+### Tool Usage Notes (CRITICAL)
+
+**Block Breaking Tools - Know the Difference:**
+- **break_block_and_wait(x, y, z)**: Breaks block AND waits for items to drop, then auto-collects them. ✅ **Use this for building!**
+- **dig_block(x, y, z)**: Only breaks the block, does NOT wait for or collect items. ❌ **Don't use for material recovery!**
+
+**Why This Matters:**
+When you break a misplaced block or need to clear space:
+```
+❌ WRONG: dig_block(100, 64, 50) → Block breaks, items drop, but you don't collect them
+✅ RIGHT: break_block_and_wait(100, 64, 50) → Block breaks, wait for drops, auto-collect items
+```
+
+**Item Collection:**
+- After using break_block_and_wait, items are automatically picked up
+- If you accidentally used dig_block, use collect_nearby_items(radius=10) to recover drops
+- Always verify inventory with list_inventory() after breaking blocks to confirm collection
+
 ### Material Management
 - Always check inventory before starting
 - Reserve 10-20% extra blocks for mistakes
 - Use common materials: dirt, cobblestone, planks, logs
 - Don't use rare materials (diamond blocks, gold) without confirmation
+- Use break_block_and_wait to recover misplaced blocks into inventory
 
 ### Building Techniques
 - Start from ground level, build upward
