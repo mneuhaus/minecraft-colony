@@ -20,7 +20,7 @@ Base check: Single log block, not 2x2
 **Best approach**: Bottom-up (no pillar needed for short oaks)
 
 1. **Start at base** (y level from find_tree)
-2. Dig bottom log with `dig_block`
+2. Dig bottom log with `break_block_and_wait`
 3. **Jump up** and dig next log
 4. Continue until all logs cleared
 5. **No special handling needed** - straight vertical

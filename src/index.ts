@@ -4,7 +4,7 @@ dotenv.config();
 
 import { config } from './config.js';
 import { MinecraftBot } from './bot/MinecraftBot.js';
-import { ClaudeAgent } from './agent/ClaudeAgent.js';
+import { ClaudeAgentSDK } from './agent/ClaudeAgentSDK.js';
 import logger from './logger.js';
 
 /**
@@ -15,7 +15,7 @@ async function main() {
 
   // Create instances
   const minecraftBot = new MinecraftBot(config);
-  const claudeAgent = new ClaudeAgent(config, minecraftBot);
+  const claudeAgent = new ClaudeAgentSDK(config, minecraftBot);
 
   // Handle shutdown gracefully
   const shutdown = () => {

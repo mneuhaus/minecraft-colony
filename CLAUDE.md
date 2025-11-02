@@ -613,8 +613,13 @@ rm -rf dist && pnpm run build && pnpm start
 ---
 
 **Last Updated:** 2025-11-02
-**Status:** ✅ Block placement working correctly with face vector fix
-**New:**
+**Status:** ✅ Migrated to Claude Agent SDK with automatic skill loading
+**Recent Changes:**
+- ✅ **Migrated from raw Anthropic SDK to Claude Agent SDK**
+  - All 22 tools converted to MCP format using `createSdkMcpServer`
+  - Skills now automatically load from `.claude/skills/` directory
+  - Agent SDK handles skill injection into system prompt
+  - Tools use Zod schemas for type safety
 - 📋 Context management guidelines - use subagents for logs/screenshots/heavy operations
 - 🤖 "Blind Bot" design principle - tools must provide coordinates/actionable data since LLM can't see graphics
-- 🌳 Modular tree skills: `find_tree` (search + sort by distance) + `fell_tree` (chop at position)
+- 🌳 Tree-felling skill ready to test with Agent SDK auto-loading

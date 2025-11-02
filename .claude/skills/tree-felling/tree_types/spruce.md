@@ -54,10 +54,10 @@ MUST check all 4 positions:
 4. **Level-by-level clearing**:
    ```
    Height Y:
-   - dig_block (x, Y, z)
-   - dig_block (x+1, Y, z)
-   - dig_block (x, Y, z+1)
-   - dig_block (x+1, Y, z+1)
+   - break_block_and_wait (x, Y, z)
+   - break_block_and_wait (x+1, Y, z)
+   - break_block_and_wait (x, Y, z+1)
+   - break_block_and_wait (x+1, Y, z+1)
    Move down to Y-1, repeat
    ```
 

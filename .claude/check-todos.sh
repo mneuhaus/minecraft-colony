@@ -13,20 +13,20 @@ fi
 INCOMPLETE_COUNT=$(grep -c -- '- \[ \]' "$TODO_FILE" 2>/dev/null || echo 0)
 
 if [ "$INCOMPLETE_COUNT" -gt 0 ]; then
-    echo ""
-    echo "⚠️  ============================================================"
-    echo "⚠️  WARNING: TODO.md has $INCOMPLETE_COUNT incomplete task(s)!"
-    echo "⚠️  ============================================================"
-    echo ""
-    echo "User directive: DO NOT STOP until all tasks are done."
-    echo ""
-    echo "Incomplete tasks:"
-    grep -- '- \[ \]' "$TODO_FILE" | head -10 | sed 's/^/  /'
-    echo ""
-    echo "Continue working on these tasks before stopping!"
-    echo "============================================================"
+    echo "" >&2
+    echo "⚠️  ============================================================" >&2
+    echo "⚠️  WARNING: TODO.md has $INCOMPLETE_COUNT incomplete task(s)!" >&2
+    echo "⚠️  ============================================================" >&2
+    echo "" >&2
+    echo "User directive: DO NOT STOP until all tasks are done." >&2
+    echo "" >&2
+    echo "Incomplete tasks:" >&2
+    grep -- '- \[ \]' "$TODO_FILE" | head -10 | sed 's/^/  /' >&2
+    echo "" >&2
+    echo "Continue working on these tasks before stopping!" >&2
+    echo "============================================================" >&2
     exit 2  # Block stopping
 else
-    echo "✅ All TODO.md tasks are complete! Safe to stop."
+    echo "✅ DID YOU VERIFY ALL TASKS YOU MARKED AS COMPLETED? PRESENT YOUR EVIDENCE." >&2
     exit 0
 fi

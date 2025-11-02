@@ -1,229 +1,286 @@
 ---
 name: tree-felling
 description: Efficiently fell trees in Minecraft, handling different tree types (oak, spruce mega trees, acacia), managing height, preventing floating logs, and replanting. Use when gathering wood or managing forests.
-allowed-tools: find_tree, fell_tree, find_block, dig_block, place_block, move_to_position, get_position, list_inventory
+allowed-tools: find_trees, get_tree_structure, check_reachable, break_block_and_wait, collect_nearby_items, wait_for_saplings, find_plantable_ground, place_sapling, build_pillar, descend_pillar_safely, move_to_position, get_position, list_inventory
 ---
 
-# Tree Felling
+# Tree Felling - Atomic Tools Approach
 
-Comprehensive guide for efficiently harvesting trees in Minecraft while following best practices.
+This skill teaches you HOW to fell trees using atomic tools. Each tool does ONE thing and returns data for YOU to make decisions.
 
-## Tree Type Identification
+## Available Atomic Tools
 
-Different trees require different felling strategies:
+### Discovery & Analysis
+- **find_trees(radius, types)** - Find all trees, get list with positions/heights/types sorted by distance
+- **get_tree_structure(x, y, z)** - Analyze specific tree: 1x1 vs 2x2, height, log positions, leaf count
 
-### Single Log Trees (Oak, Birch, Jungle)
-- **Pattern**: Single vertical column of logs
-- **Base**: 1x1 log block
-- **Strategy**: Simple bottom-up or top-down felling
-- **Tools**: find_tree returns these with single coordinates
+### Reachability & Navigation
+- **check_reachable(x, y, z)** - Can you reach this block? Do you need scaffolding?
+- **move_to_position(x, y, z)** - Walk to coordinates
+- **build_pillar(height)** - Jump-place blocks beneath to rise
+- **descend_pillar_safely()** - Break blocks beneath to descend
 
-### Mega Trees (Spruce, Jungle, Dark Oak)
-- **Pattern**: 2x2 base of logs
-- **Base**: 4 log blocks in a square formation
-- **Strategy**: Must clear all 4 trunk positions at each height
-- **Detection**: Use find_block to check for 2x2 pattern at base
+### Harvesting & Collection
+- **break_block_and_wait(x, y, z)** - Break block and wait for item drops to spawn
+- **collect_nearby_items(types, radius)** - Collect dropped item entities
+- **wait_for_saplings(x, y, z, timeout)** - Wait for leaves to decay and saplings to drop
+
+### Replanting
+- **find_plantable_ground(x, y, z, radius)** - Find suitable dirt/grass for saplings
+- **place_sapling(x, y, z, sapling_type)** - Place sapling with validation (checks dirt/grass, light, space)
+
+## Decision-Making Strategy
+
+You make ALL decisions. Tools only provide data and execute simple actions.
+
+### Step 1: Find Trees (Decision: Which tree to fell?)
+
+```
+Call: find_trees(50)
+Returns: "Found 14 trees. Nearest:
+1. oak at (120, 64, 131), height ~7 blocks, ~7 logs, 4 blocks away
+2. spruce at (124, 64, 132), height ~15 blocks (MEGA 2x2), ~60 logs, 8 blocks away
+..."
+
+YOUR DECISION:
+- Close tree? (save travel time)
+- High yield? (more logs per effort)
+- Easy type? (1x1 is simpler than 2x2)
+
+Example: Choose #1 (oak) - close, simple 1x1, good yield
+```
+
+### Step 2: Analyze Tree Structure (Decision: How to fell it?)
+
+```
+Call: get_tree_structure(120, 64, 131)
+Returns: "OAK tree at (120, 64, 131):
+- Base: 1x1 single trunk [(120,64,131)]
+- Total logs: 7
+- Height: Y=64 to Y=70 (7 blocks tall)
+- Highest log: (120, 70, 131)"
+
+YOUR DECISIONS:
+- 7 blocks tall = medium height
+- Single trunk = simple bottom-up OR top-down
+- Highest block at Y=70, I'm at Y=64 = +6 blocks up
+```
+
+### Step 3: Check Reachability (Decision: Do I need a pillar?)
+
+```
+Call: check_reachable(120, 70, 131)  # Check highest log
+Returns: "Block at (120, 70, 131):
+- Can reach: NO
+- Distance: 6.1 blocks vertical
+- Needs scaffolding: YES
+- Recommendation: Build pillar 3 blocks high to reach"
+
+YOUR DECISION:
+- Top block unreachable from ground
+- Options:
+  A) Build pillar to top, fell top-down
+  B) Fell bottom-up until can't reach, then pillar
+
+Choose: B (more efficient - only pillar if needed)
+```
+
+### Step 4: Fell Tree Bottom-Up
+
+```
+# Start at base
+Call: move_to_position(120, 64, 131, range=3)
+
+# Break base log and wait for drop
+Call: break_block_and_wait(120, 64, 131)
+Returns: "Broke oak_log at (120, 64, 131). Item drop should now be spawned."
+
+# Move up, break next
+Call: break_block_and_wait(120, 65, 131)
+Call: break_block_and_wait(120, 66, 131)
+Call: break_block_and_wait(120, 67, 131)
+
+# Check if can reach Y=68
+Call: check_reachable(120, 68, 131)
+Returns: "Can reach: NO, needs scaffolding"
+
+YOUR DECISION: Need to build pillar now
+```
+
+### Step 5: Build Pillar for High Blocks
+
+```
+Call: build_pillar(3)  # Rise 3 blocks
+Returns: "Built pillar to Y=67 (+3 blocks). Used 3x dirt."
+
+# Now can reach remaining logs
+Call: break_block_and_wait(120, 68, 131)
+Call: break_block_and_wait(120, 69, 131)
+Call: break_block_and_wait(120, 70, 131)  # Top log
+
+# Descend safely
+Call: descend_pillar_safely()
+Returns: "Descended safely to Y=64. Broke 3 blocks."
+```
+
+### Step 6: Collect Logs
+
+```
+Call: collect_nearby_items(["oak_log"], 10)
+Returns: "Collected: 7x oak_log. Time taken: 3.2 seconds."
+```
+
+### Step 7: Wait for Saplings
+
+```
+Call: wait_for_saplings(120, 64, 131, 30)
+Returns: "Waited 18 seconds. All leaves decayed (42 total). Found 2 new saplings in inventory."
+```
+
+### Step 8: Collect Saplings
+
+```
+Call: collect_nearby_items(["oak_sapling"], 10)
+Returns: "Collected: 2x oak_sapling, 1x stick. Time taken: 2.1 seconds."
+```
+
+### Step 9: Find Replanting Location
+
+```
+Call: find_plantable_ground(120, 64, 131, 10)
+Returns: "Found 8 plantable spots. Nearest:
+1. grass_block at (120, 64, 131), light 12, 15 blocks air above, 0 blocks away [GOOD]
+..."
+
+YOUR DECISION: Original location (120, 64, 131) is perfect
+```
+
+### Step 10: Replant Sapling
+
+```
+Call: place_sapling(120, 65, 131, "oak_sapling")  # Y+1 because placing ON TOP of grass
+Returns: "Successfully placed oak_sapling at (120, 65, 131)"
+```
+
+## Handling Different Tree Types
+
+### Mega Trees (2x2 Spruce/Jungle/Dark Oak)
+
+When `get_tree_structure` returns "MEGA 2x2":
+
+```
+Base blocks: [(120,64,131), (121,64,131), (120,64,132), (121,64,132)]
+```
+
+**YOUR STRATEGY**:
+1. Fell logs at ALL 4 positions at each height
+2. Build pillar (mega trees are tall, 15-30 blocks)
+3. Top-down is easier for mega trees
+4. Replant requires 4 saplings in 2x2 pattern
+
+**Example Felling Loop** (for each Y-level):
+```
+for Y in range(70, 64, -1):  # Top to bottom
+    break_block_and_wait(120, Y, 131)
+    break_block_and_wait(121, Y, 131)
+    break_block_and_wait(120, Y, 132)
+    break_block_and_wait(121, Y, 132)
+```
 
 ### Branching Trees (Acacia)
-- **Pattern**: Diagonal logs, multiple branches
-- **Base**: Single log, but branches extend horizontally
-- **Strategy**: Follow each branch, clear all diagonal connections
-- **Challenge**: Logs may be offset in X/Z coordinates
 
-## Height Assessment
+Acacia logs can be diagonal. Use `get_tree_structure` to see ALL log positions, then dig each one.
 
-Before felling, assess tree height to choose strategy:
-
-### Measuring Height
-1. Use find_tree to get base coordinates (x, y, z)
-2. Use find_block repeatedly to count vertical logs above base
-3. Count by checking blocks at (x, y+1, z), (x, y+2, z), etc.
-4. Stop counting when block is not a log type
-
-### Height Categories
-- **Short (< 5 blocks)**: Reachable without pillar, simple felling
-- **Medium (5-10 blocks)**: May need pillar-jumping or scaffolding
-- **Tall (> 10 blocks)**: Requires scaffolding or pillar technique
-
-## Felling Procedures
-
-### Bottom-Up Strategy (Recommended for Short Trees)
-1. Start at base level (lowest log block)
-2. Dig block at base
-3. Move up one level
-4. Repeat until all logs cleared
-5. **Advantage**: Natural, no floating logs
-6. **Disadvantage**: Hard to reach high blocks
-
-### Top-Down Strategy (For Tall Trees)
-1. Build pillar or scaffold to top
-2. Stand on top log
-3. Dig downward through all logs
-4. Break pillar/scaffold on way down
-5. **Advantage**: Can reach any height
-6. **Disadvantage**: Requires building materials
-
-### Pillar-Jumping Technique (For Medium Trees)
-1. Jump and place block beneath feet mid-air
-2. Repeat to build vertical pillar
-3. Dig side logs while standing on pillar
-4. Break pillar on descent
-5. **Materials**: dirt or cobblestone (cheap, disposable)
-
-## Reaching High Blocks
-
-### When to Pillar vs Scaffold
-
-**Use Pillar (Jump-Place) When**:
-- Tree height 5-10 blocks
-- Flat ground around tree
-- Have cheap blocks (dirt, cobblestone)
-
-**Use Scaffolding When**:
-- Tree height > 10 blocks
-- Uneven terrain
-- Need to move horizontally (branches)
-- Have scaffolding material
-
-### Pillar Building Steps
-1. list_inventory - check for dirt/cobblestone
-2. Stand next to tree base
-3. Look straight down
-4. Jump + place_block beneath feet
-5. Repeat until at desired height
-6. Dig logs from elevated position
-7. Break pillar blocks on way down
-
-## Sapling Management
-
-Proper sapling management ensures sustainable wood supply:
-
-### Leaf Decay Process
-1. After felling logs, leaves remain temporarily
-2. Wait 30-60 seconds for natural decay
-3. Saplings drop automatically as leaves decay
-4. Also drops sticks and sometimes apples (oak)
-
-###Collecting Saplings
-1. After tree felled, wait for leaves to decay
-2. Use find_entity or check ground nearby
-3. Walk over dropped items to collect
-4. list_inventory to verify sapling collection
-
-### Replanting Protocol
-1. **IMPORTANT**: Replant before leaving area
-2. place_block sapling at original tree base coordinates
-3. Ensure 5x5 clear space around sapling (for growth)
-4. For 2x2 trees: place 4 saplings in 2x2 pattern
-
-### Minimum Sapling Count
-- Keep at least 2 saplings per tree type in inventory
-- This ensures can always replant
-- Excess saplings can be composted or stored
-
-## Efficiency Tips
-
-### Batch Felling
-Instead of: fell → replant → fell → replant
-**Do**: fell → fell → fell → replant all
-
-**Steps**:
-1. find_tree to locate 3-5 nearby trees
-2. Note all coordinates
-3. Fell all trees in sequence
-4. Collect all saplings from leaf decay
-5. Replant all positions at once
-
-### Tool Management
-- **Axe**: Always use axe for faster wood harvesting
-- **Hand**: OK for leaves if waiting for decay
-- **Efficiency**: Axe breaks logs 5x faster than hand
-
-### Inventory Management
-- Keep 1-2 stacks of dirt for pillaring
-- Always reserve 2+ slots for wood
-- Don't fill inventory before felling (need space for logs)
-
-## Stump Prevention
-
-Floating logs are ugly and problematic:
-
-### Complete Clearing Rules
-1. **Always dig to ground level (y = 60-64 typically)**
-2. Check block below last log - should be dirt/grass
-3. For 2x2 trees: Clear all 4 base positions completely
-4. Use find_block to verify no logs remain
-
-### Handling 2x2 Mega Trees
-A 2x2 tree base at (x, y, z) has logs at:
-- (x, y, z)
-- (x+1, y, z)
-- (x, y, z+1)
-- (x+1, y, z+1)
-
-**Must clear all 4 positions at EACH height level**
-
-### Verification Checklist
-- [ ] No logs remain above ground
-- [ ] Ground level cleared to dirt/grass
-- [ ] No floating leaf blocks
-- [ ] Saplings replanted
-- [ ] Area cleaned of debris
-
-## Example: Complete Felling Procedure
+## Complete Example Workflow
 
 ```
-GOAL: Fell oak tree at (100, 64, 200)
+GOAL: Gather 20 oak logs
 
-1. find_tree -> Confirms oak_log at (100, 64, 200)
+1. find_trees(50, ["oak"])
+   → Choose nearest oak
 
-2. HEIGHT CHECK:
-   - find_block oak_log around (100, 65, 200) -> found
-   - find_block oak_log around (100, 66, 200) -> found
-   - find_block oak_log around (100, 67, 200) -> found
-   - find_block oak_log around (100, 68, 200) -> not found
-   - Result: Tree is 4 blocks tall (short)
+2. get_tree_structure(x, y, z)
+   → Learn height, positions
 
-3. FELLING (Bottom-Up):
-   - move_to_position (100, 64, 200)
-   - dig_block (100, 64, 200) - base log
-   - move_to_position (100, 65, 200) - jump up
-   - dig_block (100, 65, 200)
-   - dig_block (100, 66, 200)
-   - dig_block (100, 67, 200)
+3. Loop through logs bottom-up:
+   FOR each log position:
+     check_reachable(log_x, log_y, log_z)
+     IF not reachable:
+       build_pillar(needed_height)
+     break_block_and_wait(log_x, log_y, log_z)
 
-4. SAPLING MANAGEMENT:
-   - Wait 60 seconds for leaves to decay
-   - Collect saplings automatically (walk over them)
-   - list_inventory - confirm have oak_sapling
+4. IF built pillar:
+     descend_pillar_safely()
 
-5. REPLANTING:
-   - place_block oak_sapling at (100, 64, 200)
+5. collect_nearby_items(["oak_log"])
 
-6. VERIFICATION:
-   - find_block oak_log at (100, 64+, 200) -> none found ✓
-   - Sapling placed ✓
+6. wait_for_saplings(base_x, base_y, base_z)
+
+7. collect_nearby_items(["oak_sapling"])
+
+8. find_plantable_ground(base_x, base_y, base_z)
+   → Choose best spot
+
+9. place_sapling(spot_x, spot_y+1, spot_z, "oak_sapling")
+
+10. REPEAT until have 20 logs
 ```
 
-## Common Mistakes to Avoid
+## Key Principles
 
-1. **Leaving floating logs**: Always clear to ground level
-2. **Forgetting to replant**: Depletes forest resources
-3. **Not checking height**: Waste time trying to reach unreachable blocks
-4. **Wrong strategy for tree type**: 2x2 trees need 4x the clearing
-5. **Breaking pillar too early**: Get stuck mid-air
-6. **Not waiting for leaves**: Miss sapling drops
+1. **You decide everything** - Tools only report data and do actions
+2. **Check before acting** - Use check_reachable before trying to dig high blocks
+3. **No floating logs** - Always clear entire tree to ground level
+4. **Always replant** - Sustainable forestry prevents deforestation
+5. **Batch operations** - Fell multiple trees, then replant all at once for efficiency
 
-## Tools Reference
+## Common Decision Points
 
-**Primary**:
-- `find_tree` - Locate nearby trees with coordinates
-- `fell_tree` - Cut down specific tree by coordinates and type
-- `dig_block` - Remove individual log blocks
-- `place_block` - Place saplings, build pillars
+### "Should I build a pillar?"
+- Call check_reachable on highest log
+- If "needs scaffolding: YES" → build pillar
+- If "can reach: YES" → no pillar needed
 
-**Support**:
-- `find_block` - Check for logs at specific heights, verify clearing
-- `move_to_position` - Navigate to tree base or pillar height
-- `get_position` - Track current location during felling
-- `list_inventory` - Check saplings, building materials
+### "Which tree should I fell?"
+- Close distance = less travel time
+- High yield = more logs per tree
+- Simple type (1x1) = easier than mega (2x2)
+- Balance these factors based on goal
+
+### "How high should I build the pillar?"
+- check_reachable tells you: "Build pillar X blocks high"
+- Add 1-2 extra blocks for safety margin
+
+### "When do I stop waiting for saplings?"
+- wait_for_saplings has timeout (default 30 seconds)
+- If "all leaves decayed" → safe to move on
+- If "timed out" → manually collect or wait longer
+
+## Error Recovery
+
+**If tree felling fails mid-way:**
+1. get_tree_structure again to see remaining logs
+2. Use find_block to locate floating logs
+3. check_reachable to see if you can reach them
+4. build_pillar if needed to finish job
+
+**If sapling collection fails:**
+1. wait_for_saplings may timeout
+2. Try collect_nearby_items manually
+3. Check list_inventory to see if you have any saplings
+4. Can replant even with 0 saplings (just won't regrow)
+
+## Tools Cheat Sheet
+
+| Task | Tool | Returns |
+|------|------|---------|
+| Find trees nearby | `find_trees(radius)` | List of trees with positions/heights |
+| Analyze one tree | `get_tree_structure(x,y,z)` | Base type, height, all log positions |
+| Can I reach block? | `check_reachable(x,y,z)` | Yes/No + recommendations |
+| Break one log | `break_block_and_wait(x,y,z)` | Success/failure |
+| Rise up | `build_pillar(height)` | Final height, blocks used |
+| Come down | `descend_pillar_safely()` | Final position, blocks broken |
+| Get logs/saplings | `collect_nearby_items(types)` | What collected, what missed |
+| Wait for decay | `wait_for_saplings(x,y,z)` | Saplings found, leaves remaining |
+| Find planting spot | `find_plantable_ground(x,y,z)` | Suitable locations sorted by distance |
+| Plant sapling | `place_sapling(x,y+1,z, "oak_sapling")` | Success/failure |

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **MAJOR: Migrated from raw Anthropic SDK to Claude Agent SDK**
+  - All 22 tools converted to MCP format using `createSdkMcpServer`
+  - Tool inputs now use Zod schemas instead of JSON Schema for type safety
+  - Skills automatically load from `.claude/skills/` directory
+  - Agent SDK handles skill injection into system prompt
+  - Refactored `ClaudeAgent` to `ClaudeAgentSDK` using `query()` API
+  - Created `mcpTools.ts` with all tool definitions in Agent SDK format
+  - Set `settingSources: ['project']` to enable automatic skill discovery
+  - **Breaking:** Tool names now prefixed with `mcp__minecraft__` (e.g., `mcp__minecraft__get_position`)
+- Tree-felling tool signatures updated to match helper function parameters:
+  - `find_trees`: Now accepts `treeTypes` array instead of single string
+  - `collect_nearby_items`: Parameters reordered to `itemTypes` array + `maxDistance`
+  - `find_plantable_ground`: Now requires coordinates (nearX, nearY, nearZ) + radius
+  - `build_pillar`: Second parameter is `descendAfter` boolean, not `blockName`
+  - `wait_for_saplings`: Now requires tree location coordinates (x, y, z)
+
 ### Added
 - **Stone Mining Skills** (COMPLETED):
   - `find_stone` - Locate stone blocks within range, sorted by distance

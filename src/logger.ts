@@ -1,6 +1,9 @@
+import dotenv from 'dotenv';
 import winston from 'winston';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,10 +43,12 @@ const logger = winston.createLogger({
     // Console transport with colorized output
     new winston.transports.Console({
       format: consoleFormat,
+      level: process.env.LOG_LEVEL || 'info',
     }),
     // File transport for all logs
     new winston.transports.File({
       filename: path.join(logsDir, 'agent.log'),
+      level: process.env.LOG_LEVEL || 'info',
       maxsize: 10 * 1024 * 1024, // 10MB
       maxFiles: 5,
     }),
@@ -56,6 +61,8 @@ const logger = winston.createLogger({
     }),
   ],
 });
+
+logger.debug('Logger initialized', { level: logger.level });
 
 // Add performance timing utility
 export const startTimer = (label: string) => {

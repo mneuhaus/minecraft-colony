@@ -4,8 +4,15 @@ import { Vec3 } from 'vec3';
 import minecraftData from 'minecraft-data';
 import { MinecraftBot } from '../bot/MinecraftBot.js';
 import { logToolExecution } from '../logger.js';
-import { findTree } from '../skills/find_tree.js';
-import { fellTree } from '../skills/fell_tree.js';
+import { findTrees } from '../tools/tree_felling/find_trees.js';
+import { getTreeStructure } from '../tools/tree_felling/get_tree_structure.js';
+import { checkReachable } from '../tools/tree_felling/check_reachable.js';
+import { breakBlockAndWait } from '../tools/tree_felling/break_block_and_wait.js';
+import { collectNearbyItems } from '../tools/tree_felling/collect_nearby_items.js';
+import { waitForSaplings } from '../tools/tree_felling/wait_for_saplings.js';
+import { findPlantableGround } from '../tools/tree_felling/find_plantable_ground.js';
+import { placeSapling } from '../tools/tree_felling/place_sapling.js';
+import { buildPillar, descendPillarSafely } from '../tools/tree_felling/build_pillar.js';
 
 /**
  * Tool definitions for Claude Agent SDK
@@ -455,66 +462,238 @@ export function createTools(minecraftBot: MinecraftBot): ToolDefinition[] {
       },
     },
 
-    // TREE FELLING HELPERS
+    // TREE FELLING - ATOMIC TOOLS
     {
-      name: 'find_tree',
-      description: 'Find all trees within range, sorted by distance (nearest first). Returns coordinates and wood types for multiple trees. The nearest tree is recommended but you can choose others if pathfinding fails.',
+      name: 'find_trees',
+      description: 'Find all trees within radius, sorted by distance. Returns position, type, height, whether it\'s a mega tree (2x2), and wood yield estimate for each tree.',
       input_schema: {
         type: 'object',
         properties: {
-          maxDistance: {
-            type: 'number',
-            description: 'Maximum distance to search for trees in blocks (default: 128)',
-          },
+          radius: { type: 'number', description: 'Search radius in blocks (default: 50)' },
+          types: { type: 'array', items: { type: 'string' }, description: 'Filter by tree types (e.g., ["oak", "spruce"]). Empty = all types.' },
         },
         required: [],
       },
-      execute: async (params: { maxDistance?: number }) => {
+      execute: async (params: { radius?: number; types?: string[] }) => {
         try {
-          const result = await findTree(bot, params.maxDistance);
-          logToolExecution('find_tree', params, result.message);
-          return result.message;
+          const result = await findTrees(bot, params.radius, params.types || []);
+          logToolExecution('find_trees', params, result);
+          return result;
         } catch (error: any) {
-          const errorMsg = `Failed to find tree: ${error.message}`;
-          logToolExecution('find_tree', params, undefined, error);
+          const errorMsg = `Failed to find trees: ${error.message}`;
+          logToolExecution('find_trees', params, undefined, error);
           return errorMsg;
         }
       },
     },
     {
-      name: 'fell_tree',
-      description: 'Completely fell a tree at given coordinates. This will: 1) Clear ALL logs (no floating blocks), 2) Handle both 1x1 and 2x2 mega trees, 3) Wait for leaf decay, 4) Collect saplings, 5) Replant saplings. You must provide the tree position (from find_tree) and wood type.',
+      name: 'get_tree_structure',
+      description: 'Analyze a specific tree in detail. Returns base blocks, all log positions, height, highest log position, leaf count, and whether it\'s a mega tree.',
       input_schema: {
         type: 'object',
         properties: {
-          x: {
-            type: 'number',
-            description: 'X coordinate of tree base',
-          },
-          y: {
-            type: 'number',
-            description: 'Y coordinate of tree base',
-          },
-          z: {
-            type: 'number',
-            description: 'Z coordinate of tree base',
-          },
-          woodType: {
-            type: 'string',
-            description: 'Type of wood (e.g., oak_log, birch_log, spruce_log)',
-          },
+          x: { type: 'number', description: 'X coordinate of tree base' },
+          y: { type: 'number', description: 'Y coordinate of tree base' },
+          z: { type: 'number', description: 'Z coordinate of tree base' },
         },
-        required: ['x', 'y', 'z', 'woodType'],
+        required: ['x', 'y', 'z'],
       },
-      execute: async (params: { x: number; y: number; z: number; woodType: string }) => {
+      execute: async (params: { x: number; y: number; z: number }) => {
         try {
-          const treePos = new Vec3(params.x, params.y, params.z);
-          const result = await fellTree(bot, treePos, params.woodType);
-          logToolExecution('fell_tree', params, result.message);
-          return result.message;
+          const result = await getTreeStructure(bot, params.x, params.y, params.z);
+          logToolExecution('get_tree_structure', params, result);
+          return result;
         } catch (error: any) {
-          const errorMsg = `Failed to fell tree: ${error.message}`;
-          logToolExecution('fell_tree', params, undefined, error);
+          const errorMsg = `Failed to analyze tree: ${error.message}`;
+          logToolExecution('get_tree_structure', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    {
+      name: 'check_reachable',
+      description: 'Check if a block position is reachable. Returns distance, whether scaffolding is needed, and recommendations for how to reach it.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          x: { type: 'number', description: 'X coordinate of block' },
+          y: { type: 'number', description: 'Y coordinate of block' },
+          z: { type: 'number', description: 'Z coordinate of block' },
+        },
+        required: ['x', 'y', 'z'],
+      },
+      execute: async (params: { x: number; y: number; z: number }) => {
+        try {
+          const result = await checkReachable(bot, params.x, params.y, params.z);
+          logToolExecution('check_reachable', params, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to check reachability: ${error.message}`;
+          logToolExecution('check_reachable', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    {
+      name: 'break_block_and_wait',
+      description: 'Break a block and wait for item drops to spawn. More reliable than dig_block for collecting resources like tree logs.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          x: { type: 'number', description: 'X coordinate of block to break' },
+          y: { type: 'number', description: 'Y coordinate of block to break' },
+          z: { type: 'number', description: 'Z coordinate of block to break' },
+        },
+        required: ['x', 'y', 'z'],
+      },
+      execute: async (params: { x: number; y: number; z: number }) => {
+        try {
+          const result = await breakBlockAndWait(bot, params.x, params.y, params.z);
+          logToolExecution('break_block_and_wait', params, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to break block: ${error.message}`;
+          logToolExecution('break_block_and_wait', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    {
+      name: 'collect_nearby_items',
+      description: 'Collect nearby item entities. Returns what was collected and what was missed (with reasons).',
+      input_schema: {
+        type: 'object',
+        properties: {
+          item_types: { type: 'array', items: { type: 'string' }, description: 'Filter by item types (e.g., ["oak_log", "oak_sapling"]). Empty = collect all.' },
+          radius: { type: 'number', description: 'Search radius in blocks (default: 10)' },
+        },
+        required: [],
+      },
+      execute: async (params: { item_types?: string[]; radius?: number }) => {
+        try {
+          const result = await collectNearbyItems(bot, params.item_types || [], params.radius);
+          logToolExecution('collect_nearby_items', params, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to collect items: ${error.message}`;
+          logToolExecution('collect_nearby_items', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    {
+      name: 'wait_for_saplings',
+      description: 'Wait near a tree position for leaves to decay and saplings to drop. Returns sapling count, leaf decay status, and whether it timed out.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          x: { type: 'number', description: 'X coordinate of tree base' },
+          y: { type: 'number', description: 'Y coordinate of tree base' },
+          z: { type: 'number', description: 'Z coordinate of tree base' },
+          timeout: { type: 'number', description: 'Max seconds to wait (default: 30)' },
+        },
+        required: ['x', 'y', 'z'],
+      },
+      execute: async (params: { x: number; y: number; z: number; timeout?: number }) => {
+        try {
+          const result = await waitForSaplings(bot, params.x, params.y, params.z, params.timeout);
+          logToolExecution('wait_for_saplings', params, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to wait for saplings: ${error.message}`;
+          logToolExecution('wait_for_saplings', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    {
+      name: 'find_plantable_ground',
+      description: 'Find suitable dirt/grass blocks for planting saplings near a position. Returns positions sorted by distance with light level and space above.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          x: { type: 'number', description: 'X coordinate to search near' },
+          y: { type: 'number', description: 'Y coordinate to search near' },
+          z: { type: 'number', description: 'Z coordinate to search near' },
+          radius: { type: 'number', description: 'Search radius (default: 10)' },
+        },
+        required: ['x', 'y', 'z'],
+      },
+      execute: async (params: { x: number; y: number; z: number; radius?: number }) => {
+        try {
+          const result = await findPlantableGround(bot, params.x, params.y, params.z, params.radius);
+          logToolExecution('find_plantable_ground', params, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to find plantable ground: ${error.message}`;
+          logToolExecution('find_plantable_ground', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    {
+      name: 'place_sapling',
+      description: 'Place a sapling at a specific position. Validates the location is suitable (dirt/grass below, air above, proper light).',
+      input_schema: {
+        type: 'object',
+        properties: {
+          x: { type: 'number', description: 'X coordinate where to place sapling' },
+          y: { type: 'number', description: 'Y coordinate where to place sapling' },
+          z: { type: 'number', description: 'Z coordinate where to place sapling' },
+          sapling_type: { type: 'string', description: 'Type of sapling: oak_sapling, spruce_sapling, birch_sapling, jungle_sapling, acacia_sapling, dark_oak_sapling' },
+        },
+        required: ['x', 'y', 'z', 'sapling_type'],
+      },
+      execute: async (params: { x: number; y: number; z: number; sapling_type: string }) => {
+        try {
+          const result = await placeSapling(bot, params.x, params.y, params.z, params.sapling_type);
+          logToolExecution('place_sapling', params, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to place sapling: ${error.message}`;
+          logToolExecution('place_sapling', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    {
+      name: 'build_pillar',
+      description: 'Build a pillar by jumping and placing blocks beneath. Used to reach high tree blocks. Returns final height and blocks used.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          height: { type: 'number', description: 'How many blocks to rise' },
+          descend_after: { type: 'boolean', description: 'Automatically descend after building (default: false)' },
+        },
+        required: ['height'],
+      },
+      execute: async (params: { height: number; descend_after?: boolean }) => {
+        try {
+          const result = await buildPillar(bot, params.height, params.descend_after);
+          logToolExecution('build_pillar', params, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to build pillar: ${error.message}`;
+          logToolExecution('build_pillar', params, undefined, error);
+          return errorMsg;
+        }
+      },
+    },
+    {
+      name: 'descend_pillar_safely',
+      description: 'Descend a pillar safely by breaking blocks beneath. Returns final position and blocks broken.',
+      input_schema: {
+        type: 'object',
+        properties: {},
+      },
+      execute: async () => {
+        try {
+          const result = await descendPillarSafely(bot);
+          logToolExecution('descend_pillar_safely', {}, result);
+          return result;
+        } catch (error: any) {
+          const errorMsg = `Failed to descend pillar: ${error.message}`;
+          logToolExecution('descend_pillar_safely', {}, undefined, error);
           return errorMsg;
         }
       },
