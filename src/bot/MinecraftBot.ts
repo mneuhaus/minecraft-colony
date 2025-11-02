@@ -4,6 +4,7 @@ import { EventEmitter } from 'events';
 import logger, { logChat, logHealth } from '../logger.js';
 import { Config } from '../config.js';
 import { mineflayer as mineflayerViewer } from 'prismarine-viewer';
+import { writeStateFile } from '../utils/stateWriter.js';
 
 export interface BotEventData {
   type: string;
@@ -21,7 +22,7 @@ export class MinecraftBot extends EventEmitter {
   private reconnectAttempts = 0;
   private readonly maxReconnectAttempts = 5;
   private reconnectDelay = 5000; // ms
-  private viewerPort = 3000;
+  private viewerPort = parseInt(process.env.VIEWER_PORT || '3000', 10);
 
   constructor(private config: Config) {
     super();
@@ -89,6 +90,9 @@ export class MinecraftBot extends EventEmitter {
       // Don't chat here - bot client might not be ready yet
       this.reconnectAttempts = 0;
 
+      // Write initial state
+      this.updateStateFile();
+
       // Emit ready event
       this.emit('ready', {
         position: this.bot!.entity?.position,
@@ -124,10 +128,18 @@ export class MinecraftBot extends EventEmitter {
     this.bot.on('health', () => {
       logHealth(this.bot!.health, this.bot!.food);
 
+      // Update state file
+      this.updateStateFile();
+
       // Emit health event if critically low
       if (this.bot!.health < 10) {
         this.emit('lowHealth', { health: this.bot!.health, food: this.bot!.food });
       }
+    });
+
+    // Inventory updates - update state when items collected/dropped
+    this.bot.on('playerCollect', () => {
+      this.updateStateFile();
     });
 
     // Entity hurt - bot took damage
@@ -216,6 +228,10 @@ export class MinecraftBot extends EventEmitter {
    */
   private startViewer(): void {
     if (!this.bot) return;
+    if (process.env.DISABLE_VIEWER?.toLowerCase() === 'true') {
+      logger.info('Prismarine viewer disabled via DISABLE_VIEWER');
+      return;
+    }
 
     try {
       mineflayerViewer(this.bot, { port: this.viewerPort, firstPerson: true });
@@ -272,6 +288,18 @@ export class MinecraftBot extends EventEmitter {
         count: item.count,
       })),
     };
+  }
+
+  /**
+   * Write current state to JSON file for dashboard
+   */
+  private updateStateFile(): void {
+    const state = this.getState();
+    if (state) {
+      const botName = process.env.BOT_NAME || this.config.minecraft.username;
+      const logsDir = process.env.LOGS_DIR || 'logs';
+      writeStateFile(botName, logsDir, state);
+    }
   }
 
   /**
