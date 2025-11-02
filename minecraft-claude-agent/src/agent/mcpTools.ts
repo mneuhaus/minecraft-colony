@@ -25,6 +25,7 @@ import { find_block } from '../tools/mining/find_block.js';
 import { dig_block } from '../tools/mining/dig_block.js';
 import { dig_upward } from '../tools/mining/dig_upward.js';
 import { dig_straight_up } from '../tools/mining/dig_straight_up.js';
+import { debug_dig } from '../tools/mining/debug_dig.js';
 import { detectTimeOfDay } from '../tools/world/detect_time_of_day.js';
 import { detect_biome, scan_biomes_in_area } from '../tools/world/detect_biome.js';
 import { getNearbyBlocks } from '../tools/world/get_nearby_blocks.js';
@@ -1204,6 +1205,27 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
             logToolExecution('dig_straight_up', params, undefined, error);
             return {
               content: [{ type: 'text', text: `Error digging straight up: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'debug_dig',
+        'DEBUG TOOL: Attempt to dig a single block above and report detailed diagnostic information about why digging may not be working',
+        {},
+        async () => {
+          try {
+            const result = await debug_dig(minecraftBot);
+            logToolExecution('debug_dig', {}, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('debug_dig', {}, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error in debug_dig: ${error.message}` }],
               isError: true,
             };
           }
