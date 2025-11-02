@@ -30,6 +30,7 @@ import { debug_dig } from '../tools/mining/debug_dig.js';
 import { detectTimeOfDay } from '../tools/world/detect_time_of_day.js';
 import { detect_biome, scan_biomes_in_area } from '../tools/world/detect_biome.js';
 import { getNearbyBlocks } from '../tools/world/get_nearby_blocks.js';
+import { analyze_surroundings } from '../tools/world/analyze_surroundings.js';
 import { get_block_info } from '../tools/mining/get_block_info.js';
 import { report_status } from '../tools/colony/report_status.js';
 import { find_ores } from '../tools/exploration/find_ores.js';
@@ -1401,6 +1402,30 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
             logToolExecution('detect_biome', params, undefined, error);
             return {
               content: [{ type: 'text', text: `Error detecting biome: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'analyze_surroundings',
+        'Analyze block density and composition around bot to understand environment (deep underground, cave, tunnel, open area). Provides directional density data and strategic recommendations for navigation.',
+        {
+          radius: z.number().optional().describe('Horizontal radius to scan (default: 8)'),
+          verticalRange: z.number().optional().describe('Vertical range above/below (default: 2)'),
+        },
+        async (params) => {
+          try {
+            const result = await analyze_surroundings(minecraftBot, params);
+            logToolExecution('analyze_surroundings', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('analyze_surroundings', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error analyzing surroundings: ${error.message}` }],
               isError: true,
             };
           }
