@@ -149,8 +149,15 @@ export function stopBot(bot: BotConfig) {
   }
 }
 
-export function startBots(bots: BotConfig[]): void {
-  bots.forEach(startBot);
+export async function startBots(bots: BotConfig[]): Promise<void> {
+  const STARTUP_DELAY_MS = 3000; // 3 second delay between each bot
+  for (let i = 0; i < bots.length; i++) {
+    startBot(bots[i]);
+    if (i < bots.length - 1) {
+      // Don't wait after the last bot
+      await new Promise(resolve => setTimeout(resolve, STARTUP_DELAY_MS));
+    }
+  }
 }
 
 export function stopBots(bots: BotConfig[]): void {

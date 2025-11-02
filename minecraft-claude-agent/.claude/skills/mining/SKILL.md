@@ -1,7 +1,7 @@
 ---
 name: mining
 description: Mine blocks and gather resources like stone, coal, iron, and other minerals. Use for underground excavation and tunnel creation.
-allowed-tools: get_position, move_to_position, look_at, list_inventory, find_item, dig_block, break_block_and_wait, collect_nearby_items, place_block, build_pillar, descend_pillar_safely, send_chat, send_bot_message
+allowed-tools: find_block, get_block_info, dig_block, break_block_and_wait, collect_nearby_items, get_position, move_to_position, look_at, list_inventory, find_item, equip_item, place_block, build_pillar, descend_pillar_safely, send_chat, send_bot_message, check_reachable
 ---
 
 # Mining Skill – Resource Gathering and Excavation
@@ -10,19 +10,34 @@ This skill teaches you how to mine blocks safely and efficiently to gather resou
 
 ## Available Tools
 
-- **get_position()** – know your current coordinates before starting.
-- **move_to_position(x, y, z, range)** – navigate to mining location.
-- **look_at(x, y, z)** – face the block you want to mine.
-- **list_inventory()** – check available tools and inventory space.
-- **find_item(name)** – locate pickaxes and other tools.
-- **dig_block(x, y, z)** – mine a single block quickly.
-- **break_block_and_wait(x, y, z)** – mine a block and wait for item drops (more reliable for collecting).
-- **collect_nearby_items(item_types, radius)** – pick up mined resources.
-- **place_block(x, y, z, block_type)** – place blocks for safety (bridges, pillars).
-- **build_pillar(height)** – build up quickly when mining upward.
-- **descend_pillar_safely()** – safely descend after building up.
-- **send_chat(message)** – communicate status and progress.
-- **send_bot_message(recipient, message, priority)** – notify other bots of findings.
+### Block Discovery (NEW)
+- **find_block(blockType, maxDistance, count)** – Find blocks by type (stone, coal_ore, iron_ore, etc.), returns coordinates and distances sorted by proximity
+- **get_block_info(x, y, z)** – Get detailed info about a block (type, hardness, tool requirements, reachability)
+- **check_reachable(x, y, z)** – Verify if block is within mining reach (~4.5 blocks)
+
+### Mining Operations
+- **dig_block(x, y, z)** – Mine a single block quickly
+- **break_block_and_wait(x, y, z)** – Mine a block and wait for item drops (more reliable for collecting)
+- **collect_nearby_items(item_types, radius)** – Pick up mined resources
+
+### Movement & Position
+- **get_position()** – Know your current coordinates before starting
+- **move_to_position(x, y, z, range)** – Navigate to mining location
+- **look_at(x, y, z)** – Face the block you want to mine
+
+### Tool Management
+- **list_inventory()** – Check available tools and inventory space
+- **find_item(name)** – Locate pickaxes and other tools in inventory
+- **equip_item(item_name, destination)** – Equip appropriate mining tool
+
+### Building & Safety
+- **place_block(x, y, z, block_type)** – Place blocks for safety (bridges, pillars)
+- **build_pillar(height)** – Build up quickly when mining upward
+- **descend_pillar_safely()** – Safely descend after building up
+
+### Communication
+- **send_chat(message)** – Communicate status and progress
+- **send_bot_message(recipient, message, priority)** – Notify other bots of findings
 
 ## Mining Workflow
 

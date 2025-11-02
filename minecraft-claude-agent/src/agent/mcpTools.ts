@@ -20,6 +20,10 @@ import { buildPillar, descendPillarSafely } from '../tools/tree_felling/build_pi
 import { open_chest } from '../tools/inventory/open_chest.js';
 import { deposit_items } from '../tools/inventory/deposit_items.js';
 import { withdraw_items } from '../tools/inventory/withdraw_items.js';
+import { findStone } from '../tools/mining/find_stone.js';
+import { find_block } from '../tools/mining/find_block.js';
+import { dig_block } from '../tools/mining/dig_block.js';
+import { get_block_info } from '../tools/mining/get_block_info.js';
 
 /**
  * Create MCP server with all Minecraft tools for the Claude Agent SDK
@@ -1009,6 +1013,111 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
             logToolExecution('descend_pillar_safely', {}, undefined, error);
             return {
               content: [{ type: 'text', text: `Error descending pillar: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      // ====================
+      // Mining Tools
+      // ====================
+      tool(
+        'find_stone',
+        'Find accessible stone deposits (surface, cliff, or cave) within search radius, sorted by distance',
+        {
+          radius: z.number().optional().describe('Search radius in blocks (default: 32)'),
+          stone_types: z
+            .array(z.string())
+            .optional()
+            .describe('Specific stone types to find (e.g., ["stone", "cobblestone", "granite"]). If not specified, finds all stone types'),
+        },
+        async (params) => {
+          try {
+            const result = await findStone(bot, params.radius, params.stone_types || []);
+            logToolExecution('find_stone', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('find_stone', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error finding stone: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'find_block',
+        'Find blocks of a specific type (stone, coal_ore, iron_ore, dirt, etc.) within radius, returns coordinates and distances',
+        {
+          blockType: z.string().describe('Block type to find (e.g., "stone", "coal_ore", "iron_ore", "dirt")'),
+          maxDistance: z.number().optional().describe('Maximum search radius in blocks (default: 32)'),
+          count: z.number().optional().describe('Maximum number of blocks to return (default: 10)'),
+        },
+        async (params) => {
+          try {
+            const result = await find_block(minecraftBot, params);
+            logToolExecution('find_block', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('find_block', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error finding block: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'dig_block',
+        'Mine/dig a single block at specific coordinates. Block must be within reach (~4.5 blocks)',
+        {
+          x: z.number().describe('X coordinate of block to mine'),
+          y: z.number().describe('Y coordinate of block to mine'),
+          z: z.number().describe('Z coordinate of block to mine'),
+        },
+        async (params) => {
+          try {
+            const result = await dig_block(minecraftBot, params);
+            logToolExecution('dig_block', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('dig_block', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error digging block: ${error.message}` }],
+              isError: true,
+            };
+          }
+        }
+      ),
+
+      tool(
+        'get_block_info',
+        'Get detailed information about a block at specific coordinates (type, hardness, tool requirements, reachability)',
+        {
+          x: z.number().describe('X coordinate'),
+          y: z.number().describe('Y coordinate'),
+          z: z.number().describe('Z coordinate'),
+        },
+        async (params) => {
+          try {
+            const result = await get_block_info(minecraftBot, params);
+            logToolExecution('get_block_info', params, result);
+            return {
+              content: [{ type: 'text', text: result }],
+            };
+          } catch (error: any) {
+            logToolExecution('get_block_info', params, undefined, error);
+            return {
+              content: [{ type: 'text', text: `Error getting block info: ${error.message}` }],
               isError: true,
             };
           }

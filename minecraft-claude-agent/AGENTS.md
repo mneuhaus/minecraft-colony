@@ -62,7 +62,7 @@ Use semantic versioning (MAJOR.MINOR.PATCH):
 - Operational docs (this file, CHANGELOG.md, TODO.md) remain aligned with the code and describe how multiple bots should act.
 
 ### Skill Progression Phases
-1. **Spawn Orientation & Safety** – Basic movement, situational awareness, respawn setup, night safety.
+1. **Settler Foundations** – Gather core resources (wood, stone, coal), keep the wheat farm producing, fell nearby trees, and complete a starter shelter with bed, crafting table, furnace, and chest.
 2. **Essential Gathering** – Tree felling, stone acquisition, primitive shelter completion.
 3. **Tool & Equipment Crafting** – Crafting tables, furnaces, stone/iron tools, basic armor.
 4. **Navigation & Exploration** – Waypoints, coordinated scouting, safe return paths.
@@ -91,7 +91,7 @@ Use semantic versioning (MAJOR.MINOR.PATCH):
 ### Review Ritual
 - Before stopping, run `./self-improve.sh` (configured as the stop hook) to audit work since the last validated commit recorded in `.claude/last_git_sha`.
 - Treat the script’s critique as your next task list—address flagged gaps, reinforce the core mission, and continue iterating.
-- Stay inside the current phase (Phase 1) unless you can justify—with evidence—why a Phase 2 action is required now.
+- Stay inside the current phase (Phase 1) unless you can justify—with evidence—why a Phase 2 action is required now; Phase 1 success = steady resource flow, wheat farm running, and a furnished starter house (bed, crafting table, furnace, chest).
 - Only advance the recorded `last_git_sha` when a human validates behaviour in-game or via automated acceptance checks.
 
 ## Colony Runtime Orchestration

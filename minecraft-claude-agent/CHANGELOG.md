@@ -8,7 +8,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **resource-management skill** - New skill for inventory coordination and multi-bot resource distribution
+- **TODO.md** - Comprehensive roadmap tracking Phase 1-5 progression with 100+ actionable tasks
+  - Documents all 5 bots in active colony (HandelBot, SammelBot, BauBot, GräberBot, SpähBot)
+  - Phase 2 priorities: tree-felling expansion, stone acquisition, shelter completion
+  - Tracks technical debt, multi-bot coordination scenarios, and success metrics
+  - Location: `TODO.md`
+
+- **find_stone tool** - Find accessible stone deposits (surface, cliff, cave) for Phase 2 stone gathering
+  - Returns sorted list of stone deposits with coordinates, distance, and accessibility assessment
+  - Follows "blind bot" principle with actionable data (coordinates + cluster size + estimated yield)
+  - Filters out buried/inaccessible stone deposits
+  - Supports all stone types (stone, cobblestone, granite, andesite, diorite, deepslate)
+  - Location: `src/tools/mining/find_stone.ts`
+
+- **stone-gathering skill** - Phase 2 essential resource acquisition documentation
+  - Complete workflow from pickaxe crafting to stone tool upgrades
+  - Safety protocols for cliff and cave mining
+  - Tool durability management and upgrade paths (wood → stone → iron)
+  - Multi-bot coordination scenarios (SpähBot scouts, GräberBot mines, HandelBot processes)
+  - Crafting recipes for furnace and all stone tools
+  - Location: `.claude/skills/mining/stone-gathering.md`
+
+- **jungle tree documentation** - Complete jungle tree felling strategy for tree-felling skill
+  - Small jungle trees (1x1, 4-6 logs) vs mega jungle trees (2x2, 40-120 logs)
+  - Branch removal strategies for mega trees (jungle branches extend 3-5 blocks)
+  - Sapling rarity handling (jungle saplings rare, 0-3 per mega tree)
+  - Top-down vs bottom-up felling approaches for mega trees
+  - Location: `.claude/skills/tree-felling/tree_types/jungle.md`
+
+- **colony-coordination skill** - Comprehensive multi-bot orchestration and task delegation system
+  - Defines bot roles (HandelBot/Trader, SammelBot/Gatherer, BauBot/Builder, GräberBot/Miner, SpähBot/Scout)
+  - Communication hierarchy with 3-tier priority system (HIGH/NORMAL/LOW)
+  - Task delegation protocols (TASK/ACCEPT/COMPLETE format)
+  - Emergency response workflows for critical situations
+  - Colony-wide project coordination patterns
+  - Daily sync procedures and status reporting
+  - Resource chain coordination (exploration → gathering → processing → building)
+  - Dynamic task reallocation for adaptive planning
+  - Integration with all existing skills for coordinated operations
+  - Location: `.claude/skills/colony-coordination/SKILL.md`
+
+- **resource-management skill** - Inventory coordination and multi-bot resource distribution
   - Tracks resource states (abundant/sufficient/scarce/critical)
   - Coordinates material requests between bots using send_bot_message/read_bot_messages
   - Storage organization strategies for central/personal/work storage
@@ -26,9 +66,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Location: `.claude/skills/building/SKILL.md`
 
 ### Improved
-- Colony runtime successfully manages 3+ bots simultaneously (HandelBot, SammelBot, BauBot)
+- Colony runtime successfully manages 5 bots simultaneously (HandelBot, SammelBot, BauBot, GräberBot, SpähBot)
 - Bot state files provide real-time inventory and position tracking
-- Inter-bot communication tested via debug console
+- Inter-bot communication tested via debug console and message system
+- German language support for all bot chat responses (CHAT_LANGUAGE=german in bots.yaml)
 
 ## [1.0.0] - 2025-11-02
 

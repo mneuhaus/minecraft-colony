@@ -12,7 +12,7 @@ async function main() {
     console.warn('No bots defined in bots.yaml. Nothing to start.');
   } else {
     console.log(`Starting ${bots.length} bot(s)...`);
-    startBots(bots);
+    await startBots(bots);
   }
 
   console.log(`Starting dashboard on http://localhost:${DASHBOARD_PORT}`);

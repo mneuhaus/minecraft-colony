@@ -17,6 +17,16 @@ async function main() {
   const minecraftBot = new MinecraftBot(config);
   const claudeAgent = new ClaudeAgentSDK(config, minecraftBot);
 
+  // Handle bot errors to prevent crashes
+  minecraftBot.on('error', (error) => {
+    logger.error('Bot encountered an error', {
+      error: error.message,
+      stack: error.stack
+    });
+    // Don't crash the process, just log the error
+    // The bot's reconnection logic will handle recovery
+  });
+
   // Handle shutdown gracefully
   const shutdown = () => {
     logger.info('Shutting down...');
