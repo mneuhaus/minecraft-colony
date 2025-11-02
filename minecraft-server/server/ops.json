@@ -1,0 +1,14 @@
+[
+  {
+    "uuid": "3e30a878-b5ad-3497-b8b0-17f563f6f319",
+    "name": "mneuhaus",
+    "level": 4,
+    "bypassesPlayerLimit": false
+  },
+  {
+    "uuid": "00000000-0000-0000-0000-000000000000",
+    "name": "ClaudeBot",
+    "level": 4,
+    "bypassesPlayerLimit": false
+  }
+]

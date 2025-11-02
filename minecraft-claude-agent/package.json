@@ -1,0 +1,54 @@
+{
+  "name": "minecraft-claude-agent",
+  "version": "1.0.0",
+  "description": "Claude-powered autonomous Minecraft bot using mineflayer and Claude Agent SDK",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "clean": "rm -rf dist",
+    "run": "tsx run.ts",
+    "send": "tsx src/debug/sendMessage.ts",
+    "screenshot": "tsx src/debug/screenshotViewer.ts",
+    "dashboard": "tsx src/dashboard.ts",
+    "colony": "tsx src/runtime/colonyRuntime.ts",
+    "colony-ctl": "tsx src/runtime/colonyControl.ts"
+  },
+  "keywords": [
+    "minecraft",
+    "claude",
+    "agent",
+    "mineflayer",
+    "bot"
+  ],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.12.1",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.30",
+    "@anthropic-ai/sdk": "^0.68.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.5",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "minecraft-assets": "^1.17.0",
+    "minecraft-data": "^3.100.0",
+    "mineflayer": "^4.33.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "prismarine-viewer": "^1.33.0",
+    "vec3": "^0.1.10",
+    "winston": "^3.18.3",
+    "yaml": "^2.8.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.2",
+    "@types/vec3": "^0.1.4",
+    "playwright": "^1.56.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

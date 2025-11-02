@@ -1,0 +1,12 @@
+name: BannerGenerator
+version: '${project.version}'
+main: com.bannergenerator.BannerGeneratorPlugin
+api-version: '1.21'
+author: YourName
+description: Custom workstation for creating letter banners
+
+commands:
+  bannergenerator:
+    description: Get a banner workstation block
+    usage: /<command>
+    aliases: [bg, bannerstation]

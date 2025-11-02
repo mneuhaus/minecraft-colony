@@ -1,0 +1,31 @@
+bots:
+  - name: HandelBot
+    username: HandelBot
+    logs_dir: logs/HandelBot
+    viewer_port: 3001  # Trading bot viewer on 3001
+    env:
+      CHAT_LANGUAGE: "german"
+  - name: SammelBot
+    username: SammelBot
+    logs_dir: logs/SammelBot
+    viewer_port: null  # Disable viewer for collector bot
+    env:
+      CHAT_LANGUAGE: "german"
+  - name: BauBot
+    username: BauBot
+    logs_dir: logs/BauBot
+    viewer_port: 3002  # Building bot viewer on 3002
+    env:
+      CHAT_LANGUAGE: "german"
+  - name: GräberBot
+    username: GräberBot
+    logs_dir: logs/GräberBot
+    viewer_port: 3003  # Mining bot viewer on 3003
+    env:
+      CHAT_LANGUAGE: "german"
+  - name: SpähBot
+    username: SpähBot
+    logs_dir: logs/SpähBot
+    viewer_port: 3004  # Scout/exploration bot viewer on 3004
+    env:
+      CHAT_LANGUAGE: "german"

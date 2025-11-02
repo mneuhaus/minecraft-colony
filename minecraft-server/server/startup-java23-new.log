@@ -1,0 +1,22 @@
+Starting org.bukkit.craftbukkit.Main
+*** Warning, you've not updated in a while! ***
+*** Please download a new build as per instructions from https://papermc.io/downloads/paper ***
+WARN StatusConsoleListener Advanced terminal features are not available in this environment
+[14:47:22 INFO]: [bootstrap] Running Java 23 (Java HotSpot(TM) 64-Bit Server VM 23.0.1+11-39; Oracle Corporation null) on Mac OS X 15.3.1 (aarch64)
+[14:47:22 INFO]: [bootstrap] Loading Paper 1.21.1-133-ver/1.21.1@3cb8529 (2025-03-28T16:14:36Z) for Minecraft 1.21.1
+[14:47:23 INFO]: [PluginInitializerManager] Initializing plugins...
+[14:47:23 INFO]: [PluginInitializerManager] Initialized 1 plugin
+[14:47:23 INFO]: [PluginInitializerManager] Bukkit plugins (1):
+ - BannerGenerator (1.0.0)
+[14:47:25 INFO]: Environment: Environment[sessionHost=https://sessionserver.mojang.com, servicesHost=https://api.minecraftservices.com, name=PROD]
+[14:47:25 ERROR]: Failed to start the minecraft server
+net.minecraft.util.DirectoryLock$LockException: /Users/mneuhaus/Workspace/minecraft/minecraft-server/server/./world/session.lock: already locked (possibly by other Minecraft instance?)
+	at net.minecraft.util.DirectoryLock$LockException.alreadyLocked(DirectoryLock.java:100) ~[paper-1.21.1.jar:1.21.1-133-3cb8529]
+	at net.minecraft.util.DirectoryLock.create(DirectoryLock.java:30) ~[paper-1.21.1.jar:1.21.1-133-3cb8529]
+	at net.minecraft.world.level.storage.LevelStorageSource$LevelStorageAccess.<init>(LevelStorageSource.java:522) ~[paper-1.21.1.jar:1.21.1-133-3cb8529]
+	at net.minecraft.world.level.storage.LevelStorageSource.validateAndCreateAccess(LevelStorageSource.java:428) ~[paper-1.21.1.jar:1.21.1-133-3cb8529]
+	at net.minecraft.server.Main.main(Main.java:198) ~[paper-1.21.1.jar:1.21.1-133-3cb8529]
+	at io.papermc.paper.PaperBootstrap.boot(PaperBootstrap.java:21) ~[paper-1.21.1.jar:1.21.1-133-3cb8529]
+	at org.bukkit.craftbukkit.Main.main(Main.java:281) ~[paper-1.21.1.jar:1.21.1-133-3cb8529]
+	at io.papermc.paperclip.Paperclip.lambda$main$0(Paperclip.java:42) ~[app:?]
+	at java.base/java.lang.Thread.run(Thread.java:1575) ~[?:?]

@@ -1,0 +1,227 @@
+import { spawn, ChildProcess } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import yaml from 'yaml';
+
+export interface BotConfig {
+  name: string;
+  username: string;
+  logs_dir: string;
+  viewer_port?: number | null;
+  env?: Record<string, string>;
+}
+
+interface ConfigFile {
+  bots: BotConfig[];
+}
+
+export interface BotStatus {
+  name: string;
+  username: string;
+  running: boolean;
+  connected?: boolean;
+  connectionStatus?: 'connected' | 'connecting' | 'disconnected' | 'error';
+  timeSinceUpdate?: number;
+  position?: { x: number; y: number; z: number };
+  health?: number;
+  food?: number;
+  gameMode?: string;
+  inventory?: Array<{ name: string; count: number }>;
+  viewerUrl?: string;
+  lastUpdate?: string;
+  errorMessage?: string;
+}
+
+const CONFIG_PATH = process.env.BOTS_CONFIG || 'bots.yaml';
+const PNPM_CMD = process.env.PNPM_CMD || 'pnpm';
+const BOT_CMD = process.env.BOT_CMD || 'start';
+
+export function loadConfig(): BotConfig[] {
+  const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');
+  const parsed = yaml.parse(raw) as ConfigFile;
+  if (!parsed?.bots || !Array.isArray(parsed.bots)) {
+    throw new Error(`Invalid config: expected 'bots' array in ${CONFIG_PATH}`);
+  }
+  return parsed.bots;
+}
+
+function ensureDirs(bot: BotConfig) {
+  const base = path.resolve(bot.logs_dir);
+  fs.mkdirSync(base, { recursive: true });
+  fs.mkdirSync(path.resolve(base, 'screenshots'), { recursive: true });
+  fs.mkdirSync(path.resolve(base, 'pids'), { recursive: true });
+  fs.mkdirSync(path.resolve('logs'), { recursive: true }); // for shared state files
+}
+
+function pidFile(bot: BotConfig) {
+  return path.resolve(bot.logs_dir, 'pids', `${bot.name}.pid`);
+}
+
+function logFile(bot: BotConfig) {
+  return path.resolve(bot.logs_dir, `${bot.name}.log`);
+}
+
+function buildEnv(bot: BotConfig) {
+  const env = { ...process.env, ...bot.env } as Record<string, string>;
+  env.MC_USERNAME = bot.username;
+  env.LOG_LEVEL = env.LOG_LEVEL || 'debug';
+  env.DISABLE_VIEWER = bot.viewer_port ? 'false' : 'true';
+  if (bot.viewer_port) {
+    env.VIEWER_PORT = String(bot.viewer_port);
+  } else {
+    delete env.VIEWER_PORT;
+  }
+  env.LOG_PATH = logFile(bot);
+  env.DIARY_PATH = path.resolve(bot.logs_dir, 'diary.md');
+  return env;
+}
+
+export function isBotRunning(bot: BotConfig): boolean {
+  const pidPath = pidFile(bot);
+  if (!fs.existsSync(pidPath)) return false;
+  try {
+    const pid = Number(fs.readFileSync(pidPath, 'utf-8'));
+    if (!pid) return false;
+    process.kill(pid, 0);
+    return true;
+  } catch (err: any) {
+    if (err.code === 'ESRCH') return false;
+    return false;
+  }
+}
+
+export function startBot(bot: BotConfig): ChildProcess | null {
+  ensureDirs(bot);
+  const pidPath = pidFile(bot);
+  if (isBotRunning(bot)) {
+    console.log(`[${bot.name}] already running.`);
+    return null;
+  }
+
+  const env = buildEnv(bot);
+  const outPath = logFile(bot);
+  const outStream = fs.createWriteStream(outPath, { flags: 'a' });
+  outStream.write(`\n---\nStarting ${bot.name} @ ${new Date().toISOString()}\n`);
+
+  const child = spawn(PNPM_CMD, [BOT_CMD], {
+    cwd: process.cwd(),
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
+  });
+
+  child.stdout?.pipe(outStream, { end: false });
+  child.stderr?.pipe(outStream, { end: false });
+
+  fs.writeFileSync(pidPath, String(child.pid));
+  console.log(`[${bot.name}] started (PID ${child.pid}) → ${outPath}`);
+
+  child.on('exit', (code, signal) => {
+    console.log(`[${bot.name}] exited with code=${code} signal=${signal}`);
+    if (fs.existsSync(pidPath)) fs.unlinkSync(pidPath);
+    outStream.write(`\n---\n${bot.name} exited at ${new Date().toISOString()} (code=${code}, signal=${signal})\n`);
+    outStream.end();
+  });
+
+  child.unref();
+  return child;
+}
+
+export function stopBot(bot: BotConfig) {
+  const pidPath = pidFile(bot);
+  if (!fs.existsSync(pidPath)) {
+    console.log(`[${bot.name}] not running.`);
+    return;
+  }
+  const pid = Number(fs.readFileSync(pidPath, 'utf-8'));
+  if (!pid) {
+    fs.unlinkSync(pidPath);
+    console.warn(`[${bot.name}] invalid PID file removed.`);
+    return;
+  }
+  try {
+    process.kill(pid, 'SIGTERM');
+    console.log(`[${bot.name}] sent SIGTERM to PID ${pid}`);
+  } catch (err) {
+    console.warn(`[${bot.name}] failed to stop PID ${pid}:`, err);
+  } finally {
+    fs.unlinkSync(pidPath);
+  }
+}
+
+export function startBots(bots: BotConfig[]): void {
+  bots.forEach(startBot);
+}
+
+export function stopBots(bots: BotConfig[]): void {
+  bots.forEach(stopBot);
+}
+
+export function restartBots(bots: BotConfig[]): void {
+  bots.forEach((bot) => {
+    stopBot(bot);
+    startBot(bot);
+  });
+}
+
+export function getBotStatus(bot: BotConfig): BotStatus {
+  const status: BotStatus = {
+    name: bot.name,
+    username: bot.username,
+    running: isBotRunning(bot),
+    viewerUrl: bot.viewer_port ? `http://localhost:${bot.viewer_port}` : undefined,
+    connectionStatus: 'disconnected',
+    connected: false,
+  };
+
+  if (!status.running) {
+    status.connectionStatus = 'disconnected';
+    return status;
+  }
+
+  try {
+    const stateFilePath = path.resolve('logs', `${bot.name}.state.json`);
+    if (fs.existsSync(stateFilePath)) {
+      const stateData = JSON.parse(fs.readFileSync(stateFilePath, 'utf-8'));
+      status.position = stateData.position;
+      status.health = stateData.health;
+      status.food = stateData.food;
+      status.gameMode = stateData.gameMode;
+      status.inventory = stateData.inventory || [];
+      status.lastUpdate = stateData.lastUpdate;
+
+      if (stateData.lastUpdate) {
+        const lastUpdate = new Date(stateData.lastUpdate).getTime();
+        const now = Date.now();
+        status.timeSinceUpdate = Math.floor((now - lastUpdate) / 1000);
+
+        if (status.timeSinceUpdate < 10) {
+          status.connectionStatus = 'connected';
+          status.connected = true;
+        } else if (status.timeSinceUpdate < 60) {
+          status.connectionStatus = 'connecting';
+          status.connected = false;
+        } else {
+          status.connectionStatus = 'error';
+          status.connected = false;
+          status.errorMessage = `No updates for ${status.timeSinceUpdate}s`;
+        }
+      } else {
+        status.connectionStatus = 'connecting';
+      }
+    } else {
+      status.connectionStatus = 'connecting';
+    }
+  } catch (error) {
+    console.error(`Error reading status for ${bot.name}:`, error);
+    status.connectionStatus = 'error';
+    status.errorMessage = String(error);
+  }
+
+  return status;
+}
+
+export function getAllStatuses(): BotStatus[] {
+  const bots = loadConfig();
+  return bots.map(getBotStatus);
+}

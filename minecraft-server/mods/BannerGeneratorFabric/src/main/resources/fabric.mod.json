@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "bannergenerator",
+  "version": "${version}",
+  "name": "Banner Generator",
+  "description": "Client-side UI for the Banner Generator workstation",
+  "authors": [
+    "mneuhaus"
+  ],
+  "contact": {},
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.bannergenerator.client.BannerGeneratorClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.10",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

@@ -1,356 +1,169 @@
-# Claude Minecraft Agent - AI Programming Guide
+# Minecraft Workspace - Mega-Repository
 
-## 🤖 Agent SDK Architecture
+This is a mega-repository containing multiple interconnected projects for running and testing an AI-powered Minecraft bot.
 
-This project uses the **Claude Agent SDK** with automatic skill loading from `.claude/skills/` directory.
+## Repository Structure
 
-### Core Components
+```
+minecraft/
+├── minecraft-server/           # The Minecraft server instance
+├── minecraft-claude-agent/     # Claude-powered autonomous bot (PRIMARY PROJECT)
+│   └── debug-tools/
+│       └── screenshot-bot/     # Verification tool for visual testing
+├── .claude/                    # Shared workspace configuration
+│   └── settings.local.json
+└── .playwright-mcp/            # Screenshots from Playwright MCP
+```
 
-**Agent System:**
-- `ClaudeAgentSDK.ts` - Main agent with 100-turn limit for complex workflows
-- `mcpTools.ts` - 22 Minecraft tools in MCP format with Zod schemas
-- Automatic skill injection from `.claude/skills/*/SKILL.md`
+## Projects Overview
 
-**Skills Loading:**
-- Skills automatically load when Claude detects task matches description
-- Tree-felling skill located at `.claude/skills/tree-felling/SKILL.md`
-- Skills provide strategy documentation, not code implementations
+### 1. minecraft-server/
+**Purpose:** The actual Minecraft server that the bot connects to.
 
-## 🌳 Tree-Felling Skill (PRIMARY)
+**Technology:** Minecraft Java Edition server
 
-**Location:** `.claude/skills/tree-felling/SKILL.md`
+**Status:** Running locally for testing
 
-**Capabilities:**
-- Find and analyze trees (1x1 vs 2x2, height assessment)
-- Fell trees completely (bottom-up or pillar-based for tall trees)
-- Collect all drops and saplings
-- Replant saplings sustainably
+**Notes:**
+- Server provides the environment for the bot to operate
+- Used for testing bot behaviors in-game
+- Server configuration and world data stored here
 
-**Tools Used:**
-- `find_trees` - Locate nearby trees with coordinates/distances
-- `get_tree_structure` - Analyze specific tree (height, base type)
-- `check_reachable` - Determine if scaffolding needed
-- `break_block_and_wait` - Fell logs with drop collection
-- `collect_nearby_items` - Gather dropped items/logs
-- `wait_for_saplings` - Monitor leaf decay for sapling drops
-- `find_plantable_ground` - Locate suitable planting spots
-- `place_sapling` - Replant with validation
+### 2. minecraft-claude-agent/ (PRIMARY)
+**Purpose:** Claude-powered autonomous Minecraft bot using mineflayer and the Claude Agent SDK.
 
-**Validated Workflow:** ✅ Complete end-to-end testing successful
-- Find → Analyze → Move → Fell → Collect → Wait → Replant
-- 15 turns average per complete tree cycle
-- Sustainable forestry with automatic replanting
+**Technology:**
+- Node.js/TypeScript
+- mineflayer (Minecraft bot framework)
+- Claude Agent SDK (automatic skill loading)
+- prismarine-viewer (visual debugging at http://localhost:3000)
 
-## 🛠️ 22 Available Tools
+**Logging Overview:**
+- `minecraft-claude-agent/logs/agent.log` — YAML structured log for Claude. Use helpers in `logger.ts` and keep metadata structured.
+- `minecraft-claude-agent/logs/diary.md` — Human-readable diary entries appended via `appendDiaryEntry`.
+- `minecraft-server/server/logs/latest.log` — Server truth for all in-world actions.
 
-### Movement & Position
-- `get_position` - Current coordinates
-- `move_to_position` - Pathfinding navigation
-- `look_at` - Face specific coordinates
+**Quick Debug Messaging:**
+- Run `pnpm send "your message"` from `minecraft-claude-agent/` to inject chat messages without joining the game yourself.
+- Override username via `DEBUG_SENDER_USERNAME=YourName pnpm send "..."` when needed.
+- Capture viewer snapshots with `pnpm screenshot` (set `VIEWER_URL`, `VIEWER_SCREENSHOT_DIR`, etc. as needed). Screenshots land in `minecraft-claude-agent/logs/screenshots/` by default.
+- The helpers spawn disposable processes and exit automatically—check `logs/agent.log` and `logs/diary.md` to confirm the bot handled the interaction.
+- Inside the agent, use the `read_diary_entries` MCP tool to let Claude skim recent diary history (defaults to three entries, supports `limit` up to 10).
 
-### Inventory & Items
-- `list_inventory` - All inventory items
-- `find_item` - Specific item search
-- `equip_item` - Hold items/weapons
-- `collect_nearby_items` - Gather dropped items
+**Key Features:**
+- 22 atomic tools for Minecraft interactions
+- Event-driven architecture with 100-turn workflow limit
+- Tree-felling skill with automatic sapling replanting
+- Autonomous agent with Claude Sonnet 4.5
 
-### Block Interaction  
-- `dig_block` - Break blocks (no drop collection)
-- `place_block` - Place blocks with face validation
-- `find_block` - Locate nearest blocks by type
-- `break_block_and_wait` - Break blocks AND collect drops
+**Documentation:**
+- 📖 **Read [AGENTS.md](minecraft-claude-agent/AGENTS.md) for AI agent programming guide**
+- See `minecraft-claude-agent/CLAUDE.md` for legacy development details
 
-### Tree-Felling Tools
-- `find_trees` - Tree discovery with filtering
-- `get_tree_structure` - Tree analysis (1x1/2x2, height)
-- `check_reachable` - Scaffolding requirement check
-- `build_pillar` - Jump-place blocks to rise up
-- `descend_pillar_safely` - Safe pillar descent
-- `wait_for_saplings` - Leaf decay monitoring
-- `find_plantable_ground` - Suitable soil detection
-- `place_sapling` - Validated sapling planting
+**Current Status:**
+- ✅ **Migrated to Claude Agent SDK** - Skills auto-load from `.claude/skills/`
+- ✅ **All 22 tools converted to MCP format** with Zod schemas
+- ✅ **Complete tree-felling workflow validated** - Find → Fell → Collect → Replant
+- ✅ **Increased to 100-turn limit** for complex workflows
 
-### Communication
-- `send_chat` - Send messages to players
-- `get_recent_chat` - Recent message history
-- `find_entity` - Locate nearby players/mobs
+### 3. minecraft-claude-agent/debug-tools/screenshot-bot/
+**Purpose:** Verification tool for visually testing what the claude-agent bot is doing. Lives alongside the primary agent code so improvements to debugging travel with the project.
 
-## 🎯 Agent Design Principles
+**Technology:** TBD (likely using Playwright or similar)
 
-### 1. Blind Bot Design
-The LLM cannot see Minecraft graphics - all tools must provide:
-- Precise coordinates `(x, y, z)`
-- Distance measurements in blocks  
-- Multiple sorted options (nearest first)
-- Structured data for decision-making
+**Usage:**
+- Takes screenshots of bot behavior
+- Helps verify block placements and movements
+- Screenshots stored in `.playwright-mcp/`
 
-### 2. Atomic Tool Design
-Each tool does ONE thing clearly:
-- ✅ `find_trees` + `break_block_and_wait` (separate concerns)
-- ❌ `gather_wood` (monolithic, hides decision process)
-- Tools return data,LLM decides what to do next
+**Integration:**
+- Works alongside prismarine-viewer
+- Provides visual confirmation of bot actions
+- Critical for debugging "false success" reports
 
-### 3. Skill-Driven Intelligence
-Complex behavior comes from SKILL.md strategy guides:
-- Skills teach HOW to combine atomic tools
-- No hardcoded decision logic in TypeScript
-- Claude reads strategies and makes intelligent choices
+## Workflow
 
-## 🚀 Getting Started
+1. **Start minecraft-server** → Provides game environment (`make start-server`)
+2. **Launch the colony runtime** → Spins up every bot defined in `bots.yaml` plus the shared dashboard (`make start-colony` or `pnpm colony`, dashboard at http://localhost:4242)
+3. **Use debug tools** → Screenshot bot lives at `minecraft-claude-agent/debug-tools/screenshot-bot/`
+4. **Prismarine viewer** (http://localhost:3000) → Real-time 3D view when enabled per bot
 
-### Quick Start
+## Shared Configuration
+
+### .claude/ Directory
+The workspace-level `.claude/` directory contains:
+- `settings.local.json` - Local settings for Claude Code
+- Skills and commands would typically go here, but agent-specific skills are in `minecraft-claude-agent/.claude/skills/`
+
+### Skills Location
+Skills must live in `minecraft-claude-agent/.claude/skills/` so they travel with the project (do not add project skills to the workspace-level `.claude/skills/` directory).
+- Currently: `tree-felling/SKILL.md`, `trading/SKILL.md`, and trading `TEST-SCENARIOS.md`
+
+## Current Development Focus
+
+**Primary Goal:** Get the minecraft-claude-agent to properly load and use skills from `.claude/skills/tree-felling/SKILL.md`
+
+**Problem:**
+- SKILL.md files exist with comprehensive strategies
+- Agent uses raw `@anthropic-ai/sdk` directly (not Claude Agent SDK)
+- No code currently reads/loads SKILL.md into the system prompt
+- 22 tools exist but only 12 are mentioned in system prompt
+
+**Solution (In Progress):**
+1. Create skill loader utility to read SKILL.md files
+2. Inject loaded skills into ClaudeAgent system prompt
+3. Auto-generate tool list from actual tools (sync with reality)
+4. Test tree-felling with loaded strategy
+
+## Key Commands
+
 ```bash
-# Start bot (in background)
-cd minecraft-claude-agent
-nohup pnpm run dev > logs/bot.log 2>&1 &
+# Server lifecycle
+make start-server         # start Paper server in background
+make stop-server          # stop Paper server
 
-# Test tree-felling
-pnpm send "please find a tree, fell it completely, collect items, then replant"
+# Colony runtime
+make start-colony         # start all bots + dashboard (default port 4242)
+make stop-colony          # stop bots & dashboard
+make status-colony        # check runtime PID/status
 
-# Monitor progress
-tail -f logs/bot.log
+# Direct bot control (inside minecraft-claude-agent/)
+pnpm colony-ctl status    # show individual bot status
+pnpm colony-ctl restart <BotName>
+
+# Development (inside minecraft-claude-agent/)
+pnpm run dev              # watch mode with tsx
+pnpm run build            # compile TypeScript
+pnpm start                # run compiled bot (single instance)
 ```
 
-### Visual Verification
-- **Prismarine Viewer**: http://localhost:3000 (3D bot view)
-- **Screenshots`: Saved to `.playwright-mcp/` directory
-- Always verify success visually - logs can lie!
+## Important Notes
 
-## 🔧 Development
+- **Do** use Claude Agent SDK - provides automatic skill loading and better tooling
+- **Do** use git for version control (not _v1, _v2 files)
+- **Do** use pnpm as package manager
+- **Skills** automatically load from `.claude/skills/` directory with Agent SDK
 
-### Key Files
-- `src/agent/ClaudeAgentSDK.ts` - Main agent loop (100-turn limit)
-- `src/agent/mcpTools.ts` - All 22 Minecraft tools
-- `.claude/skills/tree-felling/SKILL.md` - Tree strategy guide
+## Architecture Decision: Agent SDK Migration
 
-### Testing Checklist
-Before any feature is "done":
-- [ ] Visual confirmation in prismarine-viewer
-- [ ] MCP tools verify actual game state
-- [ ] Complete workflow tested end-to-end
-- [ ] No timeout errors in logs
-- [ ] Bot can perform task autonomously
+**Why we migrated TO Claude Agent SDK:**
+- ✅ **Automatic skill loading** from `.claude/skills/` directory
+- ✅ **Built-in MCP server support** for custom tools
+- ✅ **Zod schema validation** for type-safe tool inputs
+- ✅ **Less code to maintain** - SDK handles conversation management
+- ✅ **Skills auto-inject** into system prompt without manual parsing
 
-## 📊 Performance Metrics
+**How we integrated it:**
+- Created MCP server using `createSdkMcpServer` with all 22 tools
+- Converted tool definitions from JSON Schema to Zod schemas
+- Used `query()` API with async message generator
+- Set `settingSources: ['project']` to enable skill loading
+- Skills in `.claude/skills/` directory automatically discovered
 
-**Tree-Felling Workflow:**
-- **Turns:** 15 average per tree
-- **Duration:** ~2-3 minutes per tree
-- **Cost:** ~$0.03 per tree
-- **Success Rate:** 100% (validated)
-
-**Agent Limits:**
-- **Max Turns:** 100 (increased from 25)
-- **Timeout:** 90 seconds per tool call
-- **Context:** Automatic skill loading reduces prompt length
-
-## 🔍 Debugging
-
-### Common Issues
-1. **False Success**: Bot reports success but nothing happens
-   - Fix: Verify with MCP tools + screenshots
-
-2. **Timeout Limits**: Complex tasks hit turn limits
-   - Fix: Increased to 100 turns for full workflows
-
-3. **Coordinate Confusion**: Y=64 ground vs placement heights
-   - Fix: Understand Minecraft coordinate system
-
-### Log Analysis
-Monitor these log patterns:
-- `Tool executed:` - Successful tool calls
-- `Assistant requested tool:` - Claude's decisions
-- `result.*subtype.*success` - Complete workflow success
-- `error_max_turns` - Hit turn limit (fixed with 100 limit)
-
-## 🚧 Known Issues & Limitations
-
-### MCP Manifest Bug
-**Issue:** `MCP server registered {}` shows empty manifest despite tools working
-**Impact:** No functional impact - all 22 tools work correctly
-**Workaround:** Tools function normally despite manifest appearing empty
-**Root Cause:** SDK version compatibility - tools operational regardless
-
-### Tool Execution Patterns
-**Critical Observation:** MCP tools work despite manifest issues
-- All tree-felling tools execute successfully
-- `mcp__minecraft__*` prefix indicates proper registration
-- Tool results return correctly to Claude
-- No need to fix immediately - focus on functionality
-
-### Session Management
-**State Persistence:** Claude Agent SDK maintains conversation context
-- `sessionId: "4dd52e3a-8168-495f-8fb5-138b2204eeef"` persists across requests
-- Bot remembers previous actions and context
-- Important for multi-turn tree-felling workflows
-
-## 🎖️ Validation Results
-
-✅ **Complete Tree-Felling Workflow Validated:**
-1. Found jungle tree 3 blocks away
-2. Analyzed 5-log tree structure correctly
-3. Felled all logs bottom-to-top
-4. Collected 11 jungle logs + sticks
-5. Waited for leaf decay (30 seconds)
-6. Replanted oak sapling sustainably
-7. Completed in 15 turns with 100% success
-
-The minecraft-claude-agent is now fully operational with intelligent tree-felling capabilities using the Agent SDK's automatic skill loading system!
-
-## 🚀 Future Development Roadmap
-
-### High-Priority Skills to Add
-
-**1. Mining & Resource Gathering**
-- `mining-skill` - Underground ore detection and systematic mining
-- `quarry-skill` - Large-scale strip mining operations
-- `cave-exploration` - Safe cave navigation and resource mapping
-
-**2. Building & Construction**
-- `shelter-building` - Basic hut construction with doors/windows
-- `storage-system` - Chest organization and item sorting
-- `bridge-building` - Gap crossing and structure construction
-
-**3. Farming & Agriculture**
-- `crop-farming` - Wheat, carrot, potato automation
-- `animal-breeding` - Livestock management and breeding
-- `greenhouse-building` - Automated food production systems
-
-### Technical Improvements
-
-**1. Enhanced Error Recovery**
-- Detect when `break_block_and_wait` fails due to tool durability
-- Automatic tool switching when primary tool breaks
-- Fallback strategies when pathfinding fails
-
-**2. Performance Optimizations**
-- Parallel tool execution for independent actions
-- Smart batching of nearby operations
-- Reduced waiting times through better state tracking
-
-**3. Advanced Decision Making**
-- Resource prioritization (wood vs stone vs food)
-- Inventory management and storage optimization
-- Multi-step planning with intermediate goals
-
-### Monitoring & Observability
-
-**1. Metrics Collection**
-```typescript
-// Future: Tool execution metrics
-interface ToolMetrics {
-  toolName: string;
-  executionTime: number;
-  successRate: number;
-  errors: string[];
-  totalUses: number;
-}
-```
-
-**2. Performance Dashboard**
-- Real-time tool execution status
-- Resource consumption tracking
-- Workflow completion rates
-- Error pattern analysis
-
-**3. Alerting System**
-- Failed workflow notifications
-- Low inventory warnings
-- Anomalous behavior detection
-
-### Code Architecture Improvements
-
-**1. Tool Standardization**
-```typescript
-// Future: Consistent tool interfaces
-interface StandardTool {
-  name: string;
-  description: string;
-  input: ZodSchema;
-  execute(params: any): Promise<ToolResult>;
-  validate?(params: any): boolean;
-}
-```
-
-**2. Skill Validation**
-```typescript
-// Future: Skill compatibility checking
-interface SkillMetrics {
-  requiredTools: string[];
-  estimatedTurns: number;
-  successProbability: number;
-  resourceRequirements: ResourceNeeds;
-}
-```
-
-**3. Configuration Management**
-```typescript
-// Future: Runtime configuration changes
-interface AgentConfig {
-  maxTurns: number;
-  allowedSkills: string[];
-  riskLevel: 'conservative' | 'balanced' | 'aggressive';
-  resourceLimit: ResourceLimits;
-}
-```
-
-### Testing & Quality Assurance
-
-**1. Automated Skill Testing**
-- Unit testing for individual tools
-- Integration testing for skill workflows
-- Performance regression testing
-
-**2. Simulation Environment**
-- Isolated world testing
-- Controlled scenario testing
-- Load testing for concurrent operations
-
-**3. CI/CD Pipeline**
-```yaml
-# Future: GitHub Actions workflow
-name: Bot Testing
-on: [push, pull_request]
-jobs:
-  test-skills:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Test Tree-Felling
-        run: pnpm test:tree-felling
-      - name: Validate Skills
-        run: pnpm validate:skills
-```
-
-## 📝 Development Best Practices (Learned)
-
-### 1. Tool Design Principles
-- **Atomicity**: Each tool does ONE thing well
-- **Explicit Returns**: Always return coordinates and measurements
-- **Error Handling**: Provide clear error messages for debugging
-- **Documentation**: Comprehensive JSDoc with examples
-
-### 2. Skill Development Workflow
-1. **Define Strategy First**: Write SKILL.md before any code
-2. **Test with Claude**: Validate LLM can understand and follow strategy
-3. **Implement Missing Tools**: Add tools only when Claude needs them
-4. **Iterate Based on Testing**: Edit SKILL.md based on real execution
-
-### 3. Debugging Methodology
-- **Visual First**: Always verify with prismarine-viewer before trusting logs
-- **Tool-by-Tool**: Test each tool individually before integrating
-- **Logs + Screenshots**: Document both for reproducible issues
-- **Gradual Complexity**: Start simple, add complexity incrementally
-
-### 4. Performance Considerations
-- **Mindful Turn Usage**: Each tool call counts toward 100-turn limit
-- **Strategic Batching**: Group similar operations together
-- **Smart State Management**: Avoid redundant tool calls
-- **Early Validation**: Check prerequisites before expensive operations
+**Result:** Cleaner code + automatic skill loading = Win!
 
 ---
 
-**Last Updated:** 2025-11-02 11:28  
-**Status:** ✅ Ready for production use  
-**Focus:** Tree-felling skill fully validated and operational  
-**Next Priority**: Mining skill development or enhanced error recovery
+**Last Updated:** 2025-11-02
+**Status:** ✅ Tree-felling skill fully validated and operational
+**Primary Focus:** Adding new skills and expanding autonomous capabilities
