@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **ES6 Module Compatibility** - Fixed all `require()` calls to use ES6 `import` statements
+  - Converted `require('minecraft-data')` to `import minecraftData from 'minecraft-data'` in 9 files
+  - Converted `require('mineflayer-pathfinder').goals` to `import { goals } from 'mineflayer-pathfinder'`
+  - Fixed "require is not defined" errors in: find_block, collect_items, craft_item, smelt_item, and all farming/combat tools
+  - Removed unused `mcData` variable in detect_biome.ts
+  - All tools now properly compiled and functional in ES6 module environment
+  - Affects: `src/tools/mining/find_block.ts`, `src/tools/inventory/collect_items.ts`, `src/tools/crafting/*.ts`, `src/tools/farming/*.ts`, `src/tools/combat/attack_entity.ts`, `src/tools/world/detect_biome.ts`
+
 ### Added
 - **detect_biome tool** - Identify biome at current or specified position
   - Returns biome name, temperature, rainfall, and characteristics
