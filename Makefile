@@ -12,6 +12,7 @@ AGENT_ENV := DISABLE_VIEWER=true
 AGENT_PID_ROOT := $(AGENT_DIR)/logs
 COLONY_PID_FILE := $(AGENT_DIR)/colony-runtime.pid
 COLONY_LOG_FILE := $(AGENT_DIR)/logs/colony-runtime.log
+COLONY_CMD := env $(AGENT_ENV) pnpm colony
 
 .PHONY: start-server stop-server restart-server status-server \
         start-agents stop-agents restart-agents status-agents \
@@ -85,7 +86,7 @@ start-colony:
 	@echo "Starting colony runtime (bots + dashboard)..."
 	@cd $(AGENT_DIR) && \
 	mkdir -p logs && \
-	nohup env $(AGENT_ENV) pnpm colony >> logs/colony-runtime.log 2>&1 & echo $$! > colony-runtime.pid
+	nohup $(COLONY_CMD) >> logs/colony-runtime.log 2>&1 & echo $$! > colony-runtime.pid
 	@sleep 2
 	@if [ -f $(COLONY_PID_FILE) ] && kill -0 $$(cat $(COLONY_PID_FILE)) 2>/dev/null; then \
 		echo "Colony runtime started (PID $$(cat $(COLONY_PID_FILE)))"; \
@@ -104,13 +105,17 @@ stop-colony:
 	if kill -0 $$PID 2>/dev/null; then \
 		echo "Stopping colony runtime (PID $$PID)..."; \
 		kill $$PID; \
+		wait $$PID 2>/dev/null || true; \
 	else \
 		echo "PID $$PID not running. Cleaning up."; \
 	fi
 	@rm -f $(COLONY_PID_FILE)
 	@$(MAKE) stop-agents
 
-restart-colony: stop-colony start-colony
+restart-colony:
+	@$(MAKE) stop-colony
+	@sleep 1
+	@$(MAKE) start-colony
 
 status-colony:
 	@if [ -f $(COLONY_PID_FILE) ] && kill -0 $$(cat $(COLONY_PID_FILE)) 2>/dev/null; then \

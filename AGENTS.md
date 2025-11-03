@@ -83,10 +83,28 @@ minecraft/
 
 ## Workflow
 
-1. **Start minecraft-server** → Provides game environment (`make start-server`)
-2. **Launch the colony runtime** → Spins up every bot defined in `bots.yaml` plus the shared dashboard (`make start-colony` or `pnpm colony`, dashboard at http://localhost:4242)
+1. **Start minecraft-server** → Provides game environment. Check first (`make status-server`) and only run `make start-server` if it's not already up.
+2. **Launch the colony runtime** → Spins up every bot defined in `bots.yaml` plus the shared dashboard. Always use `make start-colony` so the process runs detached under `nohup` (dashboard at http://localhost:4242). Check health with `make status-colony` and use `make restart-colony` to cycle the runtime safely.
 3. **Use debug tools** → Screenshot bot lives at `minecraft-claude-agent/debug-tools/screenshot-bot/`
 4. **Prismarine viewer** (http://localhost:3000) → Real-time 3D view when enabled per bot
+
+## In-Game Testing Loop
+
+Follow this sequence to validate new behavior end-to-end:
+
+1. **Prep the runtime**
+   - `make status-server` to see if the Paper server is already running; start it with `make start-server` only when needed.
+   - `make start-colony` to launch the bot colony detached. Confirm with `make status-colony`; if you need a fresh run use `make restart-colony`.
+2. **Drive the bot via chat**
+   - From `minecraft-claude-agent/`, send instructions with `pnpm send "cut down the nearest tree"` (prefix with `DEBUG_SENDER_USERNAME=YourName` when you want the message labeled).
+3. **Inspect activity**
+   - Tail `minecraft-claude-agent/logs/agent.log` for structured turn-by-turn details and tool calls.
+   - Read `minecraft-claude-agent/logs/diary.md` for the bot’s natural-language commentary.
+   - Cross-check `minecraft-server/server/logs/latest.log` for authoritative in-world events.
+4. **Capture ground truth when needed**
+   - Run `pnpm screenshot` from `minecraft-claude-agent/` to trigger the screenshot bot (configure viewer env vars as needed). Files land in `minecraft-claude-agent/logs/screenshots/`.
+5. **Shut down cleanly**
+   - When finished, `make stop-colony` (which also tears down agents) and `make stop-server`.
 
 ## Shared Configuration
 
@@ -119,12 +137,14 @@ Skills must live in `minecraft-claude-agent/.claude/skills/` so they travel with
 
 ```bash
 # Server lifecycle
-make start-server         # start Paper server in background
+make status-server        # check Paper server PID/status
+make start-server         # start Paper server in background if not already running
 make stop-server          # stop Paper server
 
 # Colony runtime
 make start-colony         # start all bots + dashboard (default port 4242)
 make stop-colony          # stop bots & dashboard
+make restart-colony       # restart bots & dashboard (detached)
 make status-colony        # check runtime PID/status
 
 # Direct bot control (inside minecraft-claude-agent/)
