@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAS Timeline - Debug Stream</title>
+    <style>
+        /* CSS Variables */
+        :root {
+            --bg: #0f1115;
+            --fg: #e6e6e6;
+            --muted: #9aa0a6;
+            --panel: #161a22;
+            --border: #202636;
+            --accent: #7c83ff;
+            --ok: #10b981;
+            --warn: #f59e0b;
+            --fail: #ef4444;
+            --intent: #8b5cf6;
+            --plan: #14b8a6;
+            --step: #6366f1;
+            --tool: #3b82f6;
+            --safety: #eab308;
+            --chat-in: #22d3ee;
+            --chat-out: #a78bfa;
+            --system: #64748b;
+        }
+
+        * { box-sizing: border-box; }
+        
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--fg);
+            font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        /* Main Layout */
+        .app {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .app__sidebar {
+            background: #0b0e13;
+            border-right: 1px solid var(--border);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .app__header {
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Agent List */
+        .agent-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .agent-list__item {
+            padding: 10px 12px;
+            border-radius: 8px;
+            background: var(--panel);
+            cursor: pointer;
+            border: 1px solid var(--border);
+            transition: all 0.2s;
+        }
+
+        .agent-list__item:hover {
+            background: #1a1f29;
+        }
+
+        .agent-list__item[aria-selected="true"] {
+            outline: 2px solid var(--accent);
+            background: #1a1f29;
+        }
+
+        .agent-list__meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .agent-list__name {
+            font-weight: 500;
+        }
+
+        .agent-list__badges {
+            display: flex;
+            gap: 4px;
+        }
+
+        .agent-list__badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 999px;
+            font-weight: 600;
+        }
+
+        .agent-list__badge--idle { background: #475569; color: #fff; }
+        .agent-list__badge--running { background: var(--ok); color: #fff; }
+        .agent-list__badge--paused { background: var(--warn); color: #000; }
+        .agent-list__badge--error { background: var(--fail); color: #fff; }
+
+        /* Filters */
+        .agent-list__filters {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+
+        .filter-chip {
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .filter-chip--active {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        /* Timeline Main Area */
+        .app__main {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Timeline Header */
+        .timeline__header {
+            padding: 16px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .timeline__filters {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .timeline__search {
+            flex: 1;
+            min-width: 200px;
+            padding: 6px 12px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--fg);
+        }
+
+        /* Timeline Stream */
+        .timeline {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .timeline__list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        /* Timeline Item (Chat-style cards) */
+        .tl-item {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px;
+            position: relative;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .tl-item:hover {
+            background: #1a1f29;
+        }
+
+        .tl-item--selected {
+            outline: 2px solid var(--accent);
+        }
+
+        /* Item type color accents */
+        .tl-item--intent { border-left: 3px solid var(--intent); }
+        .tl-item--plan { border-left: 3px solid var(--plan); }
+        .tl-item--step { border-left: 3px solid var(--step); }
+        .tl-item--tool { border-left: 3px solid var(--tool); }
+        .tl-item--safety { border-left: 3px solid var(--safety); }
+        .tl-item--chat-in { border-left: 3px solid var(--chat-in); }
+        .tl-item--chat-out { border-left: 3px solid var(--chat-out); }
+        .tl-item--system { border-left: 3px solid var(--system); }
+        .tl-item--job { border-left: 3px solid var(--accent); }
+
+        /* Outcome modifiers */
+        .tl-item--ok .tl-item__outcome { color: var(--ok); }
+        .tl-item--warn .tl-item__outcome { color: var(--warn); }
+        .tl-item--fail .tl-item__outcome { color: var(--fail); }
+
+        /* Item structure */
+        .tl-item__header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: var(--muted);
+            margin-bottom: 6px;
+        }
+
+        .tl-item__meta {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .tl-item__title {
+            font-weight: 600;
+            margin-bottom: 6px;
+            font-size: 14px;
+        }
+
+        .tl-item__body {
+            font-size: 13px;
+            color: var(--fg);
+            margin-bottom: 8px;
+        }
+
+        .tl-item__footer {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        /* Badges */
+        .tl-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            font-weight: 500;
+        }
+
+        .tl-badge--phase { background: var(--accent); color: #fff; border: none; }
+        .tl-badge--job { background: var(--system); color: #fff; border: none; }
+        .tl-badge--duration { background: transparent; color: var(--muted); }
+        .tl-badge--hazard { background: var(--safety); color: #000; border: none; }
+        .tl-badge--usage { background: transparent; color: var(--muted); }
+        .tl-badge--burst { background: var(--tool); color: #fff; border: none; }
+
+        /* Thread/Job grouping */
+        .tl-thread {
+            margin-left: 20px;
+            border-left: 2px solid var(--border);
+            padding-left: 12px;
+        }
+
+        .tl-thread-header {
+            font-weight: 600;
+            padding: 8px 12px;
+            background: #1a1f29;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        /* Chat bubbles */
+        .tl-item--chat-in .tl-item__body,
+        .tl-item--chat-out .tl-item__body {
+            padding: 8px 12px;
+            border-radius: 12px;
+            display: inline-block;
+        }
+
+        .tl-item--chat-in .tl-item__body {
+            background: #1a3447;
+            margin-right: auto;
+        }
+
+        .tl-item--chat-out .tl-item__body {
+            background: #2d1f47;
+            margin-left: auto;
+        }
+
+        /* Inspector Drawer */
+        .inspector {
+            position: fixed;
+            right: -400px;
+            top: 0;
+            width: 400px;
+            height: 100vh;
+            background: var(--panel);
+            border-left: 1px solid var(--border);
+            transition: right 0.3s;
+            z-index: 100;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .inspector--open {
+            right: 0;
+        }
+
+        .inspector__header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .inspector__close {
+            background: none;
+            border: none;
+            color: var(--fg);
+            cursor: pointer;
+            font-size: 20px;
+        }
+
+        .inspector__section {
+            margin-bottom: 16px;
+        }
+
+        .inspector__section-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .inspector__json {
+            background: var(--bg);
+            padding: 8px;
+            border-radius: 6px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+        }
+
+        /* Gap marker */
+        .tl-gap {
+            text-align: center;
+            color: var(--muted);
+            font-size: 12px;
+            padding: 8px;
+            font-style: italic;
+        }
+
+        /* Action buttons */
+        .tl-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .tl-action {
+            padding: 4px 8px;
+            font-size: 11px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--fg);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tl-action:hover {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        /* Collapsible macro */
+        .tl-macro-toggle {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .tl-macro-content {
+            margin-top: 8px;
+            padding-left: 16px;
+            border-left: 2px solid var(--border);
+        }
+
+        .tl-macro-content--collapsed {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <!-- Sidebar with bot list -->
+        <aside class="app__sidebar">
+            <div class="app__header">
+                <span>🤖</span>
+                <span>MAS Timeline</span>
+            </div>
+            
+            <!-- Bot selection -->
+            <div class="agent-list__filters">
+                <button class="filter-chip filter-chip--active" data-view="single">This Bot</button>
+                <button class="filter-chip" data-view="all">All Bots</button>
+            </div>
+            
+            <!-- Bot list -->
+            <div id="agentList" class="agent-list">
+                <!-- Populated by JS -->
+            </div>
+            
+            <!-- Quick filters -->
+            <div class="agent-list__filters">
+                <button class="filter-chip" data-filter="running">Running</button>
+                <button class="filter-chip" data-filter="paused">Paused</button>
+                <button class="filter-chip" data-filter="hazard">Hazard</button>
+                <button class="filter-chip" data-filter="jobs">Has Jobs</button>
+            </div>
+        </aside>
+
+        <!-- Main timeline area -->
+        <main class="app__main">
+            <!-- Timeline header with filters -->
+            <header class="timeline__header">
+                <div class="timeline__filters">
+                    <button class="filter-chip filter-chip--active" data-type="all">All</button>
+                    <button class="filter-chip" data-type="intent">Intent</button>
+                    <button class="filter-chip" data-type="plan">Plan</button>
+                    <button class="filter-chip" data-type="step">Step</button>
+                    <button class="filter-chip" data-type="tool">Tool</button>
+                    <button class="filter-chip" data-type="chat">Chat</button>
+                    <button class="filter-chip" data-type="safety">Safety</button>
+                </div>
+                
+                <div class="timeline__filters">
+                    <button class="filter-chip" data-outcome="ok">✓ OK</button>
+                    <button class="filter-chip" data-outcome="warn">⚠ Warn</button>
+                    <button class="filter-chip" data-outcome="fail">✗ Fail</button>
+                </div>
+                
+                <input type="text" class="timeline__search" placeholder="Search tools, ops, blocks, jobs...">
+            </header>
+
+            <!-- Timeline stream -->
+            <div class="timeline">
+                <div id="timelineList" class="timeline__list">
+                    <!-- Timeline items will be inserted here -->
+                </div>
+            </div>
+        </main>
+
+        <!-- Inspector drawer -->
+        <aside id="inspector" class="inspector">
+            <div class="inspector__header">
+                <h3 id="inspectorTitle">Inspector</h3>
+                <button class="inspector__close" onclick="closeInspector()">×</button>
+            </div>
+            <div id="inspectorContent">
+                <!-- Inspector content populated dynamically -->
+            </div>
+        </aside>
+    </div>
+
+    <script src="timeline.js"></script>
+</body>
+</html>

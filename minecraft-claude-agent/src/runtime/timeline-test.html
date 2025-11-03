@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Timeline Test</title>
+</head>
+<body>
+    <h1>MAS Timeline Test</h1>
+    <div id="status">Loading...</div>
+    <div id="events" style="max-height: 400px; overflow: auto; border: 1px solid #ccc; padding: 10px;">
+        <h2>Events:</h2>
+        <div id="eventList"></div>
+    </div>
+    <div id="websocket" style="max-height: 200px; overflow: auto; border: 1px solid #ccc; padding: 10px; margin-top: 10px;">
+        <h2>WebSocket Messages:</h2>
+        <div id="wsMessages"></div>
+    </div>
+
+    <script>
+        // Test API
+        fetch('/api/bots')
+            .then(r => r.json())
+            .then(bots => {
+                document.getElementById('status').textContent = `Found ${bots.length} bots: ${bots.map(b => b.name).join(', ')}`;
+                
+                if (bots.length > 0) {
+                    const firstBot = bots[0].name;
+                    fetch(`/api/bots/${firstBot}/events?limit=10`)
+                        .then(r => r.json())
+                        .then(events => {
+                            const eventList = document.getElementById('eventList');
+                            eventList.innerHTML = `<p>Found ${events.length} events for ${firstBot}:</p>`;
+                            events.forEach(e => {
+                                eventList.innerHTML += `<div style="margin: 5px 0; padding: 5px; background: #f0f0f0;">
+                                    <strong>${e.type}</strong> (${new Date(e.ts).toLocaleTimeString()})<br>
+                                    ${JSON.stringify(e.payload).substring(0, 200)}...
+                                </div>`;
+                            });
+                        })
+                        .catch(err => {
+                            document.getElementById('eventList').textContent = `Error loading events: ${err}`;
+                        });
+                }
+            })
+            .catch(err => {
+                document.getElementById('status').textContent = `Error: ${err}`;
+            });
+
+        // Test WebSocket
+        const ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port || 4242}/ws`);
+        const wsMessages = document.getElementById('wsMessages');
+        
+        ws.onopen = () => {
+            wsMessages.innerHTML += '<div style="color: green;">WebSocket connected</div>';
+        };
+        
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            wsMessages.innerHTML += `<div style="margin: 5px 0; padding: 5px; background: #e0e0e0;">
+                <strong>${data.type}</strong>: ${JSON.stringify(data).substring(0, 150)}...
+            </div>`;
+            
+            // Auto-scroll
+            wsMessages.scrollTop = wsMessages.scrollHeight;
+        };
+        
+        ws.onerror = (error) => {
+            wsMessages.innerHTML += `<div style="color: red;">WebSocket error: ${error}</div>`;
+        };
+        
+        ws.onclose = () => {
+            wsMessages.innerHTML += '<div style="color: orange;">WebSocket disconnected</div>';
+        };
+    </script>
+</body>
+</html>

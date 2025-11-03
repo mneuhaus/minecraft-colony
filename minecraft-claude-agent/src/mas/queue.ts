@@ -20,8 +20,8 @@ export class JobQueue {
        VALUES (@id, @bot_id, @priority, 'intent', 'plan', 'queued', @created_at, @created_at)`
     );
     const insertPayload = db.prepare(
-      `INSERT INTO jobs_payloads (job_id, intent_type, intent_args, constraints)
-       VALUES (@job_id, @intent_type, @intent_args, @constraints)`
+      `INSERT INTO jobs_payloads (job_id, intent_type, intent_args, constraints, target, stop_conditions)
+       VALUES (@job_id, @intent_type, @intent_args, @constraints, @target, @stop_conditions)`
     );
 
     const tx = db.transaction(() => {
@@ -31,6 +31,8 @@ export class JobQueue {
         intent_type: intent.type,
         intent_args: JSON.stringify(intent.args || {}),
         constraints: JSON.stringify(intent.constraints || {}),
+        target: JSON.stringify(intent.target || null),
+        stop_conditions: intent.stop_conditions || null,
       });
     });
 
@@ -49,6 +51,9 @@ export class JobQueue {
           intent_type: payloadRow.intent_type || null,
           intent_args: payloadRow.intent_args ? JSON.parse(payloadRow.intent_args) : null,
           constraints: payloadRow.constraints ? JSON.parse(payloadRow.constraints) : null,
+          // @ts-ignore
+          target: payloadRow.target ? JSON.parse(payloadRow.target) : null,
+          stop_conditions: payloadRow.stop_conditions || null,
           plan_mcrn: payloadRow.plan_mcrn || null,
           plan_summary: payloadRow.plan_summary ? JSON.parse(payloadRow.plan_summary) : null,
         }

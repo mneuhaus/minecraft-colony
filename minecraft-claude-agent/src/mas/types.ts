@@ -45,6 +45,8 @@ export interface JobPayloadRecord {
   intent_type?: IntentType | null;
   intent_args?: any | null;
   constraints?: any | null;
+  target?: any | null;
+  stop_conditions?: string | null;
   plan_mcrn?: string | null;
   plan_summary?: any | null;
 }
@@ -63,4 +65,3 @@ export interface JobStepRecord {
 export interface JobStatus extends JobRecord {
   payload: JobPayloadRecord;
 }
-

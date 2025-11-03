@@ -73,11 +73,8 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
         },
         async (params) => {
           try {
-            const { MasDatabase } = await import('../mas/db.js');
-            const { JobQueue } = await import('../mas/queue.js');
-            const db = new MasDatabase();
-            const queue = new JobQueue(db);
-            const jobId = queue.enqueueIntent(params as any, bot.username);
+            const { enqueuePlannerJob } = await import('../mas/planner.js');
+            const jobId = enqueuePlannerJob(params as any, bot.username);
             return { content: [{ type: 'text', text: jobId }] };
           } catch (error: any) {
             return { content: [{ type: 'text', text: `Error: ${error.message}` }], isError: true };
@@ -813,7 +810,8 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
         },
         async (params) => {
           try {
-            bot.chat(params.message);
+            // Use wrapper for rate-limited chat
+            minecraftBot.chat(params.message);
             const result = `Sent: ${params.message}`;
             logToolExecution('send_chat', params, result);
             return {
@@ -1604,4 +1602,243 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
       ),
     ],
   });
+}
+
+/**
+ * Create a restricted MCP server for the Planner only (read-only + job controls + send_chat).
+ */
+export function createPlannerMcpServer(minecraftBot: MinecraftBot) {
+  const bot = minecraftBot.getBot();
+
+  const plannerToolNames = [
+    'enqueue_job','get_job_status','pause_job','resume_job','cancel_job',
+    'get_position','list_waypoints','get_waypoint',
+    'detect_time_of_day','detect_biome','scan_biomes_in_area','get_nearby_blocks','analyze_surroundings',
+    'send_chat'
+  ];
+
+  const server: any = createSdkMcpServer({
+    name: 'minecraft',
+    version: '1.0.0-planner',
+    tools: [
+      // Job controls
+      tool(
+        'enqueue_job',
+        'Enqueue a new intent job for the MAS queue. Returns a job id.',
+        {
+          bot_id: z.string().optional(),
+          priority: z.enum(['high', 'normal', 'low']).optional(),
+          intent: z.object({
+            type: z.string(),
+            args: z.record(z.any()).default({}),
+            constraints: z.record(z.any()).optional(),
+            target: z.any().optional(),
+            stop_conditions: z.string().optional(),
+          }),
+        },
+        async (params) => {
+          try {
+            const { enqueuePlannerJob } = await import('../mas/planner.js');
+            const jobId = enqueuePlannerJob(params as any, bot.username);
+            return { content: [{ type: 'text', text: jobId }] };
+          } catch (error: any) {
+            return { content: [{ type: 'text', text: `Error: ${error.message}` }], isError: true };
+          }
+        }
+      ),
+      tool(
+        'get_job_status',
+        'Get status of a MAS job by id.',
+        { id: z.string() },
+        async ({ id }) => {
+          try {
+            const { MasDatabase } = await import('../mas/db.js');
+            const { JobQueue } = await import('../mas/queue.js');
+            const db = new MasDatabase();
+            const queue = new JobQueue(db);
+            const status = queue.getJobStatus(id);
+            if (!status) return { content: [{ type: 'text', text: 'not_found' }], isError: true };
+            return { content: [{ type: 'text', text: JSON.stringify(status) }] };
+          } catch (error: any) {
+            return { content: [{ type: 'text', text: `Error: ${error.message}` }], isError: true };
+          }
+        }
+      ),
+      tool(
+        'pause_job',
+        'Pause a MAS job by id.',
+        { id: z.string() },
+        async ({ id }) => {
+          const { MasDatabase } = await import('../mas/db.js');
+          const { JobQueue } = await import('../mas/queue.js');
+          const db = new MasDatabase();
+          const queue = new JobQueue(db);
+          queue.pauseJob(id);
+          return { content: [{ type: 'text', text: 'ok' }] };
+        }
+      ),
+      tool(
+        'resume_job',
+        'Resume a paused MAS job by id.',
+        { id: z.string() },
+        async ({ id }) => {
+          const { MasDatabase } = await import('../mas/db.js');
+          const { JobQueue } = await import('../mas/queue.js');
+          const db = new MasDatabase();
+          const queue = new JobQueue(db);
+          queue.resumeJob(id);
+          return { content: [{ type: 'text', text: 'ok' }] };
+        }
+      ),
+      tool(
+        'cancel_job',
+        'Cancel a MAS job by id.',
+        { id: z.string() },
+        async ({ id }) => {
+          const { MasDatabase } = await import('../mas/db.js');
+          const { JobQueue } = await import('../mas/queue.js');
+          const db = new MasDatabase();
+          const queue = new JobQueue(db);
+          queue.cancelJob(id);
+          return { content: [{ type: 'text', text: 'ok' }] };
+        }
+      ),
+
+      // Read-only world/context
+      tool(
+        'get_position',
+        'Get the current position of the bot in the world',
+        {},
+        async () => {
+          try {
+            if (!bot.entity) {
+              return { content: [{ type: 'text', text: 'Bot has not spawned yet. Please wait.' }] };
+            }
+            const pos = bot.entity.position;
+            const result = `Current position: (${Math.floor(pos.x)}, ${Math.floor(pos.y)}, ${Math.floor(pos.z)})`;
+            return { content: [{ type: 'text', text: result }] };
+          } catch (error: any) {
+            return { content: [{ type: 'text', text: `Error: ${error.message}` }], isError: true };
+          }
+        }
+      ),
+      tool(
+        'list_waypoints',
+        'List all saved waypoints with distances from current position.',
+        {},
+        async () => {
+          try {
+            const { list_waypoints } = await import('../tools/navigation/waypoints.js');
+            const result = await list_waypoints(bot, bot.username);
+            return { content: [{ type: 'text', text: result }] };
+          } catch (error: any) {
+            return { content: [{ type: 'text', text: `Error listing waypoints: ${error.message}` }], isError: true };
+          }
+        }
+      ),
+      tool(
+        'get_waypoint',
+        'Get coordinates of a specific waypoint by name.',
+        { name: z.string() },
+        async ({ name }) => {
+          try {
+            const { get_waypoint } = await import('../tools/navigation/waypoints.js');
+            const wp = await get_waypoint(bot.username, name);
+            if (!wp) return { content: [{ type: 'text', text: `Waypoint "${name}" not found` }] };
+            const desc = wp.description ? ` - ${wp.description}` : '';
+            const result = `Waypoint "${name}": (${wp.x}, ${wp.y}, ${wp.z})${desc}`;
+            return { content: [{ type: 'text', text: result }] };
+          } catch (error: any) {
+            return { content: [{ type: 'text', text: `Error: ${error.message}` }], isError: true };
+          }
+        }
+      ),
+      tool(
+        'detect_time_of_day',
+        'Detects the current time of day in Minecraft',
+        {},
+        async () => {
+          try {
+            const res = await detectTimeOfDay(bot);
+            return { content: [{ type: 'text', text: res }] };
+          } catch (error: any) {
+            return { content: [{ type: 'text', text: `Error: ${error.message}` }], isError: true };
+          }
+        }
+      ),
+      tool(
+        'detect_biome',
+        'Detects biome at current position',
+        {},
+        async () => {
+          try {
+            const res = await detect_biome(bot);
+            return { content: [{ type: 'text', text: res }] };
+          } catch (error: any) {
+            return { content: [{ type: 'text', text: `Error: ${error.message}` }], isError: true };
+          }
+        }
+      ),
+      tool(
+        'scan_biomes_in_area',
+        'Scan nearby biomes within a radius',
+        { radius: z.number().min(1).max(64) },
+        async ({ radius }) => {
+          try {
+            const res = await scan_biomes_in_area(bot, radius);
+            return { content: [{ type: 'text', text: res }] };
+          } catch (error: any) {
+            return { content: [{ type: 'text', text: `Error: ${error.message}` }], isError: true };
+          }
+        }
+      ),
+      tool(
+        'get_nearby_blocks',
+        'Get nearby blocks around the bot within a radius',
+        { radius: z.number().min(1).max(16).optional() },
+        async ({ radius = 6 }) => {
+          try {
+            const res = await getNearbyBlocks(bot, radius);
+            return { content: [{ type: 'text', text: JSON.stringify(res) }] };
+          } catch (error: any) {
+            return { content: [{ type: 'text', text: `Error: ${error.message}` }], isError: true };
+          }
+        }
+      ),
+      tool(
+        'analyze_surroundings',
+        'Analyze surroundings and summarize nearby features',
+        {},
+        async () => {
+          try {
+            const res = await analyze_surroundings(minecraftBot);
+            return { content: [{ type: 'text', text: res }] };
+          } catch (error: any) {
+            return { content: [{ type: 'text', text: `Error: ${error.message}` }], isError: true };
+          }
+        }
+      ),
+
+      // Communication
+      tool(
+        'send_chat',
+        'Send a message to all players in the chat',
+        { message: z.string() },
+        async ({ message }) => {
+          try {
+            minecraftBot.chat(message);
+            return { content: [{ type: 'text', text: `Sent: ${message}` }] };
+          } catch (error: any) {
+            return { content: [{ type: 'text', text: `Failed to send message: ${error.message}` }], isError: true };
+          }
+        }
+      ),
+    ],
+  });
+
+  // Ensure a manifest with tool names is present for allow-listing / inspection
+  if (!server.manifest) {
+    server.manifest = { name: 'minecraft', tools: plannerToolNames.map((n) => ({ name: n })) };
+  }
+  return server;
 }

@@ -5,7 +5,7 @@ import path from 'path';
 export class MasDatabase {
   private db: Database.Database;
 
-  constructor(dbPath = path.resolve('logs', 'mas', 'mas.db')) {
+  constructor(dbPath = (process.env.MAS_DB_PATH || path.resolve('logs', 'mas', 'mas.db'))) {
     const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -39,6 +39,8 @@ export class MasDatabase {
         intent_type TEXT,
         intent_args TEXT,
         constraints TEXT,
+        target TEXT,
+        stop_conditions TEXT,
         plan_mcrn TEXT,
         plan_summary TEXT,
         FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE

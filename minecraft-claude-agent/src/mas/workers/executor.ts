@@ -44,6 +44,12 @@ export class ExecutorWorker {
             if (!wp) throw new Error(`Waypoint ${op.name} not found`);
             await this.lookAt(wp.x, wp.y, wp.z);
             this.queue.appendStep({ job_id: job.id, i, op: 'LOOK_AT', outcome: 'ok', ms: Date.now() - started, details: { waypoint: op.name } });
+          } else if (op.type === 'GOTO_WORLD') {
+            await this.goto(op.x, op.y, op.z, op.tol ?? 1);
+            this.queue.appendStep({ job_id: job.id, i, op: 'GOTO_WORLD', outcome: 'ok', ms: Date.now() - started, details: { x: op.x, y: op.y, z: op.z } });
+          } else if (op.type === 'LOOK_AT_WORLD') {
+            await this.lookAt(op.x, op.y, op.z);
+            this.queue.appendStep({ job_id: job.id, i, op: 'LOOK_AT_WORLD', outcome: 'ok', ms: Date.now() - started, details: { x: op.x, y: op.y, z: op.z } });
           }
         } catch (e: any) {
           this.queue.appendStep({ job_id: job.id, i, op: op.type, outcome: 'fail', ms: Date.now() - started, details: { error: e.message } });
@@ -69,7 +75,8 @@ export class ExecutorWorker {
   private async goto(x: number, y: number, z: number, range: number) {
     const bot = this.minecraftBot.getBot();
     const pathfinderPkg = await import('mineflayer-pathfinder');
-    const goals = (pathfinderPkg as any).goals;
+    const lib: any = (pathfinderPkg as any).default || (pathfinderPkg as any);
+    const goals = lib.goals;
     const goal = new goals.GoalNear(x, y, z, range);
     await bot.pathfinder.goto(goal);
   }
@@ -80,4 +87,3 @@ export class ExecutorWorker {
     await bot.lookAt(new Vec3(x, y, z), true);
   }
 }
-

@@ -1,6 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { MinecraftBot } from '../bot/MinecraftBot.js';
-import { createMinecraftMcpServer } from './mcpTools.js';
+import { createPlannerMcpServer } from './mcpTools.js';
 import { Config } from '../config.js';
 import logger, { appendDiaryEntry, logClaudeCall, startTimer } from '../logger.js';
 import { ActivityWriter, type ActivityRole } from '../utils/activityWriter.js';
@@ -60,8 +60,8 @@ export class ClaudeAgentSDK {
     this.mcpServerReadyPromise = new Promise<void>((resolve) => {
       this.minecraftBot.on('ready', () => {
         try {
-          // Create MCP server now that the bot is connected
-          this.mcpServer = createMinecraftMcpServer(this.minecraftBot);
+          // Create read-only MCP server for Planner (no world-mutation tools)
+          this.mcpServer = createPlannerMcpServer(this.minecraftBot);
           this.mcpServerReady = true;
           logger.info('Bot ready, Claude Agent SDK is now active');
           this.refreshAllowedTools();
@@ -216,10 +216,13 @@ export class ClaudeAgentSDK {
         },
         // Enable skills from .claude/skills/ directory
         settingSources: ['user', 'project'],
-        permissionMode: 'bypassPermissions',
+        // Use default permission mode (will check allowedTools list)
+        permissionMode: 'default',
         cwd: process.cwd(),
         maxTurns: 100,
+        // Strict allow-list for Planner tools
         allowedTools: this.allowedTools,
+        toolAllowList: this.allowedTools,
         // Resume previous session if available
         ...(shouldResume && { resume: lastSessionId }),
         stderr: (data: string) => {
@@ -475,7 +478,8 @@ export class ClaudeAgentSDK {
 
       // Send Claude's response to chat
       if (finalResponse && finalResponse.trim().length > 0) {
-        this.minecraftBot.getBot().chat(finalResponse);
+        // Use rate-limited chat to avoid spam kicks
+        this.minecraftBot.chat(finalResponse);
       }
     } catch (error: any) {
       logger.error('Failed to process chat message', {
@@ -489,8 +493,8 @@ export class ClaudeAgentSDK {
         session_id: this.currentSessionId,
       });
 
-      // Send error message to chat
-      this.minecraftBot.getBot().chat(`Sorry, I encountered an error: ${error.message}`);
+      // Send error message to chat (rate-limited)
+      this.minecraftBot.chat(`Sorry, I encountered an error: ${error.message}`);
     } finally {
       this.isProcessing = false;
     }
@@ -537,12 +541,25 @@ Key expectations:
 
     const backstorySection = this.backstory ? `\n\n=== YOUR BACKSTORY ===\n${this.backstory}\n` : '';
 
+    const intentCatalog = `\n\n=== INTENT CATALOG (Planner) ===\nUse enqueue_job with this payload shape:\n{
+  "bot_id": "${this.botName}",
+  "priority": "normal",
+  "intent": {
+    "type": "NAVIGATE|HARVEST_TREE|TUNNEL_FORWARD|STAIRS_TO_SURFACE|STAIRS_DOWN_TO_Y|GATHER_RESOURCE",
+    "args": { /* typed per intent, e.g., { tolerance: 1 } */ },
+    "constraints": { /* safety/time/material bounds (optional) */ },
+    "target": { /* e.g., { type:"WAYPOINT", name:"home" } or { type:"WORLD", x:0, y:64, z:0 } */ },
+    "stop_conditions": "optional"
+  }
+}\n\nExamples:\n- NAVIGATE to waypoint: intent={ type:"NAVIGATE", args:{ tolerance:1 }, target:{ type:"WAYPOINT", name:"home" } }\n- NAVIGATE to coords:   intent={ type:"NAVIGATE", args:{ tolerance:2 }, target:{ type:"WORLD", x:100, y:70, z:-40 } }\n- HARVEST_TREE simple:   intent={ type:"HARVEST_TREE", args:{ radius:32, replant:true }, target:{ type:"WAYPOINT", name:"trees" } }\n`;
+
     return `${identity}` +
       backstorySection +
       languageInstruction +
       `
 
-${context}`;
+${context}
+${intentCatalog}`;
   }
 
   /**
@@ -580,7 +597,9 @@ ${chatContext}
    */
   stop(): void {
     logger.info('Stopping Claude Agent SDK');
-    // Clean up any resources if needed
+    try {
+      this.masRuntime?.stop?.();
+    } catch {}
   }
 
   /**

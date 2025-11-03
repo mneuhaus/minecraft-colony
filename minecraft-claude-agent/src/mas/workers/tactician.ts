@@ -13,6 +13,13 @@ function compileIntentToMcrn(intent: IntentPayload): { plan: string; summary: an
           summary: { est_steps: 1, materials: [], risks: [] },
         };
       }
+      if (target?.type === 'WORLD' && Number.isFinite(target.x) && Number.isFinite(target.y) && Number.isFinite(target.z)) {
+        const tol = intent.args?.tolerance ?? 1;
+        return {
+          plan: `GOTO @ WORLD(${Math.floor(target.x)}, ${Math.floor(target.y)}, ${Math.floor(target.z)}) tol=${tol};\nLOOK_AT @ WORLD(${Math.floor(target.x)}, ${Math.floor(target.y)}, ${Math.floor(target.z)});`,
+          summary: { est_steps: 1, materials: [], risks: [] },
+        };
+      }
       break;
     }
     case 'HARVEST_TREE': {
@@ -52,7 +59,13 @@ export class TacticianWorker {
       this.queue.startJob(job.id);
       const status = this.queue.getJobStatus(job.id)!;
       const intent: IntentPayload | null = status.payload.intent_type
-        ? { type: status.payload.intent_type as any, args: status.payload.intent_args || {}, constraints: status.payload.constraints || {} }
+        ? {
+            type: status.payload.intent_type as any,
+            args: status.payload.intent_args || {},
+            constraints: status.payload.constraints || {},
+            target: status.payload.target,
+            stop_conditions: status.payload.stop_conditions || undefined,
+          }
         : null;
       if (!intent) {
         this.queue.failJob(job.id, 'Missing intent payload');
@@ -66,4 +79,3 @@ export class TacticianWorker {
     }
   }
 }
-
