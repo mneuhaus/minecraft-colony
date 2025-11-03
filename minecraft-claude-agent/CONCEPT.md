@@ -1,0 +1,306 @@
+# Minecraft Agent System (MAS)
+
+**Version:** 1.0 (MCRN v0.3‑nav)
+
+**Scope:** Planner, Queue, Tactician, Executor, Notation, Safety, Macros, SQLite, REST/WS, Dashboard (vanilla JS/CSS with BEM)
+
+**Out of scope:** 3D maps/minimaps, world replay, non‑vanilla UI frameworks
+
+## 0) Objectives & Design Tenets
+
+### Objectives
+- The agent can be asked (chat) → it plans (intent) → it executes (safely) → it reports (timeline/status).
+- Keep chat responsive while long tasks run.
+- Make behavior explainable (intent → plan → steps), reproducible, and safe by default.
+
+### Tenets
+- Single contract: all spatial actions use MCRN (Minecraft Relational Notation).
+- Separation of concerns:
+  - Planner (LLM, user‑facing) → intents & job control only
+  - Tactician/Compiler (LLM, headless) → intent → program (MCRN)
+  - Executor (code) → runs MCRN with invariants; only component that mutates the world
+- Local & relative: actions expressed in the agent’s local frame (F/R/U) to reduce orientation errors.
+- Non‑bypassable safety: invariants enforced in code at execution time.
+- Observability first: job phases, step timeline, hazards, costs, inventory available live (WS) and historically (SQLite).
+
+## 1) System Architecture
+
+```text
+Players → Chat Handler ─► PLANNER (LLM)
+                           ↓ enqueue(kind=intent)
+SQLite ◄─ Job Queue ──► TACTICIAN (LLM)
+                         compiles intent → plan.mcrn
+SQLite ◄─ Job Queue ──► EXECUTOR (Code + Mineflayer/MCP)
+                         runs MCRN, enforces safety, emits steps/usage
+                           ↓
+WebSocket → Dashboard (vanilla JS/CSS, BEM)
+REST → historical reads & controls
+```
+
+- Bot Runtime (Node + Mineflayer) exposes MCP tools (movement, dig/place, find, inventory, chat, waypoints, scan).
+- Planner is the only user‑facing LLM; Tactician runs headless; Executor is deterministic code.
+- Multiple bots are supported; typically one Executor worker per bot plus a shared Tactician pool.
+
+## 2) MCRN — Minecraft Relational Notation (v0.3‑nav)
+
+### 2.1 Coordinate frame (local)
+- Heading `H ∈ {E,S,W,N}`.
+- `(0,0,0)` = the block under the agent’s feet (current floor).
+- Axes: `F` (forward), `B` (back), `R` (right), `L` (left), `U` (+Y), `D` (−Y).
+- Selectors: `F1`, `U2`, `R-1`, sums `F2+U1+R-1`, or tuple `(df,du,dr)`.
+
+### 2.2 Atomic actions
+- `TURN L90|R90|180|FACE E|S|W|N`
+- `MOVE F1|B1|R1|L1|F1^|F1_` where `^`=step up 1, `_`=step down 1 (safety‑checked)
+- `DIG <targets>`
+- `PLACE <item> @ <target> [ON TOP|BOTTOM|NORTH|SOUTH|EAST|WEST]`
+- `EQUIP <item>`
+- `USE <item> [@ <target>]`
+- `SCAN [r=<int>]` (refresh local voxel cache)
+- Targets: selector(s); `WORLD(x,y,z)`; `WAYPOINT("name")`; `BLOCK(id="oak_log", r=32)` (nearest reachable).
+
+### 2.3 Navigation intents (compile to pathfinder)
+- `GOTO @ <target> [tol=<int>] [timeout=<ticks>]`
+- `APPROACH @ <target> [within=<int>]`
+- `FOLLOW name:"Alex"|nearest:"player"|id:"uuid" [within=<int>]`
+- `LOOK_AT @ <target>`
+
+### 2.4 Predicates & conditions
+- `BLOCK[sel]=ID`, `IS_AIR[sel]`, `IS_SOLID[sel]`, `IS_LIQUID[sel]`, `IS_GRAVITY[sel]`
+- `CAN_STAND[sel]` (solid floor and 2 blocks of headroom)
+- `SAFE_STEP_UP[F1] := SOLID[F1+U1] ∧ AIR[U2] ∧ AIR[F1+U2]`
+- `SAFE_STEP_DOWN[F1] := SOLID[F1+D1] ∧ AIR[F1] ∧ AIR[F1+U1]`
+- Combine with `AND | OR`.
+- Control flow: `IF/THEN/ELSE`, `REPEAT n {}`, `UNTIL cond {}`, `ASSERT cond`.
+
+### 2.5 Safety invariants (executor MUST enforce)
+- Never `MOVE F1^` unless `SAFE_STEP_UP[F1]`.
+- Never `MOVE F1_` unless `SAFE_STEP_DOWN[F1]`.
+- Don’t `DIG` gravity blocks above head without top‑down mitigation.
+- Don’t open faces adjacent to lava without a plug/fill plan.
+- Auto‑inject `SCAN r=2` before destructive ops if cache is stale.
+
+### 2.6 Core macro library (names are normative; body is illustrative)
+- `STAIR_UP_STEP` → `ASSERT SAFE_STEP_UP[F1]; DIG { F1+U2, U2 }; MOVE F1^;`
+- `STAIR_DOWN_STEP` → `ASSERT SAFE_STEP_DOWN[F1]; DIG { F1, F1+U1 }; MOVE F1_;`
+- `TUNNEL_FWD` → `DIG { F1, F1+U1 }; MOVE F1;`
+- Policy helpers: `TORCH_CADENCE_7`, `UNSTUCK` (single lateral try + local clear).
+
+## 3) Intents — the Planner’s contract
+
+### 3.1 Intent object (canonical)
+- `type`: enum (from catalog below)
+- `args`: typed parameters per intent
+- `constraints`: safety level, time/step budget, light policy, allowed materials/tools bounds
+- `target`: `WAYPOINT|WORLD|BLOCK_QUERY|REL_SELECTOR|ENTITY`
+- `stop_conditions`: e.g., `sky_visible | y<=12 | inventory_full | hostile_near`
+- `success_criteria`: e.g., `arrived_within=tol` or `completed_steps==N`
+- `context_snapshot`: pose/heading, biome, y‑level, nearby hazards summary (provenance)
+
+### 3.2 Intent catalog (baseline)
+- `NAVIGATE { target, tolerance=1, timeout_sec?, on_unreachable:"fail|try_clear_once" }`
+- `STAIRS_TO_SURFACE { max_steps=40, width=1, torch_cadence=7, stop_condition:"sky_visible" }`
+- `STAIRS_DOWN_TO_Y { target_y, width=1, torch_cadence=7 }`
+- `TUNNEL_FORWARD { length, torch_cadence=7 }`
+- `BRANCH_MINE { main_len, branch_spacing=3, branch_len, torch_cadence=7 }`
+- `HARVEST_TREE { species:"any"|…, radius, replant:true, collect_radius }`
+- `GATHER_RESOURCE { block_id, quantity, search_radius, min_tool? }`
+- (extend later with `BUILD_BRIDGE`, `WATER_ELEVATOR`, etc.)
+
+### 3.3 Planner rules
+- Parse chat → choose one intent; fill args/constraints/target.
+- Enqueue job `kind=intent` for a specific bot.
+- Stay chatty and responsive; use queue controls for status/stop/pause/resume.
+- Do not call world‑mutation tools.
+
+## 4) Tactician/Compiler — intent → program
+- Consumes jobs with `kind=intent` and `phase=plan`.
+- Uses read‑only world context (position, `SCAN`, waypoints, inventory snapshot).
+- Produces:
+  - `plan.mcrn` — a valid MCRN program (macro‑heavy)
+  - `plan_summary` — `{ materials, risks, est_steps, assumptions }`
+- On missing preconditions, fail the plan with a crisp reason (e.g., “needs iron pickaxe, none found”).
+- No world mutation; does not perform the job—only compiles it.
+
+Mapping examples (illustrative):
+
+```text
+STAIRS_TO_SURFACE { max_steps: N, torch_cadence: 7 } →
+EQUIP PICKAXE:IRON; REPEAT N { STAIR_UP_STEP; TORCH_CADENCE_7; }
+
+NAVIGATE { target: BLOCK_QUERY("oak_log", r:48), tolerance:1 } →
+GOTO @ BLOCK(id="oak_log", r=48) tol=1; LOOK_AT @ F1;
+```
+
+## 5) Executor (code) — program → world
+- Pulls `phase=exec` jobs with `plan.mcrn`.
+- Expands macros, enforces invariants, manages voxel cache (`SCAN`), calls MCP tools.
+- Emits `job_step`, `job_update`, `inventory`, `usage` events.
+- Stalls: try `UNSTUCK` once; if still blocked, fail with reason.
+- Respects pause/cancel; leaves bot in a standable state.
+
+## 6) Job Queue semantics
+- States: `queued → leased → running → {paused|canceled|success|fail}`
+- Phases: `plan` and `exec` (planning success enqueues exec; planning failure ends the job with reason)
+- Leasing: workers set a short lease with heartbeats (prevents double work).
+- Priority: `high|normal|low`; fair scheduling per bot.
+- Controls: pause/resume/cancel affect the active phase only.
+- Replan: Executor may pause with `reason:'REPLAN_NEEDED'`; Planner/Tactician can update (often by enqueuing a replacement job).
+
+## 7) Safety, policy & permissions
+- Planner tools: `enqueue_job`, `get_job_status`, `cancel_job`, `pause_job`, `resume_job`, `send_chat`, `list_waypoints`, `get_position`, `list_inventory`, `Skill` (read‑only). No world mutation tools.
+- Tactician tools: read‑only world/context (same as Planner) + macro registry; no mutation.
+- Executor tools: world mutation only (`move_to_position`, `dig_block`, `place_block`, `use_item_on_block`, `equip`, `find_block`, `scan_vox`, `look_at`, …). All safety invariants enforced here.
+- Policy knobs (per bot): torch cadence default; hazard sensitivity; max step/runtime; auto‑retry count (usually 1 for `UNSTUCK`).
+
+## 8) Data model (SQLite — conceptual)
+- `bots`: `id, alias, created_at, last_seen_at, world, pos(x,y,z), heading, health, hunger, saturation, light, biome, status`
+- `bot_inventory`: `bot_id, slot, item_id, count, meta` (snapshot rows)
+- `jobs`: `id, bot_id, priority, kind(intent|program), phase(plan|exec|done|failed|canceled), state(queued|running|paused|success|fail|canceled), created_at, started_at, updated_at, ended_at, lease_until, error`
+- `jobs_payloads`: `job_id, intent_type, intent_args(json), constraints(json), plan_mcrn(text), plan_summary(json)`
+- `job_steps`: `id, job_id, i, ts, op, outcome(ok|warn|fail), ms, details(json)`
+- `events`: `id, bot_id, ts, type(chat_in|chat_out|system|safety|job_state), payload(json)`
+- `usage_ticks`: `id, bot_id, ts, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, usd`
+- Indexes on `bot_id`, `job_id`, `ts`, `state` as needed.
+
+## 9) API & WebSocket (contracts)
+
+### REST (read)
+```http
+GET /api/bots                         # light list
+GET /api/bots/:id                     # snapshot (vitals + quick inventory)
+GET /api/bots/:id/jobs?phase=&state=&limit=&offset=
+GET /api/jobs/:id                     # job core + intent + plan + current phase state
+GET /api/jobs/:id/steps?after_i=&limit=
+GET /api/bots/:id/events?after_id=&limit=&type=
+GET /api/bots/:id/usage?window=24h
+```
+
+### REST (write)
+```http
+POST /api/jobs
+{ kind:"intent", bot_id, intent:{ type, args, constraints, target?, stop_conditions? }, priority? }
+{ kind:"program", bot_id, mcrn, priority? }
+
+POST /api/jobs/:id/pause
+POST /api/jobs/:id/resume
+POST /api/jobs/:id/cancel
+```
+
+### WebSocket (push)
+```json
+bot_status { bot:{ id,status,pos,heading,health,hunger,light,biome,updated_at } }
+job_phase  { job_id, phase, state }
+job_update { job:{ id, bot_id, state, progress, eta_seconds, updated_at } }
+job_plan   { job_id, plan_mcrn, plan_summary }
+job_step   { job_id, i, ts, op, outcome, ms, details }
+event      { bot_id, ts, type, payload }
+inventory  { bot_id, items:[...] }
+usage      { bot_id, ts, usd, input, output, cache_read, cache_creation }
+```
+
+- Error model: JSON `{ error:{ code, message, details? } }` (`bad_request`, `not_found`, `conflict`, `timeout`, `internal`).
+
+## 10) Macro Registry & “Learned” Macros
+- Registry buckets: Core (bundled, versioned with spec), Custom (team‑authored), Learned (mined from successful sequences; disabled by default)
+- Entry fields: `name, params, body(MCRN), pre, post, safety_level, macro_version, provenance, pass_rate, enabled`
+- Learning pipeline (offline):
+  - Mine frequent contiguous sequences from successful `job_steps` (parameterize counts).
+  - Draft macro with pre/post predicates; attach provenance.
+  - Verify in sandbox across seeds; compute pass_rate.
+  - Surface in dashboard under Learned; require human enablement.
+
+## 11) Dashboard (vanilla JS/CSS, BEM) — no minimap
+
+### Layout
+- Left rail: Agents list (online first; search; tiny health/job badges)
+- Main (per‑agent tabs):
+  - Overview: status line, vitals, coordinates/heading, quick inventory, usage snapshot, controls
+  - Timeline: live steps (op, outcome, ms) with filters (ok/warn/fail)
+  - Chat: merged in/out/system; send box; quick commands (status, stop, come)
+  - Jobs: queue/history with Phase and Intent chips; select → detail drawer
+  - Inventory: grid 9×4 (or 9×5) with counts
+  - Usage: token & cost metrics; tiny inline charts (no lib required)
+  - Skills/Macros: enabled lists, pass rates; Learned proposals with enable/disable
+
+### BEM blocks (non‑exhaustive)
+```
+.app, .app__sidebar, .app__main
+.agent-list, .agent-list__item, .agent-list__badge
+.agent, .agent__header, .agent-status, .agent-controls
+.tabs, .tabs__nav, .tabs__nav-item[aria-selected], .tabs__panel
+.overview__vitals, .overview__goal, .overview__inventory, .overview__usage
+.timeline__items .timeline-item--ok|--warn|--fail
+.chat__stream .chat-msg--in|--out|--system
+.jobs__table, .jobs__row, .jobs__phase-chip, .jobs__intent-chip
+.inventory-grid, .inventory-grid__slot--filled
+.usage__cards, .usage__metric
+.macro-list, .macro-list__item, .macro-list__stat
+```
+
+### Accessibility & UX
+- High‑contrast variant via CSS vars.
+- Reduced motion respected.
+- Keyboard: `/` focus search, `[ / ]` switch bot, `Space` pause/resume current job.
+
+## 12) Observability & Cost
+- Usage tracking per WS tick and per job phase; store in `usage_ticks`.
+- Dashboard shows:
+  - Now (5 min): input/output tokens, est. $
+  - Today: totals per bot
+- Attribute planning LLM cost to plan phase; execution is mostly code (near‑zero tokens).
+
+## 13) Testing & Acceptance
+
+### Unit
+- Selector parsing and local→world transforms (all headings).
+- Predicates from voxel snapshots.
+- Macro expansion integrity (`STAIR_UP/DOWN`, `TUNNEL_FWD`).
+
+### Integration
+- `NAVIGATE` to `BLOCK_QUERY("oak_log")` → resolves, paths, arrives (tol=1).
+- `STAIRS_TO_SURFACE` with intermittent gravel → mitigation once, continue.
+- Lava face encountered → plug or fail with `FAIL:hazard`.
+
+### System
+- Planner replies to chat within sub‑second while a long exec job runs.
+- Cancel mid‑path yields valid standable pose.
+- Multiple bots update the dashboard smoothly at ~20 WS msgs/s.
+
+### Foundation acceptance (v1.0)
+- Intents → Plan → Exec pipeline operational with leasing.
+- MCRN v0.3‑nav supported in executor.
+- Dashboard tabs live: Overview, Timeline, Chat, Jobs, Inventory, Usage, Macros.
+- SQLite schema & REST/WS endpoints stable.
+
+## 14) Prompts (essentials)
+
+### Planner (user‑facing)
+- Role: interpret chat; produce one Intent with typed args; enqueue; keep user informed.
+- Tool guardrails: read‑only + queue control; no world mutations.
+- Style: concise; always include job id; offer stop/status affordances.
+
+### Tactician (headless)
+- Role: compile Intent → MCRN plan (macro‑first), compute materials/risks, fail fast on unmet preconditions.
+- Tool guardrails: read‑only only.
+
+### Executor (code)
+- Role: run MCRN; enforce safety invariants; auto‑`SCAN`; `UNSTUCK` at most once; emit precise failure reasons; never chat unless via progress hooks.
+
+## 15) Rollout plan
+- Data & controls: extend SQLite + REST/WS for kind/phase/intent/plan.
+- Workers: implement Tactician (LLM) and Executor (code) with leasing & heartbeats.
+- Planner: narrow tools, adopt intent catalog, enqueue.
+- Dashboard: add Phase & Intent/Plan UI; existing tabs wired to WS.
+- Macro registry: seed core macros; wire policy knobs; surface learned proposals next.
+
+## 16) Rationale (why this design)
+- Planner responsiveness: it never blocks on pathfinding/digging.
+- Safety: only code mutates the world, with non‑bypassable invariants.
+- Explainability: every job has a visible Intent → Plan (MCRN) → Steps chain.
+- Extensibility: add intents or macros without touching executor logic.
+- Cost control: LLM usage bounded to planning; execution is deterministic.
+
+---
+
+This document is the authoritative spec for the initial release (v1.0). If you want, I can produce a 1‑page “spec card” (for the repo) and a check‑list for devs (DB migrations, tool allowlists, WS event names, dashboard blocks) derived from this spec.
