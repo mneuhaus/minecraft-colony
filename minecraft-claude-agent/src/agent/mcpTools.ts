@@ -55,6 +55,98 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
     version: '1.0.0',
     tools: [
       // ====================
+      // Planner/Queue Tools (MAS)
+      // ====================
+      tool(
+        'enqueue_job',
+        'Enqueue a new intent job for the MAS queue. Returns a job id. This is the primary way to initiate tasks.',
+        {
+          bot_id: z.string().optional().describe('Target bot id/name (default: current)'),
+          priority: z.enum(['high', 'normal', 'low']).optional(),
+          intent: z.object({
+            type: z.string().describe('Intent type (e.g., NAVIGATE, HARVEST_TREE)'),
+            args: z.record(z.any()).default({}),
+            constraints: z.record(z.any()).optional(),
+            target: z.any().optional(),
+            stop_conditions: z.string().optional(),
+          }),
+        },
+        async (params) => {
+          try {
+            const { MasDatabase } = await import('../mas/db.js');
+            const { JobQueue } = await import('../mas/queue.js');
+            const db = new MasDatabase();
+            const queue = new JobQueue(db);
+            const jobId = queue.enqueueIntent(params as any, bot.username);
+            return { content: [{ type: 'text', text: jobId }] };
+          } catch (error: any) {
+            return { content: [{ type: 'text', text: `Error: ${error.message}` }], isError: true };
+          }
+        }
+      ),
+
+      tool(
+        'get_job_status',
+        'Get status of a MAS job by id.',
+        { id: z.string().describe('Job id') },
+        async ({ id }) => {
+          try {
+            const { MasDatabase } = await import('../mas/db.js');
+            const { JobQueue } = await import('../mas/queue.js');
+            const db = new MasDatabase();
+            const queue = new JobQueue(db);
+            const status = queue.getJobStatus(id);
+            if (!status) return { content: [{ type: 'text', text: 'not_found' }], isError: true };
+            return { content: [{ type: 'text', text: JSON.stringify(status) }] };
+          } catch (error: any) {
+            return { content: [{ type: 'text', text: `Error: ${error.message}` }], isError: true };
+          }
+        }
+      ),
+
+      tool(
+        'pause_job',
+        'Pause a MAS job by id.',
+        { id: z.string() },
+        async ({ id }) => {
+          const { MasDatabase } = await import('../mas/db.js');
+          const { JobQueue } = await import('../mas/queue.js');
+          const db = new MasDatabase();
+          const queue = new JobQueue(db);
+          queue.pauseJob(id);
+          return { content: [{ type: 'text', text: 'ok' }] };
+        }
+      ),
+
+      tool(
+        'resume_job',
+        'Resume a paused MAS job by id.',
+        { id: z.string() },
+        async ({ id }) => {
+          const { MasDatabase } = await import('../mas/db.js');
+          const { JobQueue } = await import('../mas/queue.js');
+          const db = new MasDatabase();
+          const queue = new JobQueue(db);
+          queue.resumeJob(id);
+          return { content: [{ type: 'text', text: 'ok' }] };
+        }
+      ),
+
+      tool(
+        'cancel_job',
+        'Cancel a MAS job by id.',
+        { id: z.string() },
+        async ({ id }) => {
+          const { MasDatabase } = await import('../mas/db.js');
+          const { JobQueue } = await import('../mas/queue.js');
+          const db = new MasDatabase();
+          const queue = new JobQueue(db);
+          queue.cancelJob(id);
+          return { content: [{ type: 'text', text: 'ok' }] };
+        }
+      ),
+
+      // ====================
       // Position & Movement Tools
       // ====================
       tool(

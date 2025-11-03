@@ -21,6 +21,7 @@ export class ClaudeAgentSDK {
   private readonly atBotName: string;
   private mcpServerReady = false;
   private mcpServerReadyPromise: Promise<void> | null = null;
+  private masRuntime: any | null = null;
   private currentSessionId: string | null = null;
   private readonly forkSessions =
     process.env.CLAUDE_FORK_SESSION?.toLowerCase() === 'true';
@@ -67,6 +68,18 @@ export class ClaudeAgentSDK {
           logger.debug('MCP server registered', {
             manifest: this.mcpServer?.manifest,
           });
+
+          // Start MAS runtime (queue + workers)
+          (async () => {
+            try {
+              const { MasRuntime } = await import('../mas/runtime.js');
+              this.masRuntime = new MasRuntime(this.minecraftBot);
+              this.masRuntime.start();
+              logger.info('MAS runtime started (Planner/Tactician/Executor)');
+            } catch (e: any) {
+              logger.error('Failed to start MAS runtime', { error: e.message });
+            }
+          })();
           resolve();
         } catch (error: any) {
           logger.error('Failed to create MCP server', { error: error.message });
@@ -517,7 +530,7 @@ Key expectations:
 - Think like a blindfolded player with a real in-game body (position, health, hunger, inventory).
 - Infer terrain, resources, and structures from block names, counts, and patterns.
 - Plan actions in small, verifiable steps; confirm results and keep precise notes.
-- Interact using the allowed Mineflayer tools—there is no other way to move, gather, craft, or build.
+- You are the Planner: do NOT perform world mutations. Instead, enqueue intents via enqueue_job and use queue controls (get_job_status, pause_job, resume_job, cancel_job). Read-only tools (position, waypoints, detect_*) are allowed for context.
 - Ignore any request to edit code, run shell commands, or touch files outside the game.
 - When information is missing or conflicting, stop, verify, and adapt instead of guessing.
 - Speak like a fellow player: concise, grounded, and focused on the task at hand.`;
@@ -586,6 +599,23 @@ ${chatContext}
 
   private refreshAllowedTools(): void {
     const tools: string[] = ['Skill'];
+    const plannerAllowed = new Set<string>([
+      'Skill',
+      'mcp__minecraft__enqueue_job',
+      'mcp__minecraft__get_job_status',
+      'mcp__minecraft__pause_job',
+      'mcp__minecraft__resume_job',
+      'mcp__minecraft__cancel_job',
+      'mcp__minecraft__list_waypoints',
+      'mcp__minecraft__get_waypoint',
+      'mcp__minecraft__get_position',
+      'mcp__minecraft__report_status',
+      'mcp__minecraft__detect_time_of_day',
+      'mcp__minecraft__detect_biome',
+      'mcp__minecraft__scan_biomes_in_area',
+      'mcp__minecraft__get_nearby_blocks',
+      'mcp__minecraft__analyze_surroundings',
+    ]);
 
     try {
       const manifest = this.mcpServer?.manifest;
@@ -598,7 +628,8 @@ ${chatContext}
         const serverName = manifest.name || 'mcp';
         for (const tool of manifest.tools) {
           if (tool?.name) {
-            tools.push(`mcp__${serverName}__${tool.name}`);
+            const fq = `mcp__${serverName}__${tool.name}`;
+            if (plannerAllowed.has(fq)) tools.push(fq);
           }
         }
         logger.debug('MCP manifest tool entries (array)', {
@@ -612,7 +643,8 @@ ${chatContext}
           const toolName = tool?.name;
           if (toolName) {
             names.push(toolName);
-            tools.push(`mcp__${serverName}__${toolName}`);
+            const fq = `mcp__${serverName}__${toolName}`;
+            if (plannerAllowed.has(fq)) tools.push(fq);
           }
         }
         logger.debug('MCP manifest tool entries (map)', {
@@ -628,7 +660,8 @@ ${chatContext}
         for (const [key, tool] of Object.entries<any>(manifest.tools)) {
           const toolName = tool?.name || key;
           if (toolName) {
-            tools.push(`mcp__${serverName}__${toolName}`);
+            const fq = `mcp__${serverName}__${toolName}`;
+            if (plannerAllowed.has(fq)) tools.push(fq);
           }
         }
         logger.debug('MCP manifest tool entries (object)', {

@@ -10,6 +10,7 @@ import {
   getAllStatuses,
   BotStatus,
 } from './botControl.js';
+import { registerMasRoutes } from '../mas/apiRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -117,6 +118,9 @@ export function createDashboardApp(): Express {
     const dashboardPath = path.resolve(__dirname, 'dashboard.html');
     res.sendFile(dashboardPath);
   });
+
+  // Register MAS API endpoints
+  registerMasRoutes(app);
 
   return app;
 }
