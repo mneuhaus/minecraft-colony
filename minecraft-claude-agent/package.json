@@ -14,7 +14,8 @@
     "screenshot": "tsx src/debug/screenshotViewer.ts",
     "dashboard": "tsx src/dashboard.ts",
     "colony": "tsx src/runtime/colonyRuntime.ts",
-    "colony-ctl": "tsx src/runtime/colonyControl.ts"
+    "colony-ctl": "tsx src/runtime/colonyControl.ts",
+    "migrate-memories": "tsx src/utils/migrateMemories.ts"
   },
   "keywords": [
     "minecraft",
@@ -29,8 +30,10 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.30",
     "@anthropic-ai/sdk": "^0.68.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.5",
+    "better-sqlite3": "^12.4.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",

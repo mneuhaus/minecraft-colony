@@ -3,6 +3,8 @@ import { MinecraftBot } from '../bot/MinecraftBot.js';
 import { createMinecraftMcpServer } from './mcpTools.js';
 import { Config } from '../config.js';
 import logger, { appendDiaryEntry, logClaudeCall, startTimer } from '../logger.js';
+import { ActivityWriter, type ActivityRole } from '../utils/activityWriter.js';
+import { SqlMemoryStore } from '../utils/sqlMemoryStore.js';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -24,6 +26,8 @@ export class ClaudeAgentSDK {
     process.env.CLAUDE_FORK_SESSION?.toLowerCase() === 'true';
   private allowedTools: string[] = ['Skill'];
   private readonly backstory?: string;
+  private activityWriter: ActivityWriter;
+  private memoryStore: SqlMemoryStore;
 
   constructor(
     private config: Config,
@@ -37,6 +41,12 @@ export class ClaudeAgentSDK {
     this.botNameLower = this.botName.toLowerCase();
     this.atBotName = `@${this.botNameLower}`;
     this.backstory = backstory;
+
+    // Initialize activity tracking
+    this.activityWriter = new ActivityWriter(this.botName);
+    
+    // Initialize memory store
+    this.memoryStore = new SqlMemoryStore(this.botName);
   }
 
   /**
@@ -66,6 +76,8 @@ export class ClaudeAgentSDK {
     });
 
     this.minecraftBot.on('chat', async (data: { username: string; message: string }) => {
+      this.recordChatActivity(data.username, data.message);
+
       // Only respond if not currently processing
       if (this.isProcessing) {
         logger.debug('Already processing, skipping chat event');
@@ -146,6 +158,21 @@ export class ClaudeAgentSDK {
         content: `${username}: ${cleanedMessage}`,
       });
 
+      // Add to memory store if session exists
+      if (this.currentSessionId) {
+        const bot = this.minecraftBot.getBot();
+        const context = {
+          position: bot.entity ? {
+            x: Math.floor(bot.entity.position.x),
+            y: Math.floor(bot.entity.position.y),
+            z: Math.floor(bot.entity.position.z)
+          } : undefined,
+          health: bot.health,
+          food: bot.food
+        };
+        this.memoryStore.addMessage(this.currentSessionId, 'user', `${username}: ${cleanedMessage}`, context);
+      }
+
       // Keep only last 10 messages
       if (this.conversationHistory.length > 10) {
         this.conversationHistory = this.conversationHistory.slice(-10);
@@ -154,13 +181,20 @@ export class ClaudeAgentSDK {
       logger.debug('Sending request to Claude Agent SDK');
       logClaudeCall(JSON.stringify(this.conversationHistory).length);
 
-      // Build prompt from conversation history
-      const prompt = this.formatConversationHistory();
+      // Build prompt from conversation history and memory
+      const conversationPrompt = this.formatConversationHistory();
+      const memoryPrompt = this.currentSessionId ? this.memoryStore.getContextualPrompt(this.currentSessionId) : '';
+      
+      const prompt = memoryPrompt + (memoryPrompt ? '\n\nCurrent conversation:\n' : '') + conversationPrompt;
       this.debugSnippet('Formatted prompt', prompt);
 
       // Call Claude Agent SDK query
       let finalResponse = '';
       let messageCount = 0;
+
+      // Check if we should resume previous session
+      const lastSessionId = this.memoryStore.getLastActiveSessionId();
+      const shouldResume = lastSessionId && !this.currentSessionId;
 
       const options: any = {
         model: this.model,
@@ -173,6 +207,8 @@ export class ClaudeAgentSDK {
         cwd: process.cwd(),
         maxTurns: 100,
         allowedTools: this.allowedTools,
+        // Resume previous session if available
+        ...(shouldResume && { resume: lastSessionId }),
         stderr: (data: string) => {
           const trimmed = data.trim();
           if (trimmed.length === 0) {
@@ -231,24 +267,113 @@ export class ClaudeAgentSDK {
           logger.info('Claude session initialized', {
             sessionId: this.currentSessionId,
             forkSession: this.forkSessions,
+            isResumed: shouldResume,
           });
+          
+          // Only create new session in memory store if not resuming
+          if (!shouldResume) {
+            this.memoryStore.createSession(this.currentSessionId);
+          }
         }
 
         // Extract text from assistant messages
         if (sdkMessage.type === 'assistant') {
           const assistantMsg = sdkMessage;
           for (const block of assistantMsg.message.content) {
-            if (block.type === 'text') {
-              this.debugSnippet('Assistant text block', block.text);
-              finalResponse += block.text;
-            } else if (block.type === 'tool_use') {
-              if (block.name) {
-                toolsUsed.add(block.name);
+            const blockAny = block as any;
+            const blockType = blockAny?.type;
+
+            if (blockType === 'text') {
+              const textContent = typeof blockAny.text === 'string' ? blockAny.text : '';
+              this.debugSnippet('Assistant text block', textContent);
+              finalResponse += textContent;
+            } else if (blockType === 'thinking') {
+              const thinkingText =
+                typeof blockAny.thinking === 'string'
+                  ? blockAny.thinking
+                  : typeof blockAny.text === 'string'
+                  ? blockAny.text
+                  : '';
+
+              if (thinkingText && thinkingText.trim().length > 0) {
+                this.activityWriter.addActivity({
+                  type: 'thinking',
+                  message: thinkingText.trim(),
+                  speaker: this.botName,
+                  role: 'bot',
+                });
+              }
+            } else if (blockType === 'tool_use') {
+              if (blockAny.name) {
+                toolsUsed.add(blockAny.name);
               }
               logger.debug('Assistant requested tool', {
-                toolName: block.name,
-                toolInput: block.input,
+                toolName: blockAny.name,
+                toolInput: blockAny.input,
               });
+
+              // Log tool activity
+              this.activityWriter.addActivity({
+                type: 'tool',
+                message: `Tool: ${blockAny.name}`,
+                details: {
+                  input: blockAny.input,
+                  toolCallId: blockAny.id,
+                },
+                speaker: this.botName,
+                role: 'tool',
+              });
+            } else if (blockType === 'tool_result') {
+              const resultPayload = blockAny.output_text ?? blockAny.content;
+              this.activityWriter.addActivity({
+                type: 'tool',
+                message: `Tool: ${blockAny.name ?? 'unknown tool'}`,
+                details: {
+                  output: resultPayload,
+                  toolName: blockAny.name,
+                },
+                speaker: this.botName,
+                role: 'tool',
+              });
+
+              // Track tool use in memory
+              if (this.currentSessionId) {
+                this.memoryStore.addActivity(
+                  this.currentSessionId,
+                  'tool_use',
+                  `Used ${blockAny.name}`,
+                  { input: blockAny.input, output: resultPayload }
+                );
+
+                // Track significant accomplishments
+                if (blockAny.name && resultPayload) {
+                  const bot = this.minecraftBot.getBot();
+                  const location = bot.entity ? {
+                    x: Math.floor(bot.entity.position.x),
+                    y: Math.floor(bot.entity.position.y),
+                    z: Math.floor(bot.entity.position.z)
+                  } : undefined;
+                  
+                  // Recognize important actions
+                  const importantTools = ['use_item_on_block', 'place_block', 'dig_block', 'break_block_and_wait', 'craft_item'];
+                  if (importantTools.some(tool => blockAny.name.includes(tool))) {
+                    let description = '';
+                    if (blockAny.name === 'use_item_on_block') {
+                      description = `Used ${blockAny.input?.item || 'item'} on block at (${blockAny.input?.x}, ${blockAny.input?.y}, ${blockAny.input?.z})`;
+                    } else if (blockAny.name === 'craft_item') {
+                      description = `Crafted ${blockAny.input?.item_name}`;
+                    } else if (blockAny.name.includes('dig') || blockAny.name.includes('break')) {
+                      description = `Mined ${resultPayload.split(' ').slice(-2).join(' ')}`;
+                    } else if (blockAny.name === 'place_block') {
+                      description = `Placed ${blockAny.input?.blockName}`;
+                    }
+
+                    if (description) {
+                      this.memoryStore.addAccomplishment(this.currentSessionId, description, location);
+                    }
+                  }
+                }
+              }
             }
           }
         }
@@ -285,6 +410,22 @@ export class ClaudeAgentSDK {
           role: 'assistant',
           content: finalResponse,
         });
+
+        // Add to memory store
+        if (this.currentSessionId) {
+          this.memoryStore.addMessage(this.currentSessionId, 'assistant', finalResponse);
+        }
+
+        // Log assistant response activity
+        const trimmedResponse = finalResponse.trim();
+        if (trimmedResponse.length > 0) {
+          this.activityWriter.addActivity({
+            type: 'chat',
+            message: trimmedResponse,
+            speaker: this.botName,
+            role: 'bot',
+          });
+        }
       }
 
       const duration = timer.end();
@@ -531,5 +672,68 @@ ${chatContext}
   private removeBotMention(message: string): string {
     const mentionRegex = new RegExp(`@?${this.botName}`, 'gi');
     return message.replace(mentionRegex, '').trim();
+  }
+
+  private recordChatActivity(username: string, rawMessage: string): void {
+    const trimmedUser = username?.trim();
+    if (!trimmedUser) {
+      return;
+    }
+
+    const trimmedMessage =
+      typeof rawMessage === 'string' ? rawMessage.trim() : '';
+    if (trimmedMessage.length === 0) {
+      return;
+    }
+
+    const role = this.resolveSpeakerRole(trimmedUser);
+
+    if (role === 'bot' && this.isProcessing) {
+      // When the bot is mid-conversation we log the response explicitly after generation.
+      return;
+    }
+
+    this.activityWriter.addActivity({
+      type: 'chat',
+      message: rawMessage,
+      speaker: trimmedUser,
+      role,
+    });
+
+    // Update relationship with player
+    if (role !== 'bot' && role !== 'system' && this.currentSessionId) {
+      // Analyze sentiment: simple heuristic based on message content
+      const positiveWords = ['danke', 'thanks', 'gut', 'good', 'super', 'great', 'nice', 'hilfe', 'help'];
+      const negativeWords = ['böse', 'bad', 'schlecht', 'stupid', 'dumm', 'error', 'fehler'];
+      
+      const messageLower = rawMessage.toLowerCase();
+      let trustDelta = 0;
+      let note = '';
+      
+      if (positiveWords.some(word => messageLower.includes(word))) {
+        trustDelta = 5;
+        note = `Player was positive in message: "${rawMessage}"`;
+      } else if (negativeWords.some(word => messageLower.includes(word))) {
+        trustDelta = -5;
+        note = `Player was negative in message: "${rawMessage}"`;
+      } else {
+        // Neutral interaction, small positive bias
+        trustDelta = 1;
+        note = `Player interacted: "${rawMessage}"`;
+      }
+      
+      this.memoryStore.updateRelationship(trimmedUser, trustDelta, note);
+    }
+  }
+
+  private resolveSpeakerRole(username: string): ActivityRole {
+    const normalized = username.trim().toLowerCase();
+    if (normalized === this.botNameLower) {
+      return 'bot';
+    }
+    if (normalized === 'server' || normalized === 'system') {
+      return 'system';
+    }
+    return 'player';
   }
 }
