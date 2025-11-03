@@ -84,6 +84,7 @@ start-colony:
 	fi
 	@echo "Starting colony runtime (bots + dashboard)..."
 	@cd $(AGENT_DIR) && \
+	pnpm tsx src/runtime/preflight.ts >/dev/null 2>&1 || true; \
 	mkdir -p logs && \
 	nohup env $(AGENT_ENV) pnpm colony >> logs/colony-runtime.log 2>&1 & echo $$! > colony-runtime.pid
 	@sleep 2

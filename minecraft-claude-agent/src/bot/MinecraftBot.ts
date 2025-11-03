@@ -28,6 +28,10 @@ export class MinecraftBot extends EventEmitter {
   private readonly stateUpdateFrequency = 2000; // Update state every 2 seconds
   private messageCheckInterval: NodeJS.Timeout | null = null;
   private readonly messageCheckFrequency = 30000; // Check for bot messages every 30 seconds
+  private chatQueue: string[] = [];
+  private chatTimer: NodeJS.Timeout | null = null;
+  private lastChatAt = 0;
+  private readonly chatMinIntervalMs = parseInt(process.env.CHAT_MIN_INTERVAL_MS || '1200', 10);
 
   constructor(private config: Config) {
     super();
@@ -111,6 +115,23 @@ export class MinecraftBot extends EventEmitter {
         food: this.bot!.food,
         gameMode: this.bot!.game.gameMode,
       });
+    });
+
+    // Handle kicked/disconnect/end events with bounded reconnects
+    this.bot.on('kicked', (reason) => {
+      logger.error('Bot was kicked', { reason });
+      this.emit('kicked', { reason });
+      this.handleDisconnect();
+    });
+
+    this.bot.on('end', (reason) => {
+      logger.warn('Bot connection ended', { reason });
+      this.emit('end', { reason });
+      this.handleDisconnect();
+    });
+
+    this.bot.on('error', (error: any) => {
+      logger.error('Bot error', { error: error.message, stack: error.stack });
     });
 
     // Chat event - someone sent a message
@@ -438,10 +459,52 @@ export class MinecraftBot extends EventEmitter {
   disconnect(): void {
     this.stopStateUpdates();
     this.stopMessageChecking();
+    // Stop chat queue
+    if (this.chatTimer) {
+      clearTimeout(this.chatTimer);
+      this.chatTimer = null;
+    }
+    this.chatQueue = [];
     if (this.bot) {
       logger.info('Disconnecting from server');
       this.bot.quit();
       this.bot = null;
     }
+  }
+
+  /**
+   * Rate-limited chat: ensures we don't get kicked for spam
+   */
+  chat(text: string): void {
+    const trimmed = (text || '').toString().trim();
+    if (!trimmed) return;
+    // Clamp length to avoid multi-packet spam
+    const clamped = trimmed.length > 240 ? `${trimmed.slice(0, 240)}…` : trimmed;
+    this.chatQueue.push(clamped);
+    this.drainChatQueue();
+  }
+
+  private drainChatQueue(): void {
+    if (!this.bot) return;
+    if (this.chatTimer) return; // already scheduled
+
+    const now = Date.now();
+    const delta = now - this.lastChatAt;
+    const wait = delta >= this.chatMinIntervalMs ? 0 : this.chatMinIntervalMs - delta;
+
+    this.chatTimer = setTimeout(() => {
+      this.chatTimer = null;
+      const next = this.chatQueue.shift();
+      if (!next || !this.bot) return;
+      try {
+        this.bot.chat(next);
+      } catch (e) {
+        // ignore send errors
+      }
+      this.lastChatAt = Date.now();
+      if (this.chatQueue.length > 0) {
+        this.drainChatQueue();
+      }
+    }, wait);
   }
 }

@@ -15,7 +15,10 @@
     "dashboard": "tsx src/dashboard.ts",
     "colony": "tsx src/runtime/colonyRuntime.ts",
     "colony-ctl": "tsx src/runtime/colonyControl.ts",
-    "migrate-memories": "tsx src/utils/migrateMemories.ts"
+    "migrate-memories": "tsx src/utils/migrateMemories.ts",
+    "test:mas": "tsx src/mas/tests/mas.integration.ts",
+    "test:mas:planner": "tsx src/mas/tests/planner_cycle.integration.ts",
+    "test:planner:tools": "tsx src/mas/tests/planner_tools.integration.ts"
   },
   "keywords": [
     "minecraft",
@@ -43,6 +46,7 @@
     "mineflayer-pathfinder": "^2.4.5",
     "prismarine-viewer": "^1.33.0",
     "vec3": "^0.1.10",
+    "ws": "^8.18.0",
     "winston": "^3.18.3",
     "yaml": "^2.8.1",
     "zod": "^3.25.76"
@@ -52,6 +56,7 @@
     "@types/vec3": "^0.1.4",
     "playwright": "^1.56.1",
     "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "@types/ws": "^8.5.12"
   }
 }

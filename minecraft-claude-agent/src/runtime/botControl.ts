@@ -146,8 +146,12 @@ export function stopBot(bot: BotConfig) {
   try {
     process.kill(pid, 'SIGTERM');
     console.log(`[${bot.name}] sent SIGTERM to PID ${pid}`);
-  } catch (err) {
-    console.warn(`[${bot.name}] failed to stop PID ${pid}:`, err);
+  } catch (err: any) {
+    if (err?.code === 'ESRCH') {
+      console.log(`[${bot.name}] PID ${pid} not running (already stopped).`);
+    } else {
+      console.warn(`[${bot.name}] failed to stop PID ${pid}: ${err?.message || err}`);
+    }
   } finally {
     fs.unlinkSync(pidPath);
   }

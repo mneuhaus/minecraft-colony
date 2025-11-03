@@ -8,3 +8,7 @@ minecraft-server/server/world/
 minecraft-server/server/world_nether/
 minecraft-server/server/world_the_end/
 minecraft-server/server/usercache.json
+/minecraft-server/server/logs/latest.log
+/minecraft-server/server/startup.log
+/minecraft-server/server/world_backup_20251101_233252.tar.gz
+/minecraft-server/server/logs/2025-11-03-1.log.gz
