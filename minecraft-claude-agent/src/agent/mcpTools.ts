@@ -698,6 +698,31 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
 
             const targetPos = new Vec3(x, y, z);
 
+            // Prevent placing into an occupied block volume (self or other entities)
+            const floor = (v: number) => Math.floor(v);
+            const selfAtTarget =
+              bot.entity &&
+              floor(bot.entity.position.x) === x &&
+              floor(bot.entity.position.y) === y &&
+              floor(bot.entity.position.z) === z;
+            if (selfAtTarget) {
+              const warn = `Cannot place ${blockName} at (${x}, ${y}, ${z}): position is currently occupied by the bot (standing there). Step aside and retry.`;
+              return { content: [{ type: 'text', text: warn }], isError: true };
+            }
+
+            // Check other entities (players/mobs) occupying the same block
+            const occupant = Object.values(bot.entities).find((e: any) => {
+              if (!e || !e.position || e === bot.entity) return false;
+              return (
+                floor(e.position.x) === x && floor(e.position.y) === y && floor(e.position.z) === z
+              );
+            });
+            if (occupant) {
+              const name = (occupant.username || occupant.name || occupant.type || 'entity').toString();
+              const warn = `Cannot place ${blockName} at (${x}, ${y}, ${z}): space is occupied by ${name}. Wait or ask them to move, then retry.`;
+              return { content: [{ type: 'text', text: warn }], isError: true };
+            }
+
             // Define face vectors
             const faceVectors = {
               bottom: new Vec3(0, -1, 0),
@@ -724,9 +749,36 @@ export function createMinecraftMcpServer(minecraftBot: MinecraftBot) {
               };
             }
 
+            // Reachability guard
+            const dist = bot.entity.position.distanceTo(targetPos);
+            if (dist > 4.5) {
+              const msg = `Cannot place ${blockName} at (${x}, ${y}, ${z}): target out of reach (${dist.toFixed(1)} blocks). Move closer first.`;
+              return { content: [{ type: 'text', text: msg }], isError: true };
+            }
+
             // CRITICAL: Negate the face vector for placeBlock (learned from previous bug)
             const placeFaceVec = faceVec.scaled(-1);
-            await bot.placeBlock(referenceBlock, placeFaceVec);
+
+            // Place with timeout, then verify server state
+            try {
+              await Promise.race([
+                bot.placeBlock(referenceBlock, placeFaceVec),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000)),
+              ]);
+            } catch (err: any) {
+              // Small delay, then verify whether the block actually appeared
+              await new Promise((r) => setTimeout(r, 100));
+              const verify = bot.blockAt(targetPos);
+              if (verify && verify.name !== 'air') {
+                const result = `Placed ${blockName} at (${x}, ${y}, ${z})`;
+                logToolExecution('place_block', params as any, result);
+                return { content: [{ type: 'text', text: result }] };
+              }
+              const human = err?.message?.includes('Timeout')
+                ? `Timeout while placing ${blockName} at (${x}, ${y}, ${z}). Target may be obstructed or out of reach. Move closer or adjust face direction, then retry.`
+                : `Failed to place ${blockName} at (${x}, ${y}, ${z}): ${err?.message || 'unknown error'}`;
+              return { content: [{ type: 'text', text: human }], isError: true };
+            }
 
             const result = `Placed ${blockName} at (${x}, ${y}, ${z})`;
             logToolExecution('place_block', params, result);

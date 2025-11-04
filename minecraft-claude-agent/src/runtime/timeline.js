@@ -7,6 +7,7 @@ class MASTimeline {
         this.activeBot = null;
         this.viewMode = 'single'; // 'single' or 'all'
         this.items = [];
+        this.bots = [];
         this.filters = {
             types: new Set(['all']),
             outcomes: new Set(),
@@ -16,6 +17,11 @@ class MASTimeline {
         this.maxItems = 300; // DOM performance limit
         this.inspectorOpen = false;
         this.selectedItem = null;
+        this.selectedIndex = -1;
+        this.elementRefs = [];
+        this.oldestTsByBot = new Map();
+        this.lastPhaseByJob = new Map();
+        this.lastBurstByKey = new Map();
         
         this.init();
     }
@@ -33,7 +39,12 @@ class MASTimeline {
                 this.viewMode = e.target.dataset.view;
                 document.querySelectorAll('[data-view]').forEach(b => b.classList.remove('filter-chip--active'));
                 e.target.classList.add('filter-chip--active');
-                this.renderTimeline();
+                // Reload timeline according to view mode
+                if (this.viewMode === 'all') {
+                    this.loadAllTimeline();
+                } else if (this.activeBot) {
+                    this.loadBotTimeline(this.activeBot);
+                }
             });
         });
 
@@ -88,6 +99,12 @@ class MASTimeline {
                 this.filterBots();
             });
         });
+
+        // Load older
+        const loadOlderBtn = document.getElementById('loadOlderBtn');
+        if (loadOlderBtn) {
+            loadOlderBtn.addEventListener('click', () => this.loadOlder());
+        }
     }
 
     connectWebSocket() {
@@ -122,6 +139,9 @@ class MASTimeline {
             case 'bot_status':
                 this.updateBotStatus(data.bot);
                 break;
+            case 'skill':
+                this.addSkillItem(data);
+                break;
             case 'job_phase':
                 this.addJobItem(data);
                 break;
@@ -148,6 +168,7 @@ class MASTimeline {
                 break;
             case 'tool':
                 this.addToolItem(data);
+                this.updateTodosFromTool(data);
                 break;
             case 'safety':
                 this.addSafetyItem(data);
@@ -159,6 +180,7 @@ class MASTimeline {
         try {
             const response = await fetch('/api/bots');
             const bots = await response.json();
+            this.bots = bots;
             this.renderBotList(bots);
         } catch (error) {
             console.error('Failed to load bots:', error);
@@ -185,7 +207,33 @@ class MASTimeline {
             
             const status = bot.connected ? 'running' : 'idle';
             const jobBadge = bot.activeJob ? `<span class="tl-badge tl-badge--job">Job #${bot.activeJob}</span>` : '';
-            
+            const inv = Array.isArray(bot.inventory) ? bot.inventory.slice(0, 8) : [];
+            const invHtml = inv.length ? `
+                <div class="agent-list__inventory">
+                    ${inv.map(it => `
+                        <div class=\"agent-list__inv-item\" title=\"${it.name} x${it.count}\"> 
+                            <img src=\"/api/texture/${it.name}\" alt=\"${it.name}\" onerror=\"this.style.display='none'\" />
+                            <span class=\"agent-list__inv-badge\">${it.count}</span>
+                        </div>`).join('')}
+                    ${bot.inventory && bot.inventory.length > 8 ? '<div class=\"agent-list__inv-item\" title=\"more\">…</div>' : ''}
+                </div>
+            ` : '';
+
+            const todos = Array.isArray(bot.todo) ? bot.todo.slice(0,3) : [];
+            const todoHtml = todos.length ? `
+                <div class=\"agent-list__todos\">
+                    ${todos.map(t => {
+                        const done = t.done || String(t.status||'').toLowerCase()==='completed';
+                        const boxCls = done ? 'agent-list__todo-box agent-list__todo-box--done' : 'agent-list__todo-box';
+                        const check = done ? '<span class=\"agent-list__todo-check\">✓</span>' : '';
+                        const text = (t.content || '').toString();
+                        const trimmed = text.length > 40 ? text.slice(0, 40) + '…' : text;
+                        return `<div class=\"agent-list__todo\"><span class=\"${boxCls}\"></span>${check}<span>${this.escapeHtml(trimmed)}</span></div>`;
+                    }).join('')}
+                    ${bot.todoProgress ? `<div class=\"agent-list__todo-progress\">${bot.todoProgress.done}/${bot.todoProgress.total} done</div>` : ''}
+                </div>
+            ` : '';
+
             item.innerHTML = `
                 <div class="agent-list__meta">
                     <span class="agent-list__name">${bot.name}</span>
@@ -194,6 +242,8 @@ class MASTimeline {
                         ${jobBadge}
                     </div>
                 </div>
+                ${invHtml}
+                ${todoHtml}
             `;
             
             item.addEventListener('click', () => {
@@ -235,6 +285,9 @@ class MASTimeline {
             
             // Clear existing items
             this.items = [];
+            this.elementRefs = [];
+            this.lastBurstByKey.clear();
+            this.oldestTsByBot.set(botName, events.length ? Math.min(...events.map(e => e.ts)) : Date.now());
             
             // Process events into timeline items
             events.forEach(event => {
@@ -247,18 +300,111 @@ class MASTimeline {
         }
     }
 
+    async loadAllTimeline() {
+        try {
+            if (!this.bots || this.bots.length === 0) await this.loadBots();
+            this.items = [];
+            this.elementRefs = [];
+            this.lastBurstByKey.clear();
+            const perBotLimit = Math.max(10, Math.floor(this.maxItems / Math.max(1, this.bots.length)));
+            const promises = this.bots.map(async (b) => {
+                const res = await fetch(`/api/bots/${b.name}/events?limit=${perBotLimit}`);
+                const events = await res.json();
+                if (events?.length) this.oldestTsByBot.set(b.name, Math.min(...events.map(e => e.ts)));
+                events.forEach(e => this.processHistoricalEvent(e));
+            });
+            await Promise.all(promises);
+            this.renderTimeline();
+        } catch (error) {
+            console.error('Failed to load all-bots timeline:', error);
+        }
+    }
+
+    async loadOlder() {
+        try {
+            if (this.viewMode === 'single' && this.activeBot) {
+                const oldest = this.items.length ? Math.min(...this.items.filter(i => i.bot_id === this.activeBot).map(i => i.ts)) : Date.now();
+                const url = `/api/bots/${this.activeBot}/events?limit=100&before_ts=${oldest}`;
+                const res = await fetch(url);
+                const events = await res.json();
+                events.forEach(e => this.processHistoricalEvent(e));
+            } else {
+                // all-bots: fetch per bot
+                const tasks = this.bots.map(async (b) => {
+                    const currentOldest = this.items.length
+                        ? Math.min(...this.items.filter(i => i.bot_id === b.name).map(i => i.ts))
+                        : (this.oldestTsByBot.get(b.name) || Date.now());
+                    const res = await fetch(`/api/bots/${b.name}/events?limit=50&before_ts=${currentOldest}`);
+                    const events = await res.json();
+                    events.forEach(e => this.processHistoricalEvent(e));
+                });
+                await Promise.all(tasks);
+            }
+            this.renderTimeline();
+        } catch (e) {
+            console.error('Failed to load older events:', e);
+        }
+    }
+
     processHistoricalEvent(event) {
         // Convert historical events to timeline items
+        // Filter out send_chat tool events (we already render the chat message itself)
+        if (event.type === 'tool' && event.payload && /send_chat/i.test(String(event.payload.tool_name || ''))) {
+            return; // skip
+        }
+        let normalizedType = event.type;
+        if (event.type === 'chat' && event.payload) {
+            normalizedType = event.payload.direction === 'in' ? 'chat-in' : 'chat-out';
+        }
         const item = {
             id: event.id,
             ts: event.ts,
             bot_id: event.bot_id,
-            type: event.type,
+            type: normalizedType,
             data: event.payload,
             rendered: false
         };
-        
+        // Carry correlation fields so rendering can show proper headers/titles
+        if (event.payload) {
+            if (event.type === 'job' || event.type === 'plan' || event.type === 'step' || event.type === 'tool' || event.type === 'safety') {
+                item.job_id = event.payload.job_id;
+            }
+            if (event.type === 'job') {
+                item.phase = event.payload.phase;
+                item.state = event.payload.state;
+            }
+        }
+
         this.items.push(item);
+        // Seed phase tracker for jobs
+        if (event.type === 'job' && event.payload?.job_id && event.payload?.phase) {
+            this.lastPhaseByJob.set(event.payload.job_id, event.payload.phase);
+        }
+    }
+
+    updateJobItem(data) {
+        try {
+            const job = data.job || {};
+            const jobId = job.id;
+            if (!jobId) return;
+            const prevPhase = this.lastPhaseByJob.get(jobId);
+            if (prevPhase && job.phase && prevPhase !== job.phase) {
+                const phaseItem = {
+                    id: `phase-${jobId}-${Date.now()}`,
+                    ts: job.updated_at || Date.now(),
+                    bot_id: job.bot_id,
+                    job_id: jobId,
+                    type: 'system',
+                    phase: job.phase,
+                    data: { phase_change: `${prevPhase} → ${job.phase}`, job_id: jobId },
+                    rendered: false
+                };
+                this.addTimelineItem(phaseItem);
+            }
+            if (job.phase) this.lastPhaseByJob.set(jobId, job.phase);
+        } catch (e) {
+            console.warn('updateJobItem error', e);
+        }
     }
 
     addJobItem(data) {
@@ -312,11 +458,14 @@ class MASTimeline {
             rendered: false
         };
         
-        // Check for burst collapsing
-        this.addTimelineItem(item, true);
+        this.addTimelineItem(item, false);
     }
 
     addToolItem(data) {
+        // Filter out send_chat tool events; chat message appears as a chat card
+        if (data.tool_name && /send_chat/i.test(String(data.tool_name))) {
+            return;
+        }
         const item = {
             id: `tool-${Date.now()}`,
             ts: Date.now(),
@@ -327,13 +476,15 @@ class MASTimeline {
             data: {
                 tool_name: data.tool_name,
                 params_summary: data.params_summary,
+                input: data.input,
+                output: data.output,
                 duration_ms: data.duration_ms,
                 error: data.error
             },
             rendered: false
         };
         
-        // Check for burst collapsing
+        // Check for burst collapsing (tool only)
         this.addTimelineItem(item, true);
     }
 
@@ -347,7 +498,8 @@ class MASTimeline {
                 from: data.from,
                 text: data.text,
                 channel: data.channel,
-                linked_job_id: data.linked_job_id
+                linked_job_id: data.linked_job_id,
+                kind: data.kind
             },
             rendered: false
         };
@@ -369,6 +521,21 @@ class MASTimeline {
             rendered: false
         };
         
+        this.addTimelineItem(item);
+    }
+
+    addSkillItem(data) {
+        const item = {
+            id: `skill-${Date.now()}`,
+            ts: data.ts || Date.now(),
+            bot_id: data.bot_id,
+            type: 'skill',
+            data: {
+                name: data.name || (data.payload && data.payload.name),
+                description: data.description || (data.payload && data.payload.description)
+            },
+            rendered: false
+        };
         this.addTimelineItem(item);
     }
 
@@ -406,29 +573,25 @@ class MASTimeline {
     }
 
     addTimelineItem(item, checkBurst = false) {
+        const autoScroll = this.isTimelineAtBottom();
         // Check if should be shown based on current filters
         if (this.viewMode === 'single' && item.bot_id !== this.activeBot) {
             return;
         }
         
-        // Burst collapsing for tools
-        if (checkBurst && (item.type === 'tool' || item.type === 'step')) {
-            const lastItem = this.items[this.items.length - 1];
-            if (lastItem && 
-                lastItem.type === item.type &&
-                lastItem.data.tool_name === item.data.tool_name &&
-                (item.ts - lastItem.ts) < this.burstWindow) {
-                // Collapse into burst
-                if (!lastItem.burst) {
-                    lastItem.burst = { count: 2, last_ms: item.data.ms || item.data.duration_ms };
-                } else {
-                    lastItem.burst.count++;
-                    lastItem.burst.last_ms = item.data.ms || item.data.duration_ms;
-                }
-                lastItem.ts = item.ts; // Update timestamp
+        // Burst collapsing for tools: key by tool + params + bot + job
+        if (checkBurst && item.type === 'tool') {
+            const key = `${item.bot_id}|${item.job_id}|${item.data.tool_name}|${JSON.stringify(item.data.params_summary||'')}`;
+            const prev = this.lastBurstByKey.get(key);
+            if (prev && (item.ts - prev.ts) < this.burstWindow) {
+                if (!prev.item.burst) prev.item.burst = { count: 2, last_ms: item.data.duration_ms };
+                else { prev.item.burst.count++; prev.item.burst.last_ms = item.data.duration_ms; }
+                prev.item.ts = item.ts;
+                prev.ts = item.ts;
                 this.renderTimeline();
                 return;
             }
+            this.lastBurstByKey.set(key, { item, ts: item.ts });
         }
         
         // Add to items array
@@ -442,6 +605,7 @@ class MASTimeline {
         // Render if not filtered out
         if (this.shouldShowItem(item)) {
             this.renderTimelineItem(item);
+            if (autoScroll) this.scrollTimelineToBottom();
         }
     }
 
@@ -470,6 +634,7 @@ class MASTimeline {
     renderTimeline() {
         const timelineList = document.getElementById('timelineList');
         timelineList.innerHTML = '';
+        this.elementRefs = [];
         
         let lastTs = 0;
         let currentJob = null;
@@ -480,26 +645,32 @@ class MASTimeline {
             .sort((a, b) => a.ts - b.ts);
         
         visibleItems.forEach(item => {
-            // Insert gap marker if needed
-            if (lastTs && (item.ts - lastTs) > 30000) {
-                const gap = document.createElement('div');
-                gap.className = 'tl-gap';
-                gap.textContent = `No activity for ${Math.floor((item.ts - lastTs) / 1000)}s`;
-                timelineList.appendChild(gap);
-            }
-            
             // Check for job thread changes
             if (item.job_id && item.job_id !== currentJob) {
                 currentJob = item.job_id;
                 const thread = document.createElement('div');
                 thread.className = 'tl-thread-header';
-                thread.innerHTML = `Job #${item.job_id} • ${item.phase || ''} • ${item.type}`;
+                const intent = (item.data && item.data.intent_type) ? ` • Intent: ${item.data.intent_type}` : '';
+                const phase = item.phase ? ` • Phase: ${item.phase}` : '';
+                thread.innerHTML = `Job #${item.job_id}${phase}${intent}`;
                 timelineList.appendChild(thread);
             }
             
             this.renderTimelineItem(item, timelineList);
             lastTs = item.ts;
         });
+    }
+
+    // Auto-scroll helpers
+    isTimelineAtBottom() {
+        const scroller = document.querySelector('.timeline');
+        if (!scroller) return false;
+        const threshold = 40; // px tolerance
+        return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < threshold;
+    }
+    scrollTimelineToBottom() {
+        const scroller = document.querySelector('.timeline');
+        if (scroller) scroller.scrollTop = scroller.scrollHeight;
     }
 
     renderTimelineItem(item, container = null) {
@@ -523,8 +694,14 @@ class MASTimeline {
         let title = '';
         let body = '';
         let footer = '';
+        const laneTag = this.getLaneTag(item.type);
         
         switch (item.type) {
+            case 'skill':
+                title = item.data.name ? `Skill: ${this.escapeHtml(item.data.name)}` : 'Skill';
+                body = item.data.description ? this.escapeHtml(item.data.description) : '';
+                footer = '';
+                break;
             case 'intent':
                 title = `Intent: ${item.data.type}`;
                 body = this.formatIntentBody(item.data);
@@ -538,9 +715,13 @@ class MASTimeline {
                 break;
                 
             case 'job':
-                title = `Job ${item.state}`;
-                body = this.formatJobBody(item.data);
-                footer = this.formatJobFooter(item.data);
+                {
+                    const st = item.state || item.data?.state || '';
+                    const jid = item.job_id || item.data?.job_id || '';
+                    title = `Job ${jid ? '#' + jid + ' • ' : ''}${st}`.trim();
+                    body = this.formatJobBody(item.data);
+                    footer = this.formatJobFooter({ ...item.data, job_id: jid });
+                }
                 break;
                 
             case 'step':
@@ -552,7 +733,7 @@ class MASTimeline {
                 
             case 'tool':
                 const toolBurst = item.burst ? `<span class="tl-badge tl-badge--burst">×${item.burst.count}</span>` : '';
-                title = `Tool: ${item.data.tool_name} ${toolBurst}`;
+                title = `${this.humanToolTitle(item.data.tool_name, item)} ${toolBurst}`.trim();
                 body = this.formatToolBody(item.data);
                 footer = this.formatToolFooter(item.data, item.burst);
                 break;
@@ -560,8 +741,12 @@ class MASTimeline {
             case 'chat-in':
             case 'chat-out':
                 title = item.data.from;
-                body = `<div class="tl-item__body">${this.escapeHtml(item.data.text)}</div>`;
-                footer = item.data.linked_job_id ? `<a href="#" data-job="${item.data.linked_job_id}">Job #${item.data.linked_job_id}</a>` : '';
+                const plannerBadge = item.data && item.data.kind === 'thinking' ? `<span class="tl-badge">Planner</span>` : '';
+                const contentHtml = (item.data && item.data.kind === 'thinking')
+                  ? this.renderMarkdown(item.data.text || '')
+                  : this.escapeHtml(item.data.text || '');
+                body = `<div class="tl-item__body">${contentHtml}</div>`;
+                footer = `${plannerBadge} ${item.data.linked_job_id ? `<a href=\"#\" data-job=\"${item.data.linked_job_id}\">Job #${item.data.linked_job_id}</a>` : ''}`.trim();
                 break;
                 
             case 'safety':
@@ -572,23 +757,27 @@ class MASTimeline {
                 
             case 'system':
                 title = 'System';
-                body = JSON.stringify(item.data);
+                if (item.data && item.data.phase_change) {
+                    body = `<div class="tl-gap">${this.escapeHtml(item.data.phase_change)}</div>`;
+                } else {
+                    body = this.escapeHtml(JSON.stringify(item.data));
+                }
                 footer = '';
                 break;
         }
         
         element.innerHTML = `
             <div class="tl-item__header">
+                <div class="tl-item__title">${title}</div>
                 <div class="tl-item__meta">
                     ${botChip}
-                    <span class="tl-badge">${item.type}</span>
                     ${jobChip}
                     ${phaseChip}
-                    <span title="${new Date(item.ts).toISOString()}">${relativeTime}</span>
+                    <span class="tl-badge">${laneTag}</span>
+                    <span class="tl-time" title="${new Date(item.ts).toISOString()}">${relativeTime}</span>
+                    <span class="tl-item__outcome">${item.outcome || ''}</span>
                 </div>
-                <div class="tl-item__outcome">${item.outcome || ''}</div>
             </div>
-            <div class="tl-item__title">${title}</div>
             ${body ? `<div class="tl-item__body">${body}</div>` : ''}
             ${footer ? `<div class="tl-item__footer">${footer}</div>` : ''}
         `;
@@ -598,13 +787,17 @@ class MASTimeline {
             this.openInspector(item);
         });
         
+        // Track ref for selection navigation
+        this.elementRefs.push({ id: item.id, el: element, item });
         container.appendChild(element);
     }
 
     formatIntentBody(data) {
         const args = data.args ? Object.entries(data.args).map(([k, v]) => `${k}: ${v}`).join(', ') : '';
-        const target = data.target ? `Target: ${JSON.stringify(data.target)}` : '';
-        return `${args}<br>${target}`;
+        const target = data.target ? `Target: ${this.escapeHtml(JSON.stringify(data.target))}` : '';
+        const constraints = data.constraints ? `Constraints: ${this.escapeHtml(JSON.stringify(data.constraints))}` : '';
+        const stop = data.stop_conditions ? `Stop: ${this.escapeHtml(data.stop_conditions)}` : '';
+        return [args, target, constraints, stop].filter(Boolean).join('<br>');
     }
 
     formatIntentFooter(data) {
@@ -667,6 +860,7 @@ class MASTimeline {
         const parts = [];
         if (data.details.macro) parts.push(`Macro: ${data.details.macro}`);
         if (data.details.predicates) parts.push(`Predicates: ${Object.keys(data.details.predicates).length}`);
+        if (data.details.path_metrics?.length) parts.push(`Path len: ${data.details.path_metrics.length}`);
         return parts.join(' • ');
     }
 
@@ -679,7 +873,70 @@ class MASTimeline {
     }
 
     formatToolBody(data) {
-        return data.params_summary || '';
+        const name = (data.tool_name || '').toString().toLowerCase();
+        let summary = data.params_summary;
+        if (typeof summary === 'string') {
+            try { summary = JSON.parse(summary); } catch {}
+        }
+
+        // Render TodoWrite / todo_write as checklist
+        if ((/todo/i.test(data.tool_name || '')) && summary && typeof summary === 'object' && Array.isArray(summary.todos)) {
+            const items = summary.todos.map((t) => {
+                const content = typeof t?.content === 'string' ? t.content : JSON.stringify(t);
+                const done = String(t?.status || '').toLowerCase() === 'completed' || t?.done === true;
+                const boxCls = done ? 'tl-todo__box tl-todo__box--done' : 'tl-todo__box';
+                const check = done ? '<span class="tl-todo__check">✓</span>' : '';
+                return `<li class="tl-todo"><span class="${boxCls}">${check}</span><span class="tl-todo__content">${this.escapeHtml(content)}</span></li>`;
+            }).join('');
+            return `<ul class="tl-todos">${items}</ul>`;
+        }
+        // Prefer a useful object among summary/output/input
+        let obj = summary && typeof summary === 'object' ? summary : (data.input && typeof data.input === 'object' ? data.input : (data.output && typeof data.output === 'object' ? data.output : null));
+
+        // Specializations for clearer summaries
+        if (/(dig_block|break_block)/.test(name) && obj) {
+            const c = this.extractCoords(obj);
+            const b = this.extractName(obj, ['block','blockName','name','id']);
+            const parts = [];
+            if (c) parts.push(`<span class=\"tl-kv__key\">target</span> <span class=\"tl-kv__val\">(${c.x}, ${c.y}, ${c.z})</span>`);
+            if (b) parts.push(`<span class=\"tl-kv__key\">block</span> <span class=\"tl-kv__val\">${this.escapeHtml(b)}</span>`);
+            return parts.length ? `<div class=\"tl-kv\">${parts.join(' • ')}</div>` : '';
+        }
+        if (/place_block/.test(name) && obj) {
+            const c = this.extractCoords(obj);
+            const b = this.extractName(obj, ['block','blockName','name','item','item_name']);
+            const face = this.extractName(obj, ['face','direction']);
+            const parts = [];
+            if (b) parts.push(`<span class=\"tl-kv__key\">block</span> <span class=\"tl-kv__val\">${this.escapeHtml(b)}</span>`);
+            if (c) parts.push(`<span class=\"tl-kv__key\">at</span> <span class=\"tl-kv__val\">(${c.x}, ${c.y}, ${c.z})</span>`);
+            if (face) parts.push(`<span class=\"tl-kv__key\">face</span> <span class=\"tl-kv__val\">${this.escapeHtml(face)}</span>`);
+            return parts.length ? `<div class=\"tl-kv\">${parts.join(' • ')}</div>` : '';
+        }
+        if (/equip_item/.test(name) && obj) {
+            const item = this.extractName(obj, ['item','item_name','name']);
+            const slot = this.extractName(obj, ['slot','hand']);
+            const parts = [];
+            if (item) parts.push(`<span class=\"tl-kv__key\">item</span> <span class=\"tl-kv__val\">${this.escapeHtml(item)}</span>`);
+            if (slot) parts.push(`<span class=\"tl-kv__key\">hand</span> <span class=\"tl-kv__val\">${this.escapeHtml(slot)}</span>`);
+            return parts.length ? `<div class=\"tl-kv\">${parts.join(' • ')}</div>` : '';
+        }
+        if (/(move_to_position|navigate|goto)/.test(name) && obj) {
+            const c = this.extractCoords(obj);
+            if (c) return `<div class=\"tl-kv\"><span class=\"tl-kv__key\">to</span> <span class=\"tl-kv__val\">(${c.x}, ${c.y}, ${c.z})</span></div>`;
+        }
+        if (/send_chat/.test(name) && obj) {
+            const m = this.extractName(obj, ['message','text']);
+            if (m) return `<div class=\"tl-kv\"><span class=\"tl-kv__key\">message</span> <span class=\"tl-kv__val\">${this.escapeHtml(m)}</span></div>`;
+        }
+
+        // Render output if available (title row now in card header)
+        let out = '';
+        const output = data.output;
+        if (output !== undefined) {
+            const outText = typeof output === 'string' ? output : JSON.stringify(output, null, 2);
+            out = this.renderToolOutput(outText);
+        }
+        return out ? `<div class=\"tool-view\">${out}</div>` : '';
     }
 
     formatToolFooter(data, burst) {
@@ -687,7 +944,69 @@ class MASTimeline {
         const ms = burst ? burst.last_ms : data.duration_ms;
         if (ms) badges.push(`<span class="tl-badge tl-badge--duration">${ms}ms</span>`);
         if (data.error) badges.push(`<span class="tl-badge tl-badge--fail">${data.error}</span>`);
+        // Todo counts
+        let summary = data.params_summary;
+        if (typeof summary === 'string') { try { summary = JSON.parse(summary); } catch {} }
+        if ((/todo/i.test(data.tool_name || '')) && summary && Array.isArray(summary.todos)) {
+            const total = summary.todos.length;
+            const done = summary.todos.filter((t) => String(t?.status||'').toLowerCase()==='completed' || t?.done===true).length;
+            badges.push(`<span class="tl-badge">${done}/${total} done</span>`);
+        }
         return badges.join(' ');
+    }
+
+    renderToolOutput(text) {
+        const lines = text.split(/\r?\n/);
+        const max = 12;
+        if (lines.length <= max) {
+            return `<pre class=\"tool-output\">${this.escapeHtml(text)}</pre>`;
+        }
+        const remain = lines.length - max;
+        const head = lines.slice(0, max).join('\n');
+        const full = this.escapeHtml(text);
+        const short = this.escapeHtml(head) + `\n… +${remain} lines`;
+        const id = 'toolout-' + Math.random().toString(36).slice(2, 8);
+        return `
+            <pre id=\"${id}\" class=\"tool-output\" data-full=\"${full}\" data-short=\"${short}\">${short}</pre>
+            <div class=\"tool-more\" onclick=\"window.masTimeline && window.masTimeline.expandOutput('${id}')\">Toggle full output</div>
+        `;
+    }
+
+    expandOutput(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const full = el.getAttribute('data-full');
+        const short = el.getAttribute('data-short');
+        if (!full || !short) return;
+        const showingFull = el.getAttribute('data-show') === 'full';
+        if (showingFull) {
+            el.textContent = '';
+            el.innerHTML = short;
+            el.setAttribute('data-show', 'short');
+        } else {
+            el.textContent = '';
+            el.innerHTML = full;
+            el.setAttribute('data-show', 'full');
+        }
+    }
+
+    extractCoords(obj) {
+        if (!obj || typeof obj !== 'object') return null;
+        const cand = [obj, obj.pos, obj.position, obj.target, obj.location].find((o) => o && typeof o === 'object' && ('x' in o || 'y' in o || 'z' in o));
+        if (!cand) return null;
+        const x = Math.round(Number(cand.x ?? cand[0] ?? NaN));
+        const y = Math.round(Number(cand.y ?? cand[1] ?? NaN));
+        const z = Math.round(Number(cand.z ?? cand[2] ?? NaN));
+        if ([x,y,z].some((v) => Number.isNaN(v))) return null;
+        return { x, y, z };
+    }
+
+    extractName(obj, keys) {
+        if (!obj || typeof obj !== 'object') return '';
+        for (const k of keys) {
+            if (obj[k] !== undefined && obj[k] !== null) return String(obj[k]);
+        }
+        return '';
     }
 
     formatSafetyBody(data) {
@@ -707,6 +1026,57 @@ class MASTimeline {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    renderMarkdown(text) {
+        try {
+            if (window.marked) {
+                const raw = window.marked.parse(text, { breaks: true });
+                if (window.DOMPurify) return window.DOMPurify.sanitize(raw);
+                return raw;
+            }
+        } catch (e) {
+            console.warn('Markdown render failed:', e);
+        }
+        // Fallback: escape and preserve newlines
+        return this.escapeHtml(text).replace(/\n/g, '<br>');
+    }
+
+    getLaneTag(type) {
+        switch (type) {
+            case 'intent': return 'Intent';
+            case 'plan': return 'Plan';
+            case 'job': return 'System';
+            case 'step': return 'Exec';
+            case 'tool': return 'Tool';
+            case 'skill': return 'Skill';
+            case 'safety': return 'Safety';
+            case 'chat-in': return 'Chat';
+            case 'chat-out': return 'Chat';
+            case 'usage': return 'Usage';
+            default: return type;
+        }
+    }
+
+    humanToolTitle(toolName, item) {
+        if (!toolName) return 'Tool';
+        const n = String(toolName).toLowerCase();
+        const bot = item?.bot_id || 'Bot';
+        if (n.includes('todo')) return 'Update Todo';
+        if (n.includes('analyze_surroundings') || n.includes('look') && n.includes('around') || n.includes('scan')) return `${bot} is looking around`;
+        if (n.includes('send_chat')) return 'Send Chat';
+        if (n.includes('equip_item')) return 'Equip Item';
+        if (n.includes('dig_block') || n.includes('break_block')) return 'Mine Block';
+        if (n.includes('place_block')) return 'Place Block';
+        if (n.includes('find_block')) return 'Find Block';
+        if (n.includes('find_entity')) return 'Find Entity';
+        if (n.includes('build_pillar')) return 'Build Pillar';
+        if (n.includes('build_stairs') || n.includes('stairs')) return 'Build Stairs';
+        if (n.includes('move') || n.includes('goto') || n.includes('navigate')) return 'Navigate';
+        if (n.includes('get_position')) return 'Get Position';
+        // strip mcp prefix
+        const stripped = toolName.replace(/^mcp__[^_]+__/, '').replace(/_/g, ' ');
+        return stripped.replace(/\b\w/g, (c) => c.toUpperCase());
     }
 
     openInspector(item) {
@@ -741,7 +1111,7 @@ class MASTimeline {
                 html += `
                     <div class="inspector__section">
                         <div class="inspector__section-title">Predicates</div>
-                        <div class="inspector__json">${JSON.stringify(details.predicates, null, 2)}</div>
+                        <pre class="inspector__json"><code class="language-yaml">${this.escapeHtml(this.toYaml(details.predicates))}</code></pre>
                     </div>
                 `;
             }
@@ -749,7 +1119,7 @@ class MASTimeline {
                 html += `
                     <div class="inspector__section">
                         <div class="inspector__section-title">Invariants</div>
-                        <div class="inspector__json">${JSON.stringify(details.invariants, null, 2)}</div>
+                        <pre class="inspector__json"><code class="language-yaml">${this.escapeHtml(this.toYaml(details.invariants))}</code></pre>
                     </div>
                 `;
             }
@@ -757,7 +1127,51 @@ class MASTimeline {
                 html += `
                     <div class="inspector__section">
                         <div class="inspector__section-title">Voxel Delta</div>
-                        <div class="inspector__json">${JSON.stringify(details.voxel_delta, null, 2)}</div>
+                        <pre class="inspector__json"><code class="language-yaml">${this.escapeHtml(this.toYaml(details.voxel_delta))}</code></pre>
+                    </div>
+                `;
+            }
+            if (details.path_metrics) {
+                html += `
+                    <div class="inspector__section">
+                        <div class="inspector__section-title">Path Metrics</div>
+                        <pre class="inspector__json"><code class="language-yaml">${this.escapeHtml(this.toYaml(details.path_metrics))}</code></pre>
+                    </div>
+                `;
+            }
+        }
+
+        if (item.type === 'plan') {
+            if (item.data.plan_summary) {
+                html += `
+                    <div class="inspector__section">
+                        <div class="inspector__section-title">Plan Summary</div>
+                        <pre class="inspector__json"><code class="language-yaml">${this.escapeHtml(this.toYaml(item.data.plan_summary))}</code></pre>
+                    </div>
+                `;
+            }
+            if (item.data.plan_mcrn) {
+                html += `
+                    <div class="inspector__section">
+                        <div class="inspector__section-title">Plan MCRN</div>
+                        <div class="inspector__json">${this.escapeHtml(item.data.plan_mcrn)}</div>
+                    </div>
+                `;
+            }
+        }
+
+        if (item.type === 'tool') {
+            html += `
+                <div class="inspector__section">
+                    <div class="inspector__section-title">Tool Params</div>
+                    <pre class="inspector__json"><code class="language-yaml">${this.escapeHtml(this.toYaml(item.data.params_summary))}</code></pre>
+                </div>
+            `;
+            if (item.data.error) {
+                html += `
+                    <div class="inspector__section">
+                        <div class="inspector__section-title">Tool Error</div>
+                        <div class="inspector__json">${this.escapeHtml(String(item.data.error))}</div>
                     </div>
                 `;
             }
@@ -767,11 +1181,12 @@ class MASTimeline {
         html += `
             <div class="inspector__section">
                 <div class="inspector__section-title">Raw Data</div>
-                <div class="inspector__json">${JSON.stringify(item.data, null, 2)}</div>
+                <pre class="inspector__json"><code class="language-yaml">${this.escapeHtml(this.toYaml(item.data))}</code></pre>
             </div>
         `;
         
         content.innerHTML = html;
+        try { if (window.hljs) { content.querySelectorAll('code').forEach((el) => window.hljs.highlightElement(el)); } } catch {}
         inspector.classList.add('inspector--open');
         this.inspectorOpen = true;
         this.selectedItem = item;
@@ -787,6 +1202,10 @@ class MASTimeline {
                 badge.className = `agent-list__badge agent-list__badge--${status}`;
                 badge.textContent = status;
             }
+            // Refresh sidebar todos from status if available
+            if (Array.isArray(bot.todo)) {
+                this.renderSidebarTodos(item, bot.todo, bot.todoProgress);
+            }
         }
     }
 
@@ -798,27 +1217,109 @@ class MASTimeline {
         // Re-render bot list with filters
         this.loadBots();
     }
+
+    // Parse TodoWrite tool events → sidebar updater
+    updateTodosFromTool(data) {
+        try {
+            const name = (data.tool_name || '').toString().toLowerCase();
+            if (!/todo/.test(name)) return;
+            let summary = data.output ?? data.params_summary ?? data.input;
+            if (typeof summary === 'string') { try { summary = JSON.parse(summary); } catch {} }
+            const todos = Array.isArray(summary?.todos) ? summary.todos : [];
+            const done = todos.filter((t) => String(t?.status||'').toLowerCase()==='completed' || t?.done===true).length;
+            // Update local cache
+            const bot = (this.bots || []).find((b) => b.name === data.bot_id);
+            if (bot) {
+                bot.todo = todos;
+                bot.todoProgress = { done, total: todos.length };
+            }
+            // Update sidebar DOM if present
+            const el = document.querySelector(`[data-bot-id="${data.bot_id}"]`);
+            if (el) this.renderSidebarTodos(el, todos, { done, total: todos.length });
+        } catch (e) {
+            console.warn('updateTodosFromTool failed:', e);
+        }
+    }
+
+    renderSidebarTodos(itemEl, todos, progress) {
+        try {
+            const containerSel = '.agent-list__todos';
+            let container = itemEl.querySelector(containerSel);
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'agent-list__todos';
+                itemEl.appendChild(container);
+            }
+            const html = (Array.isArray(todos) ? todos.slice(0,3) : []).map((t) => {
+                const done = t.done || String(t.status||'').toLowerCase()==='completed';
+                const boxCls = done ? 'agent-list__todo-box agent-list__todo-box--done' : 'agent-list__todo-box';
+                const check = done ? '<span class="agent-list__todo-check">✓</span>' : '';
+                const text = (t.content || '').toString();
+                const trimmed = text.length > 40 ? text.slice(0, 40) + '…' : text;
+                return `<div class="agent-list__todo"><span class="${boxCls}"></span>${check}<span>${this.escapeHtml(trimmed)}</span></div>`;
+            }).join('');
+            const footer = progress ? `<div class="agent-list__todo-progress">${progress.done}/${progress.total} done</div>` : '';
+            container.innerHTML = html + footer;
+        } catch {}
+    }
+
+    // Selection navigation
+    navigateSelection(delta) {
+        const list = this.items
+            .filter(i => this.shouldShowItem(i))
+            .sort((a, b) => a.ts - b.ts);
+        if (!list.length) return;
+        if (this.selectedIndex < 0) this.selectedIndex = delta > 0 ? 0 : list.length - 1;
+        else this.selectedIndex = Math.max(0, Math.min(list.length - 1, this.selectedIndex + delta));
+        const selected = list[this.selectedIndex];
+        this.highlightItem(selected?.id);
+    }
+
+    highlightItem(id) {
+        document.querySelectorAll('.tl-item').forEach(el => el.classList.remove('tl-item--selected'));
+        const ref = this.elementRefs.find(r => r.id === id);
+        if (ref?.el) {
+            ref.el.classList.add('tl-item--selected');
+            ref.el.scrollIntoView({ block: 'nearest' });
+            this.selectedItem = ref.item;
+        }
+    }
+
+    openSelectedInspector() {
+        if (this.selectedItem) this.openInspector(this.selectedItem);
+    }
+
+    toYaml(obj) {
+        try {
+            if (window.jsyaml) {
+                return window.jsyaml.dump(obj, { noRefs: true, indent: 2, lineWidth: 100 });
+            }
+        } catch (e) {
+            console.warn('YAML dump failed:', e);
+        }
+        try { return JSON.stringify(obj, null, 2); } catch { return String(obj); }
+    }
 }
 
 // Global functions for action buttons
 function pauseJob(jobId) {
     fetch(`/api/jobs/${jobId}/pause`, { method: 'POST' })
         .then(res => res.json())
-        .then(data => console.log('Job paused:', data))
+        .then(data => { console.log('Job paused:', data); window.masTimeline && window.masTimeline.addEventItem({ type: 'event', bot_id: 'system', payload: { action: 'pause', job_id: jobId } }); })
         .catch(err => console.error('Failed to pause job:', err));
 }
 
 function resumeJob(jobId) {
     fetch(`/api/jobs/${jobId}/resume`, { method: 'POST' })
         .then(res => res.json())
-        .then(data => console.log('Job resumed:', data))
+        .then(data => { console.log('Job resumed:', data); window.masTimeline && window.masTimeline.addEventItem({ type: 'event', bot_id: 'system', payload: { action: 'resume', job_id: jobId } }); })
         .catch(err => console.error('Failed to resume job:', err));
 }
 
 function cancelJob(jobId) {
     fetch(`/api/jobs/${jobId}/cancel`, { method: 'POST' })
         .then(res => res.json())
-        .then(data => console.log('Job cancelled:', data))
+        .then(data => { console.log('Job cancelled:', data); window.masTimeline && window.masTimeline.addEventItem({ type: 'event', bot_id: 'system', payload: { action: 'cancel', job_id: jobId } }); })
         .catch(err => console.error('Failed to cancel job:', err));
 }
 

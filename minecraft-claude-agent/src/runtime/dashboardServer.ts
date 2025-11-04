@@ -105,39 +105,93 @@ export function createDashboardApp(): Express {
 
   app.get('/api/texture/:itemName', (req, res) => {
     try {
-      const itemName = req.params.itemName;
-      const item = assets.itemsByName[itemName];
+      const itemName = String(req.params.itemName);
+      // minecraft-assets modern API: use getTexture(name) and assets.directory
+      let textureKey: string | null = null;
+      try {
+        textureKey = (assets as any).getTexture?.(itemName) || null;
+      } catch {}
 
-      if (item?.textures?.length) {
-        const texturePath = path.resolve(assets.texturePath, item.textures[0]);
-        if (fs.existsSync(texturePath)) {
-          res.setHeader('Content-Type', 'image/png');
-          return res.sendFile(texturePath);
+      // Fallback: try mcData name variants (singular/plural) if needed
+      if (!textureKey && itemName.endsWith('s')) {
+        try { textureKey = (assets as any).getTexture?.(itemName.slice(0, -1)) || null; } catch {}
+      }
+
+      if (textureKey) {
+        // Try physical file first
+        const filePath = path.resolve((assets as any).directory, `${textureKey}.png`);
+        if (fs.existsSync(filePath)) {
+          try {
+            const stream = fs.createReadStream(filePath);
+            res.setHeader('Content-Type', 'image/png');
+            return void stream.pipe(res);
+          } catch {}
+        }
+
+        // Else decode embedded base64 from textureContent using basename
+        const base = path.basename(textureKey);
+        const candidates = [base, itemName];
+        for (const key of candidates) {
+          const dataUrl = (assets as any).textureContent?.[key]?.texture;
+          if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
+            const base64 = dataUrl.split(',')[1];
+            const buf = Buffer.from(base64, 'base64');
+            res.setHeader('Content-Type', 'image/png');
+            res.setHeader('Content-Length', String(buf.length));
+            return void res.end(buf);
+          }
         }
       }
 
-      const block = assets.blocksByName[itemName];
-      if (block?.textures?.length) {
-        const texturePath = path.resolve(assets.texturePath, block.textures[0]);
-        if (fs.existsSync(texturePath)) {
+      // Final fallback: try getImageContent by name
+      try {
+        const dataUrl = (assets as any).getImageContent?.(itemName);
+        if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
+          const base64 = dataUrl.split(',')[1];
+          const buf = Buffer.from(base64, 'base64');
           res.setHeader('Content-Type', 'image/png');
-          return res.sendFile(texturePath);
+          res.setHeader('Content-Length', String(buf.length));
+          return void res.end(buf);
         }
-      }
+      } catch {}
 
-      return res.status(404).json({ error: 'Texture not found' });
+      return void res.status(404).json({ error: 'Texture not found' });
     } catch (error: any) {
-      return res.status(500).json({ error: error.message });
+      return void res.status(500).json({ error: error.message });
     }
   });
 
-  // Serve dashboard HTML
-  app.get('/', (_req, res) => {
-    const dashboardPath = path.resolve(__dirname, 'dashboard.html');
-    res.sendFile(dashboardPath);
+  // Debug helper for textures
+  app.get('/api/texture-debug/:itemName', (req, res) => {
+    const itemName = String(req.params.itemName);
+    const info: any = { itemName };
+    try {
+      info.version = (assets as any).version;
+      info.directory = (assets as any).directory;
+      const key = (assets as any).getTexture?.(itemName) || null;
+      info.textureKey = key;
+      if (key) {
+        const filePath = path.resolve((assets as any).directory, `${key}.png`);
+        info.filePath = filePath;
+        info.fileExists = fs.existsSync(filePath);
+        const base = path.basename(key);
+        const dataUrl = (assets as any).textureContent?.[base]?.texture;
+        info.base64Available = typeof dataUrl === 'string' && dataUrl.startsWith('data:image/');
+      }
+      return void res.json(info);
+    } catch (e: any) {
+      info.error = e?.message || String(e);
+      return void res.json(info);
+    }
   });
 
-  // Serve timeline HTML
+  // Serve Timeline as the main view at '/'
+  app.get('/', (_req, res) => {
+    const timelinePath = path.resolve(__dirname, 'timeline.html');
+    res.sendFile(timelinePath);
+  });
+
+  // Back-compat: keep /timeline but point to the same file
   app.get('/timeline', (_req, res) => {
     const timelinePath = path.resolve(__dirname, 'timeline.html');
     res.sendFile(timelinePath);
@@ -259,6 +313,92 @@ export function createDashboardApp(): Express {
       }
       
       // Sort by timestamp and return
+      // Include recent activity (chat/thinking/tools) from activity.json
+      try {
+        const activityPath = path.resolve('logs', `${botName}.activity.json`);
+        if (fs.existsSync(activityPath)) {
+          const raw = fs.readFileSync(activityPath, 'utf-8');
+          const activity = JSON.parse(raw) as Array<any>;
+          for (const a of activity) {
+            const ts = Date.parse(a.timestamp || '') || Date.now();
+            if (ts >= before_ts) continue; // respect before_ts window
+            if (a.type === 'chat') {
+              events.push({
+                id: `chat-${ts}-${Math.random().toString(36).slice(2, 7)}`,
+                ts,
+                bot_id: botName,
+                type: 'chat',
+                payload: {
+                  from: a.speaker || (a.role === 'bot' ? botName : 'player'),
+                  text: a.message,
+                  channel: 'chat',
+                  direction: a.role === 'bot' ? 'out' : 'in'
+                }
+              });
+            } else if (a.type === 'thinking') {
+              events.push({
+                id: `think-${ts}-${Math.random().toString(36).slice(2, 7)}`,
+                ts,
+                bot_id: botName,
+                type: 'chat',
+                payload: {
+                  from: 'Planner',
+                  text: a.message,
+                  channel: 'system',
+                  direction: 'out',
+                  kind: 'thinking'
+                }
+              });
+            } else if (a.type === 'tool') {
+              // Tool execution summary
+              const toolName = (a.message && String(a.message).startsWith('Tool:')) ? String(a.message).replace(/^Tool:\s*/, '') : (a.details?.name || 'tool');
+              // Prefer output for summary if present; otherwise input
+              const summary = a.details?.output ?? a.details?.input;
+              let params_summary: any = summary;
+              if (typeof summary === 'string') {
+                try { params_summary = JSON.parse(summary); } catch { params_summary = summary; }
+              }
+              events.push({
+                id: `tool-${ts}-${Math.random().toString(36).slice(2, 7)}`,
+                ts,
+                bot_id: botName,
+                type: 'tool',
+                payload: {
+                  tool_name: toolName,
+                  params_summary,
+                  output: a.details?.output,
+                  input: a.details?.input,
+                  duration_ms: a.details?.duration_ms,
+                  ok: true
+                }
+              });
+            } else if (a.type === 'skill') {
+              events.push({
+                id: `skill-${ts}-${Math.random().toString(36).slice(2, 7)}`,
+                ts,
+                bot_id: botName,
+                type: 'skill',
+                payload: {
+                  name: a.message,
+                  description: a.details?.description || ''
+                }
+              });
+            } else if (a.type === 'error' || a.type === 'warn' || a.type === 'info') {
+              events.push({
+                id: `evt-${ts}-${Math.random().toString(36).slice(2, 7)}`,
+                ts,
+                bot_id: botName,
+                type: 'system',
+                payload: { level: a.type, message: a.message }
+              });
+            }
+          }
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('Failed to merge activity events:', (e as any)?.message || e);
+      }
+
       events.sort((a, b) => a.ts - b.ts);
       res.json(events.slice(-limit));
     } catch (error: any) {
@@ -280,6 +420,7 @@ export function startDashboardServer(port: number) {
   const wss = new WebSocketServer({ server, path: '/ws' });
   let lastStepId = 0;
   let lastJobsUpdatedAt = 0;
+  const lastActivityTsByBot: Record<string, number> = {};
 
   wss.on('connection', (ws: WebSocket) => {
     ws.send(JSON.stringify({ type: 'hello', ts: Date.now() }));
@@ -332,6 +473,85 @@ export function startDashboardServer(port: number) {
           job: j 
         }));
         broadcast(wss, payloads);
+      }
+
+      // New activity items (chat/thinking/tool) from activity.json files
+      try {
+        const logsDir = path.resolve('logs');
+        if (fs.existsSync(logsDir)) {
+          const files = fs.readdirSync(logsDir).filter((f) => f.endsWith('.activity.json'));
+          const messages: any[] = [];
+          for (const file of files) {
+            const botId = file.replace(/\.activity\.json$/, '');
+            const baseTs = lastActivityTsByBot[botId] || 0;
+            const raw = fs.readFileSync(path.join(logsDir, file), 'utf-8');
+            const arr = JSON.parse(raw) as Array<any>;
+            const nextItems = arr
+              .map((a) => ({ a, ts: Date.parse(a.timestamp || '') || 0 }))
+              .filter(({ ts }) => ts > baseTs)
+              .sort((x, y) => x.ts - y.ts);
+            if (nextItems.length) {
+              lastActivityTsByBot[botId] = Math.max(baseTs, nextItems[nextItems.length - 1].ts);
+              for (const { a, ts } of nextItems) {
+                if (a.type === 'chat') {
+                  messages.push({
+                    type: 'chat',
+                    bot_id: botId,
+                    ts,
+                    from: a.speaker || (a.role === 'bot' ? botId : 'player'),
+                    text: a.message,
+                    channel: 'chat',
+                    direction: a.role === 'bot' ? 'out' : 'in',
+                  });
+                } else if (a.type === 'thinking') {
+                  messages.push({
+                    type: 'chat',
+                    bot_id: botId,
+                    ts,
+                    from: 'Planner',
+                    text: a.message,
+                    channel: 'system',
+                    direction: 'out',
+                    kind: 'thinking',
+                  });
+                } else if (a.type === 'tool') {
+                  const toolName = (a.message && String(a.message).startsWith('Tool:')) ? String(a.message).replace(/^Tool:\s*/, '') : (a.details?.name || 'tool');
+                  const summary = a.details?.output ?? a.details?.input;
+                  let params_summary: any = summary;
+                  if (typeof summary === 'string') {
+                    try { params_summary = JSON.parse(summary); } catch { params_summary = summary; }
+                  }
+                  messages.push({
+                    type: 'tool',
+                    bot_id: botId,
+                    ts,
+                    job_id: undefined,
+                    ok: true,
+                    tool_name: toolName,
+                    params_summary,
+                    output: a.details?.output,
+                    input: a.details?.input,
+                    duration_ms: a.details?.duration_ms,
+                  });
+                } else if (a.type === 'skill') {
+                  messages.push({
+                    type: 'skill',
+                    bot_id: botId,
+                    ts,
+                    name: a.message,
+                    description: a.details?.description || ''
+                  });
+                }
+              }
+            }
+          }
+          if (messages.length) {
+            broadcast(wss, messages);
+          }
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('Activity WS poll error:', (e as any)?.message || e);
       }
     } catch (e) {
       // eslint-disable-next-line no-console

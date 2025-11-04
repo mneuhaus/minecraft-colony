@@ -4,6 +4,7 @@ import { createPlannerMcpServer } from './mcpTools.js';
 import { Config } from '../config.js';
 import logger, { appendDiaryEntry, logClaudeCall, startTimer } from '../logger.js';
 import { ActivityWriter, type ActivityRole } from '../utils/activityWriter.js';
+import { loadAllSkills } from './skillLoader.js';
 import { SqlMemoryStore } from '../utils/sqlMemoryStore.js';
 
 interface Message {
@@ -68,6 +69,22 @@ export class ClaudeAgentSDK {
           logger.debug('MCP server registered', {
             manifest: this.mcpServer?.manifest,
           });
+          // Discover skills and announce in activity stream
+          (async () => {
+            try {
+              const skills = await loadAllSkills(process.cwd());
+              for (const s of skills) {
+                this.activityWriter.addActivity({
+                  type: 'skill',
+                  message: s.metadata.name,
+                  details: { description: s.metadata.description },
+                  role: 'system',
+                });
+              }
+            } catch (e: any) {
+              logger.warn('Failed to enumerate skills for activity', { error: e?.message || String(e) });
+            }
+          })();
 
           // Start MAS runtime (queue + workers)
           (async () => {
@@ -115,7 +132,7 @@ export class ClaudeAgentSDK {
   /**
    * Handle a chat message from a player
    */
-  private async handleChatMessage(username: string, message: string): Promise<void> {
+  private async handleChatMessage(username: string, message: string, retryCount = 0): Promise<void> {
     const shouldProcess = this.shouldHandleMessage(message);
     if (!shouldProcess) {
       logger.debug('Ignoring chat message not directed at this bot', {
@@ -482,19 +499,41 @@ export class ClaudeAgentSDK {
         this.minecraftBot.chat(finalResponse);
       }
     } catch (error: any) {
-      logger.error('Failed to process chat message', {
-        error: error.message,
-        stack: error.stack,
-      });
+      logger.error('Failed to process chat message', { error: error.message, stack: error.stack });
 
+      // Record as activity + memory
+      this.activityWriter.addActivity({
+        type: 'warn',
+        message: `Recovery: attempt ${retryCount + 1} failed`,
+        details: { error: error.message },
+        role: 'system',
+      });
       appendDiaryEntry(`Chat handling failed for ${username}`, {
         player_message: cleanedMessage,
         error: error.message,
         session_id: this.currentSessionId,
       });
 
-      // Send error message to chat (rate-limited)
-      this.minecraftBot.chat(`Sorry, I encountered an error: ${error.message}`);
+      // Try a single recovery pass with a different approach
+      if (retryCount < 1) {
+        // Nudge the planner via conversation history
+        this.conversationHistory.push({
+          role: 'user',
+          content:
+            'SYSTEM_RECOVERY_HINT: The last attempt encountered an internal error. Please try a different approach with smaller, more robust steps and avoid repeating the last failing action.',
+        });
+        // Small backoff
+        await new Promise((r) => setTimeout(r, 300));
+        try {
+          await this.handleChatMessage(username, message, retryCount + 1);
+          return; // handled by recovery
+        } catch (e: any) {
+          logger.error('Recovery pass also failed', { error: e?.message || String(e) });
+        }
+      }
+
+      // Final fallback: brief apology without technical details
+      this.minecraftBot.chat('Ich bin auf ein Problem gestoßen und versuche es beim nächsten Schritt anders.');
     } finally {
       this.isProcessing = false;
     }

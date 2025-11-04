@@ -12,7 +12,10 @@ AGENT_ENV := DISABLE_VIEWER=true
 AGENT_PID_ROOT := $(AGENT_DIR)/logs
 COLONY_PID_FILE := $(AGENT_DIR)/colony-runtime.pid
 COLONY_LOG_FILE := $(AGENT_DIR)/logs/colony-runtime.log
-COLONY_CMD := env $(AGENT_ENV) pnpm colony
+
+# Dashboard port (used by colony runtime / timeline UI)
+DASHBOARD_PORT ?= 4242
+COLONY_CMD := env $(AGENT_ENV) DASHBOARD_PORT=$(DASHBOARD_PORT) pnpm colony
 
 .PHONY: start-server stop-server restart-server status-server \
         start-agents stop-agents restart-agents status-agents \
@@ -83,6 +86,14 @@ start-colony:
 		echo "Colony runtime already running (PID $$(cat $(COLONY_PID_FILE)))"; \
 		exit 0; \
 	fi
+	# Ensure no stale process is blocking the dashboard port
+	@PORT_PIDS=$$(lsof -ti tcp:$(DASHBOARD_PORT) 2>/dev/null || true); \
+	if [ -n "$$PORT_PIDS" ]; then \
+		echo "Killing process(es) blocking port $(DASHBOARD_PORT): $$PORT_PIDS"; \
+		kill $$PORT_PIDS 2>/dev/null || true; \
+		sleep 1; \
+		for p in $$PORT_PIDS; do kill -0 $$p 2>/dev/null && kill -9 $$p 2>/dev/null || true; done; \
+	fi
 	@echo "Starting colony runtime (bots + dashboard)..."
 	@cd $(AGENT_DIR) && \
 	mkdir -p logs && \
@@ -111,6 +122,14 @@ stop-colony:
 	fi
 	@rm -f $(COLONY_PID_FILE)
 	@$(MAKE) stop-agents
+	# Also ensure the dashboard port is free
+	@PORT_PIDS=$$(lsof -ti tcp:$(DASHBOARD_PORT) 2>/dev/null || true); \
+	if [ -n "$$PORT_PIDS" ]; then \
+		echo "Cleaning up processes on port $(DASHBOARD_PORT): $$PORT_PIDS"; \
+		kill $$PORT_PIDS 2>/dev/null || true; \
+		sleep 1; \
+		for p in $$PORT_PIDS; do kill -0 $$p 2>/dev/null && kill -9 $$p 2>/dev/null || true; done; \
+	fi
 
 restart-colony:
 	@$(MAKE) stop-colony

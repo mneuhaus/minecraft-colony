@@ -31,6 +31,9 @@ export interface BotStatus {
   viewerUrl?: string;
   lastUpdate?: string;
   errorMessage?: string;
+  // Latest TodoWrite summary extracted from activity log
+  todo?: Array<{ content: string; status?: string; done?: boolean }>;
+  todoProgress?: { done: number; total: number };
 }
 
 const CONFIG_PATH = process.env.BOTS_CONFIG || 'bots.yaml';
@@ -222,6 +225,39 @@ export function getBotStatus(bot: BotConfig): BotStatus {
       }
     } else {
       status.connectionStatus = 'connecting';
+    }
+
+    // Read latest TodoWrite from activity
+    try {
+      const activityPath = path.resolve('logs', `${bot.name}.activity.json`);
+      if (fs.existsSync(activityPath)) {
+        const activity = JSON.parse(fs.readFileSync(activityPath, 'utf-8')) as Array<any>;
+        // ActivityWriter unshifts newest first; scan until we find a todo tool
+        const item = activity.find((a) => {
+          if (!a || a.type !== 'tool') return false;
+          const msg = String(a.message || '');
+          const name = (a.details?.toolName || '').toString();
+          return /todo/i.test(msg) || /todo/i.test(name);
+        });
+        if (item) {
+          let payload: any = item.details?.output ?? item.details?.input;
+          if (typeof payload === 'string') {
+            try { payload = JSON.parse(payload); } catch { /* ignore */ }
+          }
+          const todos = Array.isArray(payload?.todos) ? payload.todos : [];
+          if (todos.length) {
+            const done = todos.filter((t: any) => String(t?.status || '').toLowerCase() === 'completed' || t?.done === true).length;
+            status.todoProgress = { done, total: todos.length };
+            status.todo = todos.slice(0, 4).map((t: any) => ({
+              content: String(t?.content || t?.title || ''),
+              status: t?.status,
+              done: String(t?.status || '').toLowerCase() === 'completed' || t?.done === true,
+            }));
+          }
+        }
+      }
+    } catch (e) {
+      // Best-effort; do not fail status
     }
   } catch (error) {
     console.error(`Error reading status for ${bot.name}:`, error);

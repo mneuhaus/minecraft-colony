@@ -372,6 +372,30 @@ export function createTools(minecraftBot: MinecraftBot): ToolDefinition[] {
 
           const faceVec = faceVectorMap[faceDirection] || faceVectorMap['bottom'];
           const targetPos = new Vec3(x, y, z);
+          // Occupancy checks (self / entities)
+          const floor = (v: number) => Math.floor(v);
+          const selfAtTarget =
+            bot.entity &&
+            floor(bot.entity.position.x) === x &&
+            floor(bot.entity.position.y) === y &&
+            floor(bot.entity.position.z) === z;
+          if (selfAtTarget) {
+            const warn = `Cannot place ${blockName} at (${x}, ${y}, ${z}): position is occupied by the bot.`;
+            logToolExecution('place_block', params, warn);
+            return warn;
+          }
+          const occupant = Object.values(bot.entities).find((e: any) => {
+            if (!e || !e.position || e === bot.entity) return false;
+            return (
+              floor(e.position.x) === x && floor(e.position.y) === y && floor(e.position.z) === z
+            );
+          });
+          if (occupant) {
+            const name = (occupant.username || occupant.name || occupant.type || 'entity').toString();
+            const warn = `Cannot place ${blockName} at (${x}, ${y}, ${z}): space is occupied by ${name}.`;
+            logToolExecution('place_block', params, warn);
+            return warn;
+          }
           const referencePos = targetPos.plus(faceVec);
           const referenceBlock = bot.blockAt(referencePos);
 

@@ -29,6 +29,14 @@ export class MinecraftBot extends EventEmitter {
   private messageCheckInterval: NodeJS.Timeout | null = null;
   private readonly messageCheckFrequency = 30000; // Check for bot messages every 30 seconds
 
+  // Chat rate limiting
+  private chatQueue: string[] = [];
+  private chatTimer: NodeJS.Timeout | null = null;
+  private lastChatAt = 0;
+  private readonly chatCooldownMs = parseInt(process.env.CHAT_COOLDOWN_MS || '1500', 10);
+  private readonly chatMaxLen = parseInt(process.env.CHAT_MAX_LEN || '240', 10);
+  private recentChatSet: Array<{ text: string; ts: number }> = [];
+
   constructor(private config: Config) {
     super();
   }
@@ -210,6 +218,59 @@ export class MinecraftBot extends EventEmitter {
       logger.info('Bot respawned');
       this.emit('respawn');
     });
+  }
+
+  /**
+   * Rate-limited chat wrapper to prevent spam kicks
+   * Splits long messages, queues and sends with cooldown spacing.
+   */
+  chat(text: string): void {
+    if (!text || typeof text !== 'string') return;
+    // Split by newlines and chunk to max length
+    const chunks: string[] = [];
+    for (const line of text.split(/\r?\n/)) {
+      let l = line.trim();
+      while (l.length > this.chatMaxLen) {
+        chunks.push(l.slice(0, this.chatMaxLen));
+        l = l.slice(this.chatMaxLen);
+      }
+      if (l.length > 0) chunks.push(l);
+    }
+
+    // De-dupe against recent messages (5s window)
+    const now = Date.now();
+    this.recentChatSet = this.recentChatSet.filter((m) => now - m.ts < 5000);
+    for (const c of chunks) {
+      if (this.recentChatSet.find((m) => m.text === c)) continue; // skip duplicate burst
+      this.chatQueue.push(c);
+      this.recentChatSet.push({ text: c, ts: now });
+    }
+    this.processChatQueue();
+  }
+
+  private processChatQueue(): void {
+    if (this.chatTimer || this.chatQueue.length === 0) return;
+    const sendNext = () => {
+      if (!this.bot || this.chatQueue.length === 0) {
+        this.chatTimer = null;
+        return;
+      }
+      const delay = Math.max(0, this.lastChatAt + this.chatCooldownMs - Date.now());
+      this.chatTimer = setTimeout(() => {
+        const msg = this.chatQueue.shift()!;
+        try {
+          this.bot!.chat(msg);
+          this.lastChatAt = Date.now();
+        } catch (e: any) {
+          logger.warn('chat() send failed, dropping message', { error: e?.message || String(e) });
+        }
+        this.chatTimer = null;
+        if (this.chatQueue.length > 0) {
+          this.processChatQueue();
+        }
+      }, delay);
+    };
+    sendNext();
   }
 
   /**

@@ -5,7 +5,7 @@ export type ActivityRole = 'bot' | 'player' | 'system' | 'tool';
 
 export interface ActivityItem {
   timestamp: string;
-  type: 'chat' | 'tool' | 'thinking' | 'error' | 'warn' | 'info';
+  type: 'chat' | 'tool' | 'thinking' | 'skill' | 'error' | 'warn' | 'info';
   message: string;
   speaker?: string;
   role?: ActivityRole;
