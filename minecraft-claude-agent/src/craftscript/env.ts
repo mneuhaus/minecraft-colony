@@ -19,14 +19,40 @@ export function getPose(bot: Bot) {
   return { heading, feet_world: feet ? [feet.x, feet.y, feet.z] : [0, 0, 0] };
 }
 
-export async function get_vox(bot: Bot, radius = 2, include_air = false): Promise<VoxSnapshot> {
+export async function get_vox(
+  bot: Bot,
+  radius?: number,
+  include_air = false,
+  dims?: { fx?: number; bx?: number; uy?: number; dy?: number; rz?: number; lz?: number }
+): Promise<VoxSnapshot> {
   const center = bot.entity.position.floored();
   const heading = yawToHeadingRadians(bot.entity.yaw);
   const vox: Record<string, string> = {};
 
-  for (let dx = -radius; dx <= radius; dx++) {
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dz = -radius; dz <= radius; dz++) {
+  // Determine bounds: either use dims or fallback to radius
+  let xMin, xMax, yMin, yMax, zMin, zMax;
+  if (dims) {
+    // Use provided dimensions (in forward/back/up/down/right/left)
+    xMin = -(dims.bx ?? 0);
+    xMax = dims.fx ?? 0;
+    yMin = -(dims.dy ?? 0);
+    yMax = dims.uy ?? 0;
+    zMin = -(dims.lz ?? 0);
+    zMax = dims.rz ?? 0;
+  } else {
+    // Use radius (default 2)
+    const r = radius ?? 2;
+    xMin = -r;
+    xMax = r;
+    yMin = -r;
+    yMax = r;
+    zMin = -r;
+    zMax = r;
+  }
+
+  for (let dx = xMin; dx <= xMax; dx++) {
+    for (let dy = yMin; dy <= yMax; dy++) {
+      for (let dz = zMin; dz <= zMax; dz++) {
         const pos = center.offset(dx, dy, dz);
         const b = bot.blockAt(pos);
         if (!b) continue;
@@ -45,12 +71,69 @@ export async function get_vox(bot: Bot, radius = 2, include_air = false): Promis
   pred[`SAFE_STEP_UP[F1]`] = safe_step_up(bot, f1);
   pred[`SAFE_STEP_DOWN[F1]`] = safe_step_down(bot, f1);
   pred[`CAN_STAND[F1]`] = can_stand(bot, f1);
-  pred[`HAZARDS`] = detect_hazards(bot, radius);
+  const hazardRadius = radius ?? 2;
+  pred[`HAZARDS`] = detect_hazards(bot, hazardRadius);
 
+  const effectiveRadius = radius ?? Math.max(xMax, yMax, zMax);
   return {
-    window: { radius, shape: [radius * 2 + 1, radius * 2 + 1, radius * 2 + 1] },
+    window: { radius: effectiveRadius, shape: [xMax - xMin + 1, yMax - yMin + 1, zMax - zMin + 1] },
     vox,
     predicates: pred,
+  };
+}
+
+// Bird's eye view - 2D map with relative heights
+export function look_at_map(bot: Bot, radius = 10, zoom = 1) {
+  const center = bot.entity.position.floored();
+  const botY = center.y;
+  const heading = yawToHeadingRadians(bot.entity.yaw);
+  const map: Record<string, { blocks: string[]; height_min: number; height_max: number }> = {};
+
+  // Zoom controls grid size: zoom=1 is 1x1 (1 block), zoom=2 is 2x2 (4 blocks), etc.
+  const step = Math.max(1, Math.floor(zoom));
+
+  for (let fx = -radius; fx <= radius; fx += step) {
+    for (let fr = -radius; fr <= radius; fr += step) {
+      const key = `${frKey(fx)}+${rrKey(fr)}`.replace('+L0', '+R0').replace('F0+', 'F0+');
+
+      // Sample all blocks in the zoom grid
+      const blockTypes = new Set<string>();
+      let minHeight = Infinity;
+      let maxHeight = -Infinity;
+
+      for (let dx = 0; dx < step; dx++) {
+        for (let dz = 0; dz < step; dz++) {
+          const sampleFx = fx + dx;
+          const sampleFr = fr + dz;
+
+          const delta = relativeFRtoDelta(sampleFx, sampleFr, heading);
+          const colTopY = findSurfaceY(bot, center.offset(delta.x, 0, delta.z));
+          const relHeight = colTopY - botY;
+
+          minHeight = Math.min(minHeight, relHeight);
+          maxHeight = Math.max(maxHeight, relHeight);
+
+          const surfacePos = center.offset(delta.x, colTopY - center.y, delta.z);
+          const block = bot.blockAt(surfacePos);
+          if (block) {
+            blockTypes.add(block.name);
+          }
+        }
+      }
+
+      map[key] = {
+        blocks: Array.from(blockTypes),
+        height_min: minHeight === Infinity ? 0 : minHeight,
+        height_max: maxHeight === -Infinity ? 0 : maxHeight
+      };
+    }
+  }
+
+  return {
+    grid: { size: [Math.ceil((radius * 2 + 1) / step), Math.ceil((radius * 2 + 1) / step)], origin: 'F0+R0' },
+    bot_height: botY,
+    zoom: step,
+    map,
   };
 }
 

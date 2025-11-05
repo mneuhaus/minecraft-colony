@@ -11,6 +11,9 @@ import ToolNearest from './ToolNearest.vue';
 import ToolVox from './ToolVox.vue';
 import ToolAffordances from './ToolAffordances.vue';
 import ToolCraftScript from './ToolCraftScript.vue';
+import ToolTopography from './ToolTopography.vue';
+import ToolBlockInfo from './ToolBlockInfo.vue';
+import ToolLookAtMap from './ToolLookAtMap.vue';
 import ToolGeneric from './ToolGeneric.vue';
 
 const props = defineProps<{ item: any }>();
@@ -34,14 +37,16 @@ const title = computed(()=> humanTitle(toolName.value));
 const key = computed(()=> {
   const n = toolName.value.toLowerCase();
   if (n === 'todowrite') return 'todo';
-  if (/^mcp__/.test(n)) {
-    if (/craftscript/.test(n)) return 'craftscript';
-    if (/__get_vox$/.test(n)) return 'vox';
-    if (/__affordances$/.test(n)) return 'affordances';
-    if (/__nearest$/.test(n)) return 'nearest';
-    if (/__get_position$/.test(n)) return 'get_position';
-    if (/__nav$/.test(n)) return 'nav';
-  }
+  // Match both prefixed (mcp__minecraft__*) and unprefixed tool names
+  if (/craftscript/.test(n)) return 'craftscript';
+  if (/get_vox$/.test(n)) return 'vox';
+  if (/get_topography$/.test(n)) return 'topography';
+  if (/look_at_map/.test(n)) return 'look_at_map';
+  if (/block_info$/.test(n)) return 'block_info';
+  if (/affordances$/.test(n)) return 'affordances';
+  if (/nearest$/.test(n)) return 'nearest';
+  if (/get_position$/.test(n)) return 'get_position';
+  if (/\bnav$/.test(n)) return 'nav';
   return 'generic';
 });
 
@@ -51,6 +56,9 @@ const toolComponent = computed(()=> ({
   get_position: ToolGetPosition,
   nearest: ToolNearest,
   vox: ToolVox,
+  topography: ToolTopography,
+  look_at_map: ToolLookAtMap,
+  block_info: ToolBlockInfo,
   affordances: ToolAffordances,
   craftscript: ToolCraftScript,
   generic: ToolGeneric,
