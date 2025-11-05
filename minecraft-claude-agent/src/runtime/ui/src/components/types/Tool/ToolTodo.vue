@@ -1,12 +1,12 @@
 <template>
   <div class="tl-item__body">
+    <div class="todo-header">TodoWrite</div>
     <ul class="todo-list">
       <li v-for="(t, i) in todos" :key="i" class="todo-row">
         <span class="todo-check">{{ done(t) ? '☑' : '☐' }}</span>
         <span class="todo-text">{{ text(t) }}</span>
       </li>
     </ul>
-    <div class="todo-footer" v-if="todos.length">{{ doneCount }}/{{ todos.length }} done</div>
   </div>
 </template>
 
@@ -46,9 +46,34 @@ const doneCount = computed(()=> todos.value.filter(done).length);
 </script>
 
 <style scoped>
-.todo-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
-.todo-row { display: flex; gap: 8px; align-items: flex-start; color: #EAEAEA; }
-.todo-check { width: 18px; display: inline-block; text-align: center; color: #EAEAEA; }
-.todo-text { color: #EAEAEA; opacity: 0.92; }
-.todo-footer { margin-top: 6px; font-size: 12px; color: #B3B3B3; }
+.todo-header {
+  font-weight: 600;
+  color: #EAEAEA;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.todo-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.todo-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: #EAEAEA;
+}
+.todo-check {
+  width: 18px;
+  display: inline-block;
+  text-align: center;
+  color: #EAEAEA;
+}
+.todo-text {
+  color: #EAEAEA;
+  opacity: 0.92;
+}
 </style>

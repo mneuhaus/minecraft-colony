@@ -1,8 +1,5 @@
 <template>
-  <div>
-    <div class="tl-item__title">{{ title }}</div>
-    <component :is="toolComponent" :item="normalized" />
-  </div>
+  <component :is="toolComponent" :item="normalized" />
 </template>
 
 <script setup lang="ts">

@@ -1,13 +1,11 @@
 <template>
-  <div class="tl-item" :class="cssClass">
-    <div class="tl-item__header">
-      <div class="tl-item__meta">
+  <div class="tl-item-wrapper" :class="wrapperClass">
+    <div class="tl-item" :class="cssClass" @click="$emit('openInspector', item)">
+      <div class="tl-item__header">
         <span class="tl-time">{{ time }}</span>
-        <span class="tl-badge tl-badge--job">{{ item.bot_id }}</span>
       </div>
-      <div class="tl-item__outcome">{{ (item.outcome||'').toUpperCase() }}</div>
+      <component :is="componentName" :item="item" />
     </div>
-    <component :is="componentName" :item="item" />
   </div>
 </template>
 
@@ -31,6 +29,15 @@ const cssClass = computed(()=> {
   }
   return cls;
 });
+const wrapperClass = computed(() => {
+  const t = props.item.type;
+  if (t === 'chat') {
+    const dir = props.item.payload?.direction;
+    return dir === 'in' ? 'tl-wrapper--right' : 'tl-wrapper--left';
+  }
+  if (t === 'system') return 'tl-wrapper--center';
+  return 'tl-wrapper--left';
+});
 const componentName = computed(()=> {
   const t = String(props.item.type||'');
   if (t === 'chat' || t === 'chat-in' || t === 'chat-out') return ChatMessage;
@@ -42,14 +49,67 @@ const componentName = computed(()=> {
 </script>
 
 <style scoped>
-.tl-item { background: #202020; border: 1px solid #2E2E2E; border-radius: 12px; padding: 10px; }
-.tl-item__header { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #B3B3B3; margin-bottom: 4px; }
-.tl-badge { font-size: 10px; padding: 2px 8px; border-radius: 999px; border: 1px solid #2E2E2E; }
-.tl-time { color: #7A7A7A; font-size: 11px; margin-right: 6px; }
-.tl-item__outcome { color: #B3B3B3; font-size: 11px; }
+/* Wrapper for positioning */
+.tl-item-wrapper {
+  display: flex;
+  width: 100%;
+  margin-bottom: 8px;
+}
 
-/* Chat message colors */
-.tl-item--chat-in { border-left: 3px solid #4A9EFF; }
-.tl-item--chat-out { border-left: 3px solid #E96D2F; }
+.tl-wrapper--left {
+  justify-content: flex-start;
+}
+
+.tl-wrapper--right {
+  justify-content: flex-end;
+}
+
+.tl-wrapper--center {
+  justify-content: center;
+}
+
+/* Item styling */
+.tl-item {
+  position: relative;
+  background: #202020;
+  border: 1px solid #2E2E2E;
+  border-radius: 12px;
+  padding: 10px 80px 10px 10px;
+  max-width: 80%;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.tl-item__body {
+  margin: 0;
+  padding: 0;
+}
+
+.tl-item:hover {
+  border-color: #4A4A4A;
+}
+
+.tl-wrapper--center .tl-item {
+  max-width: 60%;
+}
+
+.tl-item__header {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-size: 11px;
+  color: #7A7A7A;
+  opacity: 0.7;
+}
+
+/* Chat message styling */
+.tl-item--chat-in {
+  background: linear-gradient(135deg, rgba(74, 158, 255, 0.08) 0%, rgba(74, 158, 255, 0.02) 100%);
+  border-color: rgba(74, 158, 255, 0.3);
+}
+.tl-item--chat-out {
+  background: linear-gradient(135deg, rgba(233, 109, 47, 0.08) 0%, rgba(233, 109, 47, 0.02) 100%);
+  border-color: rgba(233, 109, 47, 0.3);
+}
 </style>
 

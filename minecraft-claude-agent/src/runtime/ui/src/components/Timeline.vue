@@ -14,6 +14,6 @@ function normalize(e: any){ return e; }
 
 <style scoped>
 .timeline { height: 100vh; overflow: auto; padding: 10px; }
-.timeline__list { display: flex; flex-direction: column; gap: 8px; }
+.timeline__list { display: flex; flex-direction: column; }
 </style>
 
