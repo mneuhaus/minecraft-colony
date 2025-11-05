@@ -1,5 +1,4 @@
-import fs from 'fs';
-import path from 'path';
+import WebSocket from 'ws';
 
 export type ActivityRole = 'bot' | 'player' | 'system' | 'tool';
 
@@ -12,62 +11,23 @@ export interface ActivityItem {
   details?: any;
 }
 
-const ACTIVITY_DIR = process.env.ACTIVITY_DIR || 'logs';
-const MAX_ACTIVITIES = 200; // Keep last 200 activities
+const MAX_ACTIVITIES = 200; // Keep last 200 activities in memory for getActivities()
 
 export class ActivityWriter {
   private activityLog: ActivityItem[] = [];
   private botName: string;
-  private activityFilePath: string;
-  private writeInterval: NodeJS.Timeout | null = null;
+  private ws: WebSocket | null = null;
+  private wsUrl: string | null = null;
 
   constructor(botName: string) {
     this.botName = botName;
-    this.activityFilePath = path.resolve(ACTIVITY_DIR, `${botName}.activity.json`);
 
-    // Load existing activity if available
-    this.loadActivity();
-
-    // Write activity every 2 seconds
-    this.writeInterval = setInterval(() => {
-      this.writeActivity();
-    }, 2000);
-  }
-
-  private loadActivity(): void {
+    // Core realtime WebSocket streaming to the dashboard server (always on)
     try {
-      if (fs.existsSync(this.activityFilePath)) {
-        const data = fs.readFileSync(this.activityFilePath, 'utf-8');
-        this.activityLog = JSON.parse(data);
-      }
-    } catch (error) {
-      console.error(`Failed to load activity for ${this.botName}:`, error);
-      this.activityLog = [];
-    }
-  }
-
-  private writeActivity(): void {
-    try {
-      // Ensure directory exists
-      const dir = path.dirname(this.activityFilePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
-      const payload = JSON.stringify(this.activityLog, null, 2);
-      const tempPath = `${this.activityFilePath}.tmp`;
-
-      fs.writeFileSync(tempPath, payload);
-      try {
-        fs.renameSync(tempPath, this.activityFilePath);
-      } catch (renameError) {
-        // Fallback for filesystems that do not support atomic rename overwrite
-        fs.writeFileSync(this.activityFilePath, payload);
-        fs.rmSync(tempPath, { force: true });
-      }
-    } catch (error) {
-      console.error(`Failed to write activity for ${this.botName}:`, error);
-    }
+      const port = Number(process.env.DASHBOARD_PORT || 4242);
+      this.wsUrl = `ws://localhost:${port}/ingest`;
+      this.connectWs();
+    } catch {}
   }
 
   public addActivity(item: Omit<ActivityItem, 'timestamp'>): void {
@@ -82,6 +42,9 @@ export class ActivityWriter {
     if (this.activityLog.length > MAX_ACTIVITIES) {
       this.activityLog = this.activityLog.slice(0, MAX_ACTIVITIES);
     }
+
+    // Try to push in realtime via WebSocket (best-effort)
+    this.sendRealtime(activity);
   }
 
   public getActivities(): ActivityItem[] {
@@ -89,10 +52,28 @@ export class ActivityWriter {
   }
 
   public destroy(): void {
-    if (this.writeInterval) {
-      clearInterval(this.writeInterval);
-      this.writeInterval = null;
-    }
-    this.writeActivity(); // Final write
+    try { this.ws?.close(); } catch {}
+  }
+
+  private connectWs(): void {
+    if (!this.wsUrl) return;
+    try {
+      this.ws = new WebSocket(this.wsUrl);
+      this.ws.on('open', () => {/* ok */});
+      this.ws.on('error', () => {/* ignore */});
+      this.ws.on('close', () => { setTimeout(() => this.connectWs(), 1500); });
+    } catch {}
+  }
+
+  private sendRealtime(activity: ActivityItem): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    try {
+      const payload = {
+        type: 'activity',
+        bot_id: this.botName,
+        item: activity,
+      };
+      this.ws.send(JSON.stringify(payload));
+    } catch {}
   }
 }

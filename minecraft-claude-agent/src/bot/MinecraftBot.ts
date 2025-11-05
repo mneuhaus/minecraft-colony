@@ -3,7 +3,7 @@ import { pathfinder, Movements } from 'mineflayer-pathfinder';
 import { EventEmitter } from 'events';
 import logger, { logChat, logHealth } from '../logger.js';
 import { Config } from '../config.js';
-import { writeStateFile } from '../utils/stateWriter.js';
+// Removed JSON state writer; status is derived from SQL via the agent
 
 let prismarineViewer: { mineflayer: (bot: Bot, options: { port: number; firstPerson: boolean }) => void } | null = null;
 
@@ -24,10 +24,11 @@ export class MinecraftBot extends EventEmitter {
   private readonly maxReconnectAttempts = 5;
   private reconnectDelay = 5000; // ms
   private viewerPort = parseInt(process.env.VIEWER_PORT || '3000', 10);
-  private stateUpdateInterval: NodeJS.Timeout | null = null;
-  private readonly stateUpdateFrequency = 2000; // Update state every 2 seconds
-  private messageCheckInterval: NodeJS.Timeout | null = null;
-  private readonly messageCheckFrequency = 30000; // Check for bot messages every 30 seconds
+  // Legacy JSON timers removed
+  // private stateUpdateInterval: NodeJS.Timeout | null = null;
+  // private readonly stateUpdateFrequency = 0;
+  // private messageCheckInterval: NodeJS.Timeout | null = null;
+  // private readonly messageCheckFrequency = 0;
 
   // Chat rate limiting
   private chatQueue: string[] = [];
@@ -56,8 +57,14 @@ export class MinecraftBot extends EventEmitter {
       port: this.config.minecraft.port,
       username: this.config.minecraft.username,
       version: false as any, // Auto-detect server version
-      plugins: { pathfinder },
     });
+
+    // Ensure pathfinder plugin is loaded
+    try {
+      (this.bot as any).loadPlugin(pathfinder as any);
+    } catch (e: any) {
+      logger.warn('Failed to load pathfinder plugin', { error: e?.message || String(e) });
+    }
 
     this.setupEventHandlers();
 
@@ -103,14 +110,7 @@ export class MinecraftBot extends EventEmitter {
       // Don't chat here - bot client might not be ready yet
       this.reconnectAttempts = 0;
 
-      // Write initial state
-      this.updateStateFile();
-
-      // Start periodic state updates
-      this.startStateUpdates();
-
-      // Start periodic bot message checking
-      this.startMessageChecking();
+      // JSON state/message files removed; relying on SQL via agent loop
 
       // Emit ready event
       this.emit('ready', {
@@ -368,137 +368,39 @@ export class MinecraftBot extends EventEmitter {
   /**
    * Write current state to JSON file for dashboard
    */
-  private updateStateFile(): void {
-    const state = this.getState();
-    if (state) {
-      const botName = process.env.BOT_NAME || this.config.minecraft.username;
-      const logsDir = process.env.LOGS_DIR || 'logs';
-      writeStateFile(botName, logsDir, state);
-    }
-  }
+  private updateStateFile(): void { /* removed */ }
 
   /**
    * Start periodic state file updates
    */
-  private startStateUpdates(): void {
-    // Clear any existing interval
-    this.stopStateUpdates();
-
-    // Create new interval for periodic updates
-    this.stateUpdateInterval = setInterval(() => {
-      this.updateStateFile();
-    }, this.stateUpdateFrequency);
-
-    logger.debug('Started periodic state updates', {
-      frequency: `${this.stateUpdateFrequency}ms`
-    });
-  }
+  // private startStateUpdates(): void { /* removed */ }
 
   /**
    * Stop periodic state file updates
    */
-  private stopStateUpdates(): void {
-    if (this.stateUpdateInterval) {
-      clearInterval(this.stateUpdateInterval);
-      this.stateUpdateInterval = null;
-      logger.debug('Stopped periodic state updates');
-    }
-  }
+  // private stopStateUpdates(): void { /* removed */ }
 
   /**
    * Start periodic bot message checking
    */
-  private startMessageChecking(): void {
-    // Clear any existing interval
-    this.stopMessageChecking();
-
-    // Create new interval for checking bot messages
-    this.messageCheckInterval = setInterval(() => {
-      this.checkBotMessages();
-    }, this.messageCheckFrequency);
-
-    logger.debug('Started periodic bot message checking', {
-      frequency: `${this.messageCheckFrequency}ms`
-    });
-  }
+  // private startMessageChecking(): void { /* removed */ }
 
   /**
    * Stop periodic bot message checking
    */
-  private stopMessageChecking(): void {
-    if (this.messageCheckInterval) {
-      clearInterval(this.messageCheckInterval);
-      this.messageCheckInterval = null;
-      logger.debug('Stopped periodic bot message checking');
-    }
-  }
+  // private stopMessageChecking(): void { /* removed */ }
 
   /**
    * Check for new bot messages and emit them as chat events
    */
-  private async checkBotMessages(): Promise<void> {
-    try {
-      const fs = await import('fs');
-      const path = await import('path');
-
-      const botName = process.env.BOT_NAME || this.config.minecraft.username;
-      const messagesDir = path.resolve(process.cwd(), 'messages');
-      const inboxPath = path.join(messagesDir, `${botName}.json`);
-
-      if (!fs.existsSync(inboxPath)) {
-        return; // No messages
-      }
-
-      const existing = fs.readFileSync(inboxPath, 'utf-8');
-      const messages: Array<{
-        id: string;
-        timestamp: string;
-        sender: string;
-        recipient: string;
-        message: string;
-        priority: 'low' | 'normal' | 'high';
-        read: boolean;
-      }> = JSON.parse(existing);
-
-      // Find unread messages
-      const unreadMessages = messages.filter(m => !m.read);
-
-      if (unreadMessages.length > 0) {
-        logger.info(`Found ${unreadMessages.length} unread bot message(s)`);
-
-        // Emit each unread message as a chat event (as if it came from the sender bot)
-        for (const msg of unreadMessages) {
-          const syntheticMessage = `[Bot Message] ${msg.message}`;
-          logger.debug('Emitting bot message as chat event', {
-            sender: msg.sender,
-            message: syntheticMessage
-          });
-
-          // Emit as chat event so Claude agent processes it
-          this.emit('chat', {
-            username: msg.sender,
-            message: syntheticMessage,
-            timestamp: new Date(msg.timestamp).getTime()
-          });
-        }
-
-        // Mark messages as read
-        const updatedMessages = messages.map(m =>
-          unreadMessages.find(um => um.id === m.id) ? { ...m, read: true } : m
-        );
-        fs.writeFileSync(inboxPath, JSON.stringify(updatedMessages, null, 2));
-      }
-    } catch (error: any) {
-      logger.error('Failed to check bot messages', { error: error.message });
-    }
-  }
+  // private async checkBotMessages(): Promise<void> { /* removed */ }
 
   /**
    * Disconnect from the server
    */
   disconnect(): void {
-    this.stopStateUpdates();
-    this.stopMessageChecking();
+    // this.stopStateUpdates();
+    // this.stopMessageChecking();
     if (this.bot) {
       logger.info('Disconnecting from server');
       this.bot.quit();

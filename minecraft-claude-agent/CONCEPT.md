@@ -1,45 +1,136 @@
-# Minecraft Agent System (MAS)
+# Claude Minecraft Agent – Concept & Architecture
 
-**Version:** 1.0 (MCRN v0.3‑nav)
+Version: 2025‑11 (CraftScript v0.1, SDK mode)
 
-**Scope:** Planner, Queue, Tactician, Executor, Notation, Safety, Macros, SQLite, REST/WS, Dashboard (vanilla JS/CSS with BEM)
+This document describes the current design after the SDK migration and the cleanup away from legacy MAS components and JSON logs.
 
-**Out of scope:** 3D maps/minimaps, world replay, non‑vanilla UI frameworks
+## 0) Goals & Principles
 
-## 0) Objectives & Design Tenets
+Goals
+- Fast, responsive bot driven by a single LLM loop with MCP tools.
+- Safe execution (hard invariants) with clear, human‑readable plans (CraftScript).
+- Live, low‑latency observability for chat/thinking/tools/system via WebSockets.
+- Durable history in SQLite for sessions, messages and activities.
 
-### Objectives
-- The agent can be asked (chat) → it plans (intent) → it executes (safely) → it reports (timeline/status).
-- Keep chat responsive while long tasks run.
-- Make behavior explainable (intent → plan → steps), reproducible, and safe by default.
+Principles
+- Minecraft‑native: real registry ids, cardinal faces, Mineflayer pathfinder.
+- F/R/U local frame for selectors; keep coordinates relative to heading.
+- Non‑bypassable safety in executor; risky ops auto‑scan.
+- Fewer moving parts: one agent loop + MCP tools; background jobs when needed.
 
-### Tenets
-- Single contract: all spatial actions use MCRN (Minecraft Relational Notation).
-- Separation of concerns:
-  - Planner (LLM, user‑facing) → intents & job control only
-  - Tactician/Compiler (LLM, headless) → intent → program (MCRN)
-  - Executor (code) → runs MCRN with invariants; only component that mutates the world
-- Local & relative: actions expressed in the agent’s local frame (F/R/U) to reduce orientation errors.
-- Non‑bypassable safety: invariants enforced in code at execution time.
-- Observability first: job phases, step timeline, hazards, costs, inventory available live (WS) and historically (SQLite).
+## 1) Current Architecture (SDK‑based)
 
-## 1) System Architecture
+```
+Player chat → Claude Agent SDK (single loop)
+                 │
+                 ├─ MCP tools (unified server)
+                 │   • world: get_vox, affordances, nearest, block_info, get_topography
+                 │   • nav: nav(start/status/cancel)
+                 │   • craftscript: start/status/cancel (background jobs)
+                 │   • util: send_chat, get_position
+                 │
+                 ├─ CraftScript engine (parser + executor + safety)
+                 │
+                 └─ SqlMemoryStore (SQLite)
+                     • sessions, messages, activities, accomplishments, preferences, relationships
 
-```text
-Players → Chat Handler ─► PLANNER (LLM)
-                           ↓ enqueue(kind=intent)
-SQLite ◄─ Job Queue ──► TACTICIAN (LLM)
-                         compiles intent → plan.mcrn
-SQLite ◄─ Job Queue ──► EXECUTOR (Code + Mineflayer/MCP)
-                         runs MCRN, enforces safety, emits steps/usage
-                           ↓
-WebSocket → Dashboard (vanilla JS/CSS, BEM)
-REST → historical reads & controls
+WS ingest (/ingest) ◄── ActivityWriter (realtime)
+WS clients (/ws)   ──► Timeline dashboard (vanilla JS/CSS)
 ```
 
-- Bot Runtime (Node + Mineflayer) exposes MCP tools (movement, dig/place, find, inventory, chat, waypoints, scan).
-- Planner is the only user‑facing LLM; Tactician runs headless; Executor is deterministic code.
-- Multiple bots are supported; typically one Executor worker per bot plus a shared Tactician pool.
+Key choices
+- Claude Agent SDK runs the loop (streaming) and loads project skills lazily via the SDK Skill tool. We do not preload SKILL.md at startup.
+- MCP server is unified and minimal; it maps directly to Mineflayer and our CraftScript/Env.
+- Realtime UI uses WebSocket ingest for activity and WS for history; no JSON files.
+
+## 2) Data & Persistence (SQLite)
+
+Per‑bot database: `logs/memories/<Bot>.db`
+
+Tables (high level)
+- `sessions(session_id, bot_name, start_time, end_time, is_active)`
+- `messages(id, session_id, role, content, timestamp, position_x, position_y, position_z, health, food, inventory)`
+- `activities(id, session_id, type, description, timestamp, data, position_x, position_y, position_z)`
+- `accomplishments(id, session_id, description, timestamp, position_x, position_y, position_z)`
+- `relationships(bot_name, player_name, trust_level, last_interaction, notes)`
+- `preferences(bot_name, key, value)`
+
+Usage
+- The SDK loop writes messages (`user`/`assistant`) and activities (`thinking`, `tool_use`, `error|warn|info`, `skill`).
+- The dashboard reads initial history over WS from SQLite; all live updates arrive over WS ingest.
+- Status sidebar derives “connected/connecting/error” by reading the latest message timestamps and optional embedded context.
+
+## 3) Unified MCP Tooling
+
+Provided tools (zod‑validated)
+- `get_vox(radius?, include_air?)` → local voxel snapshot + predicates (SAFE_STEP_UP/DOWN, CAN_STAND, HAZARDS)
+- `affordances(selector)` → standability, place faces, best tool hint
+- `nearest({block_id|entity_id, radius?, reachable?})`
+- `block_info({id|selector})` → static properties (gravity, hardness, drops, tool)
+- `get_topography(radius=6)` → F/R heightmap + slope + summary
+- `nav(action)` → start/status/cancel pathfinder with policy (max_step/drop, allow_dig)
+- `craftscript_start/status/cancel` → background job model for CraftScript programs
+- `send_chat`, `get_position`
+
+Behavior
+- Tools emit JSON text payloads; errors are normalized (UNREACHABLE|BLOCKED|TIMEOUT|UNAVAILABLE).
+- Background craftscript jobs stream progress via activities; planner remains responsive while jobs run.
+
+## 4) CraftScript (v0.1) – Summary
+
+Language
+- C‑style statements: `macro`, `if/else`, `while`, `repeat`, `assert`, semicolons.
+- Selectors in F/R/U/L/B/D with `+` composition and `^`/`_` suffix for step up/down.
+- Commands (lowercase): `move`, `turn`, `turn_face`, `dig`, `place`, `equip`, `scan`, `goto`, `drop`, `eat`.
+- Predicates: `safe_step_up`, `safe_step_down`, `can_stand`, `is_air`, `has_item`, `is_hazard`.
+
+Executor
+- Enforces invariants (no unsafe step up/down, gravity blocks overhead, lava opening, auto‑scan on risky ops).
+- Resolves selectors in the bot’s local frame; uses pathfinder for `goto` and small deltas for `move`.
+
+Grammar/Parser
+- Implemented with Peggy; supports `f1^`/`f1_` shorthand. Produces a normalized AST.
+
+## 5) Dashboard (Timeline)
+
+Transport
+- WebSocket `/ingest` for realtime activities from agents (chat/thinking/tool/system/skill).
+- WebSocket `/ws` for clients; supports `{type:"history", bot_id, limit, before_ts}` to load initial history from SQLite.
+- No JSON log polling; legacy `/api/activity/:botName` removed (returns 410 Gone).
+
+UI
+- Alert‑style system messages with severity (Error/Warning/Info/OK) — icon, colored border, tinted background.
+- CraftScript previews render with syntax highlighting.
+- get_vox visualizer (F/R grid with U‑layer slider) for quick spatial context.
+- “Reset Bot” action (POST `/api/bots/:name/reset`) clears memory DB + diary + activity and restarts the bot.
+
+## 6) Operations
+
+Colony runtime
+- `make start-colony` waits for the runtime to write its own PID and prints a single concise status line.
+- `make stop-colony` shuts down runtime + agents and frees the dashboard port.
+- `make restart-colony` is terse; failures show a short tail optionally with `SHOW_FAIL_LOG=1`.
+
+Proxy
+- Supports a local Claude proxy for Max plans: `CLAUDE_PROXY_URL=http://localhost:5789`, `CLAUDE_PROXY_KEY=sk-dummy`.
+
+Logs & files (kept)
+- Per‑bot text log: `logs/<Bot>/<Bot>.log`
+- Diary: `logs/diary.md`
+- Memory DB: `logs/memories/<Bot>.db`
+- SDK stderr tail (optional): `logs/<Bot>/claude-code-stderr.log` (may be replaced with SQL activities later)
+
+Removed/Legacy
+- MAS job DB, planner/tactician queue, JSON state/activity files, periodic file polling.
+- Startup skill enumeration — skills load lazily via the SDK.
+
+## 7) Future Work
+
+- Switch Timeline client entirely to WS history (remove HTTP history endpoints).
+- Persist stderr tails into activities and drop stderr files.
+- Expand CraftScript macro library and add targeted unit tests for parser/executor.
+- Optional subagents: only when a separate transcript/model adds clear value; background jobs are preferred for long ops today.
+
 
 ## 2) MCRN — Minecraft Relational Notation (v0.3‑nav)
 

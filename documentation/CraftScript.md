@@ -1,0 +1,587 @@
+# CraftScript — Language Specification (v0.1)
+
+**Purpose:**
+CraftScript is a small, safe, C-style scripting language for controlling Minecraft bots.
+It’s readable for humans, simple for LLMs, and maps directly onto Mineflayer & the Minecraft registry.
+
+---
+
+## 0) Principles
+
+| Design goal | Description |
+|--------------|-------------|
+| **Readable** | familiar C/JavaScript syntax |
+| **Deterministic** | no randomness, no hidden state |
+| **Minecraft-native** | real registry IDs (`"minecraft:stone"`) and faces (`"up"`, `"north"`) |
+| **Relative** | coordinates expressed as `f/r/u/b/l/d` |
+| **Safe** | executor enforces invariants; never damages itself |
+| **LLM-friendly** | few keywords, small grammar, clear errors |
+
+---
+
+## 1) Lexical rules
+
+| Element | Example |
+|----------|----------|
+| **Comments** | `// line`, `/* block */` |
+| **Identifiers** | `build_stairs`, `safe_move` |
+| **Keywords** | `macro`, `if`, `else`, `while`, `repeat`, `assert`, `true`, `false` |
+| **Literals** | `"minecraft:oak_log"`, `"home"`, `42`, `true`, `false` |
+| **Operators** | `!`, `&&`, `||` |
+| **Statement end** | `;` |
+
+---
+
+## 2) Selectors (relative block addressing)
+
+| Axis | Meaning | Example |
+|------|----------|---------|
+| `f` | forward | `f1` |
+| `b` | backward | `b2` |
+| `r` | right | `r-1` |
+| `l` | left | `l2` |
+| `u` | up | `u3` |
+| `d` | down | `d1` |
+
+Combine with `+`:
+`f2+u1+r-1` → “two forward, one up, one left”
+
+Shortcuts:
+- `f1^` → step forward & up
+- `f1_` → step forward & down
+
+Selectors are always **relative to current heading**.
+
+---
+
+## 3) Statements
+
+| Type | Example |
+|-------|---------|
+| **command** | `dig(f1+u2);` |
+| **assert** | `assert(can_stand(f1), "no floor");` |
+| **repeat** | `repeat(6) { dig(f1+u2); move(f1^); }` |
+| **while** | `while (!is_air(f1)) { dig(f1); }` |
+| **if/else** | `if (safe_step_up(f1)) { move(f1^); } else { dig(f1); }` |
+| **block** | `{ ... }` |
+| **empty** | `;` |
+
+---
+
+## 4) Built-in commands (all lowercase)
+
+### movement & orientation
+
+```c
+move(f1);        // forward
+move(f1^);       // step up
+move(f1_);       // step down
+turn(r90);
+turn(l90);
+turn(180);
+turn_face("north");   // absolute
+```
+
+### world interaction
+
+```c
+dig(f1+u2);
+place("minecraft:cobblestone", f1+u1, face:"up");
+equip("minecraft:iron_pickaxe");
+scan(r:2);        // refresh local voxel snapshot
+```
+
+### navigation (mineflayer-pathfinder)
+
+```c
+goto(world(140,64,92), tol:1);
+goto(waypoint("home"), tol:1);
+goto(f6, tol:1);
+```
+
+### inventory / utilities (optional)
+
+```c
+drop("minecraft:cobblestone", count:4);
+eat("minecraft:cooked_beef");
+```
+
+---
+
+## 5) Predicates (boolean, read-only)
+
+| Predicate                    | Description                      |
+| ---------------------------- | -------------------------------- |
+| `safe_step_up(sel)`          | true if stepping up is safe      |
+| `safe_step_down(sel)`        | true if stepping down is safe    |
+| `can_stand(sel)`             | true if solid floor & clear head |
+| `is_air(sel)`                | true if block is air             |
+| `has_item("minecraft:item")` | true if item present             |
+| `is_hazard("lava_near")`     | true if hazard detected          |
+
+All use the latest voxel cache; executor auto-scans when stale.
+
+---
+
+## 6) Safety invariants (executor-enforced)
+
+1. `move(f1^)` only if `safe_step_up(f1)`
+2. `move(f1_)` only if `safe_step_down(f1)`
+3. Don’t `dig(u1|u2)` if gravity blocks overhead
+4. Don’t open to `"minecraft:lava"` without plug/fill plan
+5. Auto-`scan(r=2)` before risky actions (`dig`, `place`, `move^/_`)
+
+Violation ⇒ error `invariant_violation`.
+
+---
+
+## 7) Errors
+
+**Success**
+
+```json
+{ "ok": true, "op": "dig", "ms": 43, "notes": { "selector": "f1+u2", "id": "minecraft:dirt" } }
+```
+
+**Failure**
+
+```json
+{
+  "ok": false,
+  "error": "move_blocked|timeout|no_path|invariant_violation",
+  "message": "front block solid: minecraft:stone",
+  "loc": { "line":7, "column":5 },
+  "op_index": 23,
+  "at": { "selector":"f1", "world":[129,64,85] },
+  "ts": 1710000123
+}
+```
+
+Executor aborts on first failure.
+
+---
+
+## 8) Macros
+
+Reusable code blocks.
+
+```c
+macro build_stairs(int steps) {
+  repeat(steps) {
+    if (safe_step_up(f1)) {
+      dig(f1+u2);
+      move(f1^);
+    } else {
+      assert(false, "cannot step up");
+    }
+  }
+}
+```
+
+### Core macros provided
+
+* `stair_up_step()`
+* `stair_down_step()`
+* `tunnel_forward()`
+* `build_pillar(int h)`
+* `descend_pillar_safely(int h)`
+* `torch_cadence_7()`
+
+---
+
+## 9) Execution model
+
+* Sequential interpreter; aborts on first hard error.
+* Loops capped (e.g. 10 000 ops).
+* Cache invalidated on `move`, `dig`, `place`, `goto`.
+* `goto` uses mineflayer-pathfinder (blocking).
+* No concurrency; planner handles parallel jobs.
+
+---
+
+## 10) Integration mapping (mineflayer / MCP)
+
+| CraftScript command | Implementation                             |
+| ------------------- | ------------------------------------------ |
+| `move`              | step solver or small motion                |
+| `dig`               | `bot.dig(blockAt(world))`                  |
+| `place`             | `bot.placeBlock(block, vecFromFace(face))` |
+| `equip`             | `bot.equip(itemId, 'hand')`                |
+| `scan`              | call `get_vox`                             |
+| `goto`              | call `nav(action:'start')`                 |
+| `turn*`             | adjust yaw                                 |
+
+IDs and faces always passed **unchanged** (`"minecraft:..."`, `"up"`, etc.).
+
+---
+
+## 11) Example scripts
+
+### A. Staircase to surface
+
+```c
+macro stair_up_step() {
+  assert(safe_step_up(f1), "no safe step");
+  dig(f1+u2);
+  move(f1^);
+}
+
+repeat(12) { stair_up_step(); }
+```
+
+### B. Go to waypoint and place torch
+
+```c
+goto(waypoint("home"), tol:1);
+if (has_item("minecraft:torch")) {
+  place("minecraft:torch", r1, face:"west");
+}
+```
+
+### C. Build and remove pillar
+
+```c
+build_pillar(4);
+place("minecraft:oak_planks", f1+u1, face:"up");
+descend_pillar_safely(4);
+```
+
+---
+
+## 12) Grammar outline (Peggy.js)
+
+*(Produces an AST with lowercase command names.)*
+
+```peggy
+{
+  function node(type, props){ return Object.assign({type,loc:location()}, props||{}); }
+}
+Start = _ body:StatementList _ { return node("Program",{body}); }
+StatementList = s:Statement tail:(_ Statement)* { return [s,...tail.map(t=>t[1])]; } / {return[];}
+
+Statement
+  = MacroDecl / IfStmt / RepeatStmt / WhileStmt
+  / AssertStmt ";" / CommandStmt ";" / ";" {return node("Empty");}
+
+MacroDecl = "macro" __ name:Identifier _ "(" _ params:ParamList? _ ")" _ blk:Block
+  { return node("MacroDecl",{name,params:params||[],body:blk}); }
+
+ParamList = head:Param tail:(_ "," _ Param)* { return [head,...tail.map(t=>t[3])]; }
+Param = t:Type __ id:Identifier { return node("Param",{name:id,paramType:t}); }
+Type = "int" {return "int";} / "bool" {return "bool";} / "string" {return "string";}
+
+Block = "{" _ body:StatementList? _ "}" { return node("Block",{body:body||[]}); }
+
+IfStmt = "if" _ "(" _ c:Expr _ ")" _ t:Block _ ("else" _ e:Block)?
+  { return node("IfStmt",{test:c,consequent:t,alternate:e||null}); }
+RepeatStmt = "repeat" _ "(" _ n:Expr _ ")" _ b:Block { return node("RepeatStmt",{count:n,body:b}); }
+WhileStmt = "while" _ "(" _ c:Expr _ ")" _ b:Block { return node("WhileStmt",{test:c,body:b}); }
+AssertStmt = "assert" _ "(" _ e:Expr _ msg:("," _ m:StringLiteral)? _ ")" { return node("AssertStmt",{test:e,message: msg ? msg[2] : null}); }
+CommandStmt = name:Identifier _ "(" _ args:ArgList? _ ")" { return node("Command",{name,args:args||[]}); }
+
+ArgList = head:Arg tail:(_ "," _ Arg)* { return [head,...tail.map(t=>t[3])]; }
+Arg = NamedArg / Expr
+NamedArg = key:Identifier _ ":" _ val:Expr { return node("NamedArg",{key,value:val}); }
+
+Expr = OrExpr
+OrExpr = left:AndExpr tail:(_ "||" _ AndExpr)* { return tail.reduce((a,t)=>node("LogicalExpr",{op:"||",left:a,right:t[3]}),left); }
+AndExpr = left:NotExpr tail:(_ "&&" _ NotExpr)* { return tail.reduce((a,t)=>node("LogicalExpr",{op:"&&",left:a,right:t[3]}),left); }
+NotExpr = "!" _ e:NotExpr { return node("UnaryExpr",{op:"!",arg:e}); } / Primary
+
+Primary
+  = "(" _ e:Expr _ ")" {return e;}
+  / PredicateCall / Selector / WorldCoord / Waypoint / BlockQuery
+  / NumberLiteral / StringLiteral / BooleanLiteral / IdentifierExpr
+
+PredicateCall = name:Identifier _ "(" _ args:ArgList? _ ")" { return node("PredicateCall",{name,args:args||[]}); }
+IdentifierExpr = id:Identifier { return node("Identifier",{name:id}); }
+
+Selector = head:SelectorTerm tail:(_ "+" _ SelectorTerm)* { return node("Selector",{terms:[head,...tail.map(t=>t[3])]}); }
+SelectorTerm = axis:[FfBbRrLlUuDd] n:SignedInt? { return node("SelTerm",{axis:text().toLowerCase(),n:n!==null?n:1}); }
+
+WorldCoord = "world" _ "(" _ x:SignedInt _ "," _ y:SignedInt _ "," _ z:SignedInt _ ")" { return node("World",{x,y,z}); }
+Waypoint = "waypoint" _ "(" _ n:StringLiteral _ ")" { return node("Waypoint",{name:n}); }
+BlockQuery = "block" _ "(" _ kv:NamedArg tail:(_ "," _ NamedArg)* _ ")"
+  { const pairs=[kv].concat((tail||[]).map(t=>t[3])); const o={}; for(const p of pairs) o[p.key]=p.value;
+    return node("BlockQuery",{query:o}); }
+
+NumberLiteral = n:SignedInt { return node("Number",{value:n}); }
+SignedInt = s:"-"? d:[0-9]+ { return parseInt((s||"")+d.join(""),10); }
+StringLiteral = "\"" chars:Char* "\"" { return node("String",{value:chars.join("")}); }
+Char = "\\\"" {return "\""} / "\\n" {return "\n"} / "\\t" {return "\t"} / !("\"") . {return text();}
+BooleanLiteral = "true" {return node("Boolean",{value:true});} / "false" {return node("Boolean",{value:false});}
+
+Identifier = !Keyword id:([a-z_][a-z0-9_]*) { return id.join(""); }
+Keyword = "macro" / "if" / "else" / "repeat" / "while" / "assert" / "true" / "false"
+
+_ = (WhiteSpace / Comment)* ; __ = (WhiteSpace / Comment)+
+WhiteSpace = [ \t\r\n]+
+Comment = "//" [^\n]* "\n"? / "/*" (!"*/" .)* "*/"
+```
+
+---
+
+## 13) Validation & limits
+
+* Unknown commands → compile error.
+* Named arguments checked per command.
+* Loops & recursion limited by config.
+* Registry IDs must be canonical strings.
+* Executor enforces all safety invariants.
+
+---
+
+## ✅ TL;DR
+
+CraftScript is a **minimal lowercase scripting language** for Minecraft agents:
+
+```c
+if (safe_step_up(f1)) {
+  dig(f1+u2);
+  move(f1^);
+}
+```
+
+It uses **Minecraft’s real IDs**, **relative coordinates**, and a strict executor, producing **clear structured results** for humans and LLMs alike.
+
+---
+
+# Runtime Introspection & Navigation API (vox + nav)
+
+Great — since you already have **mineflayer-pathfinder**, let’s keep it simple and **wrap what you have** instead of inventing new nav logic. Below is a tight set of **5 core world-understanding methods + 1 navigation wrapper** that plug straight into your stack and use **vanilla Minecraft IDs/names** (no mapping).
+
+I’m also showing exactly **how the nav wrapper should talk to pathfinder** and what status/errors you should emit so the planner can react.
+
+---
+
+## Common envelope (all successes)
+
+```json
+{ "version":"mcrn-vox/1.1", "pose":{ "heading":"E", "feet_world":[x,y,z] }, "ts": 1710000000 }
+```
+
+**Uniform error**
+
+```json
+{ "ok": false, "error": "OUT_OF_BOUNDS|TIMEOUT|UNREACHABLE|BLOCKED|UNAVAILABLE", "message": "...", "ts": 1710000000 }
+```
+
+IDs must be **registry strings** like `"minecraft:oak_log"`, faces `"up|down|north|south|east|west"`.
+
+---
+
+# The 6 methods (minimal, practical)
+
+## 1) `get_vox(radius=2, include_air=false)`
+
+Local 3D snapshot (5×5×5 default), **relative selectors** keyed (e.g. `"F1+U2"`), plus precomputed safety predicates.
+
+**Response payload**
+
+```json
+{
+  "window": { "radius": 2, "shape": [5,5,5] },
+  "vox": {
+    "F1": "minecraft:dirt",
+    "F1+U1": "minecraft:dirt",
+    "F1+U2": "minecraft:stone",
+    "U2": "minecraft:gravel"
+  },
+  "predicates": {
+    "SAFE_STEP_UP[F1]": false,
+    "SAFE_STEP_DOWN[F1]": true,
+    "CAN_STAND[F1]": true,
+    "HAZARDS": ["gravel_overhead"]
+  }
+}
+```
+
+---
+
+## 2) `affordances(selector="F1")`
+
+What’s safely doable **at/into** a spot (standability, step up/down, place faces, tool hint).
+
+```json
+{
+  "selector": "F1",
+  "can_stand": true,
+  "safe_step_up": false,
+  "safe_step_down": true,
+  "placeable_faces": ["up","north"],
+  "tools": { "break_best": "minecraft:iron_pickaxe", "place_requires_support": true }
+}
+```
+
+---
+
+## 3) `nearest(query)`
+
+Find nearest **block** or **entity** with reachability hint.
+
+**Request**
+
+```json
+{ "block_id":"minecraft:oak_log", "radius":48, "reachable":true }
+```
+
+**Response**
+
+```json
+{
+  "matches": [
+    { "selector":"F6+R1", "world":[x,y,z], "dist":6, "reachable":true },
+    { "selector":"F9",    "world":[x,y,z], "dist":9, "reachable":false }
+  ]
+}
+```
+
+*(Support `entity_id:"minecraft:cow"` the same way.)*
+
+---
+
+## 4) `block_info(target)`
+
+On-demand block properties for reasoning (don’t dump catalogs).
+
+**Request** (by id **or** selector)
+
+```json
+{ "id":"minecraft:gravel" }  // or { "selector":"F1+U2" }
+```
+
+**Response**
+
+```json
+{
+  "id": "minecraft:gravel",
+  "state": null,
+  "props": {
+    "category": "gravity",
+    "preferred_tool": "minecraft:iron_shovel",
+    "falls": true,
+    "liquid": false,
+    "place_requires_support": false,
+    "hardness": 0.6,
+    "light_emission": 0,
+    "drops": ["minecraft:gravel"]
+  }
+}
+```
+
+---
+
+## 5) `get_topography(radius=6)`
+
+Bird’s-eye **heightmap & slope** around the agent (still relative F/R).
+
+```json
+{
+  "grid": { "size": [13,13], "origin": "F0/R0" },
+  "heightmap": { "F0+R0": 0, "F1+R0": 1, "F2+R0": 2, "B1+R-1": -1 },
+  "slope": { "F1+R0": "gentle_up", "B2+R-1": "down" },
+  "summary": { "min": -3, "max": 4, "flat_cells": 89 }
+}
+```
+
+---
+
+## 6) `nav(action, ...)` — **single wrapper for mineflayer-pathfinder**
+
+One method for **start / status / cancel**, so we don’t add more endpoints.
+
+### a) Start
+
+**Request**
+
+```json
+{
+  "action": "start",
+  "target": { "type":"WORLD", "x":140, "y":64, "z":92 },   // or { "type":"SELECTOR", "sel":"F6" }
+  "tol": 1,
+  "timeout_ms": 8000,
+  "policy": { "allow_dig": false, "max_drop": 1, "max_step": 1 }
+}
+```
+
+**Response**
+
+```json
+{ "nav_id": "nav_7q2", "state": "planning" }
+```
+
+**How to wire to mineflayer-pathfinder**
+
+* Choose Goal type:
+
+  * world: `new GoalNear(x,y,z,tol)` or `GoalBlock/GoalXZ` as appropriate
+  * selector: convert to world then same
+* Configure `Movements` from `policy` (maxDrop, maxStep, blocksToAvoid, etc.)
+* Call `bot.pathfinder.setMovements(movements)`, then `setGoal(goal, /*dynamic=*/true?)`
+* Subscribe & translate events to WS/return values:
+
+  * `path_update` → progress (nodes, distance, reached)
+  * `goal_reached` → `state:"arrived"`
+  * `goal_reset` / `goal_aborted` → `state:"canceled"`
+  * timeouts you enforce → `state:"failed", reason:"timeout"`
+
+### b) Status
+
+**Request**
+
+```json
+{ "action": "status", "nav_id": "nav_7q2" }
+```
+
+**Response**
+
+```json
+{
+  "nav_id": "nav_7q2",
+  "state": "moving",                   // planning|moving|arrived|stuck|failed|canceled
+  "distance_remaining": 8.4,
+  "nodes_expanded": 152,
+  "replan_count": 2,
+  "eta_seconds": 12
+}
+```
+
+### c) Cancel
+
+**Request**
+
+```json
+{ "action": "cancel", "nav_id": "nav_7q2" }
+```
+
+**Response**
+
+```json
+{ "nav_id": "nav_7q2", "state": "canceled" }
+```
+
+**Failure → Planner feedback (examples)**
+
+* `UNREACHABLE` (pathfinder returns no path)
+* `BLOCKED` (dynamic obstacle detected, replan exceeded)
+* `TIMEOUT` (exceeded timeout_ms)
+* `HAZARD` (your hazard_envelope says lava/void ahead; you abort)
+
+> The planner can react by `get_vox`, `affordances`, or enqueueing a micro-clear job.
+
+---
+
+## Why this set?
+
+* It gives the planner **just enough** to plan safely: local vox, affordances, nearest targets, block facts, terrain feel, and a clean **nav wrapper** that reuses your pathfinder.
+* All payloads use **Minecraft’s own IDs/names**, so there’s **no mapping layer** to go wrong.
+* The nav wrapper keeps the interface count to **one** while still offering start/status/cancel.
+
+---
+
+## Implementation notes (repo integration)
+
+- Parser: planned with Peggy.js; the grammar above can be dropped into a `peggy` build to emit an AST with lowercase command names.
+- Executor: enforce safety invariants and map commands to Mineflayer/MCP calls as listed in section 10.
+- Env methods: expose the 5 vox methods + `nav` wrapper via your MCP server so the planner and agent share a single interface.
+- IDs/faces: always pass through canonical registry strings unchanged (`"minecraft:..."`, `"up|north|..."`).

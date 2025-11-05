@@ -1,11 +1,18 @@
 #!/usr/bin/env ts-node
 import { loadConfig, startBots, stopBots } from './botControl.js';
 import { startDashboardServer } from './dashboardServer.js';
+import fs from 'fs';
+import path from 'path';
 
 const DASHBOARD_PORT = Number(process.env.DASHBOARD_PORT || 4242);
 
 async function main() {
   console.log('=== Minecraft Colony Runtime ===');
+  // Write our own PID file so launch scripts don't rely on wrapper PIDs
+  const pidFile = path.resolve(process.cwd(), 'colony-runtime.pid');
+  try {
+    fs.writeFileSync(pidFile, String(process.pid));
+  } catch (_) {}
 
   const bots = loadConfig();
   if (!bots.length) {
@@ -25,6 +32,7 @@ async function main() {
     } catch (error) {
       console.error('Error stopping bots:', error);
     } finally {
+      try { if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile); } catch (_) {}
       process.exit(0);
     }
   };
@@ -35,5 +43,6 @@ async function main() {
 
 main().catch((error) => {
   console.error('Colony runtime failed to start:', error);
+  try { const pidFile = path.resolve(process.cwd(), 'colony-runtime.pid'); if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile); } catch (_) {}
   process.exit(1);
 });

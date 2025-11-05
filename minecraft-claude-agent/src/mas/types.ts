@@ -5,6 +5,7 @@ export type IntentType =
   | 'TUNNEL_FORWARD'
   | 'BRANCH_MINE'
   | 'HARVEST_TREE'
+  | 'RUN_CRAFTSCRIPT'
   | 'GATHER_RESOURCE';
 
 export type JobKind = 'intent' | 'program';

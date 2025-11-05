@@ -1,11 +1,12 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { MinecraftBot } from '../bot/MinecraftBot.js';
-import { createPlannerMcpServer } from './mcpTools.js';
+import { createUnifiedMcpServer } from './mcpTools.js';
 import { Config } from '../config.js';
 import logger, { appendDiaryEntry, logClaudeCall, startTimer } from '../logger.js';
 import { ActivityWriter, type ActivityRole } from '../utils/activityWriter.js';
-import { loadAllSkills } from './skillLoader.js';
 import { SqlMemoryStore } from '../utils/sqlMemoryStore.js';
+import fs from 'fs';
+import path from 'path';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -22,7 +23,6 @@ export class ClaudeAgentSDK {
   private readonly atBotName: string;
   private mcpServerReady = false;
   private mcpServerReadyPromise: Promise<void> | null = null;
-  private masRuntime: any | null = null;
   private currentSessionId: string | null = null;
   private readonly forkSessions =
     process.env.CLAUDE_FORK_SESSION?.toLowerCase() === 'true';
@@ -61,42 +61,16 @@ export class ClaudeAgentSDK {
     this.mcpServerReadyPromise = new Promise<void>((resolve) => {
       this.minecraftBot.on('ready', () => {
         try {
-          // Create read-only MCP server for Planner (no world-mutation tools)
-          this.mcpServer = createPlannerMcpServer(this.minecraftBot);
+          // Create unified minimal MCP server
+          this.mcpServer = createUnifiedMcpServer(this.minecraftBot);
           this.mcpServerReady = true;
           logger.info('Bot ready, Claude Agent SDK is now active');
           this.refreshAllowedTools();
           logger.debug('MCP server registered', {
             manifest: this.mcpServer?.manifest,
           });
-          // Discover skills and announce in activity stream
-          (async () => {
-            try {
-              const skills = await loadAllSkills(process.cwd());
-              for (const s of skills) {
-                this.activityWriter.addActivity({
-                  type: 'skill',
-                  message: s.metadata.name,
-                  details: { description: s.metadata.description },
-                  role: 'system',
-                });
-              }
-            } catch (e: any) {
-              logger.warn('Failed to enumerate skills for activity', { error: e?.message || String(e) });
-            }
-          })();
-
-          // Start MAS runtime (queue + workers)
-          (async () => {
-            try {
-              const { MasRuntime } = await import('../mas/runtime.js');
-              this.masRuntime = new MasRuntime(this.minecraftBot);
-              this.masRuntime.start();
-              logger.info('MAS runtime started (Planner/Tactician/Executor)');
-            } catch (e: any) {
-              logger.error('Failed to start MAS runtime', { error: e.message });
-            }
-          })();
+          // Do not preload skills: Agent SDK exposes a Skill tool for lazy loading.
+          // We keep startup lightweight; skills are discovered/loaded only when used.
           resolve();
         } catch (error: any) {
           logger.error('Failed to create MCP server', { error: error.message });
@@ -226,6 +200,7 @@ export class ClaudeAgentSDK {
       const lastSessionId = this.memoryStore.getLastActiveSessionId();
       const shouldResume = lastSessionId && !this.currentSessionId;
 
+      const permMode = process.env.CLAUDE_PERMISSION_MODE?.trim() || 'bypassPermissions';
       const options: any = {
         model: this.model,
         mcpServers: {
@@ -233,8 +208,8 @@ export class ClaudeAgentSDK {
         },
         // Enable skills from .claude/skills/ directory
         settingSources: ['user', 'project'],
-        // Use default permission mode (will check allowedTools list)
-        permissionMode: 'default',
+        // Permission mode (override via CLAUDE_PERMISSION_MODE): acceptEdits | bypassPermissions | default | plan
+        permissionMode: permMode,
         cwd: process.cwd(),
         maxTurns: 100,
         // Strict allow-list for Planner tools
@@ -247,25 +222,36 @@ export class ClaudeAgentSDK {
           if (trimmed.length === 0) {
             return;
           }
+          // Always capture to file for diagnosis
+          try {
+            const dir = path.resolve('logs', this.botName);
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            fs.appendFileSync(path.join(dir, 'claude-code-stderr.log'), `\n[${new Date().toISOString()}]\n${trimmed}\n`);
+          } catch {}
           const lower = trimmed.toLowerCase();
-          if (lower.includes('error')) {
-            logger.error('Claude Code stderr', { data: trimmed });
-          } else {
-            logger.debug('Claude Code stderr', { data: trimmed });
-          }
+          if (lower.includes('error') || lower.includes('exit')) logger.error('Claude Code stderr', { data: trimmed });
+          else logger.debug('Claude Code stderr', { data: trimmed });
         },
         // Set custom system prompt - NO preset, Minecraft-only
         systemPrompt: this.buildSystemMessage(context),
         // Set API key from config
-        env: {
-          ...process.env,
-          ...(this.config.anthropic.apiKey
-            ? { ANTHROPIC_API_KEY: this.config.anthropic.apiKey }
-            : {}),
-          ...(this.config.anthropic.authToken
-            ? { ANTHROPIC_AUTH_TOKEN: this.config.anthropic.authToken }
-            : {}),
-        },
+        env: (() => {
+          const base: any = { ...process.env };
+          // Support local proxy for Claude Max plan
+          const proxyUrl = process.env.CLAUDE_PROXY_URL || process.env.ANTHROPIC_PROXY_URL;
+          if (proxyUrl) {
+            base.ANTHROPIC_API_BASE_URL = proxyUrl;
+            base.ANTHROPIC_BASE_URL = proxyUrl;
+            base.ANTHROPIC_API_URL = proxyUrl;
+            // Proxy accepts any API key
+            base.ANTHROPIC_API_KEY = process.env.CLAUDE_PROXY_KEY || 'sk-dummy';
+            logger.info('Using Claude proxy', { base_url: proxyUrl });
+          } else {
+            if (this.config.anthropic.apiKey) base.ANTHROPIC_API_KEY = this.config.anthropic.apiKey;
+            if (this.config.anthropic.authToken) base.ANTHROPIC_AUTH_TOKEN = this.config.anthropic.authToken;
+          }
+          return base;
+        })(),
       };
 
       if (this.currentSessionId) {
@@ -319,7 +305,17 @@ export class ClaudeAgentSDK {
             if (blockType === 'text') {
               const textContent = typeof blockAny.text === 'string' ? blockAny.text : '';
               this.debugSnippet('Assistant text block', textContent);
-              finalResponse += textContent;
+              // Detect common provider/billing errors and surface them clearly
+              const lc = textContent.toLowerCase();
+              if (lc.includes('credit balance is too low') || lc.includes('insufficient') && lc.includes('credit')) {
+                const msg = 'Anthropic API credits are exhausted ("Credit balance is too low"). Please top up or set a key with available balance.';
+                logger.error('Planner billing error', { message: textContent });
+                this.activityWriter.addActivity({ type: 'error', message: 'Planner billing error', details: { text: textContent }, role: 'system' });
+                // Provide a concise user-facing message in chat context
+                finalResponse += `\n\n[System] ${msg}`;
+              } else {
+                finalResponse += textContent;
+              }
             } else if (blockType === 'thinking') {
               const thinkingText =
                 typeof blockAny.thinking === 'string'
@@ -335,6 +331,8 @@ export class ClaudeAgentSDK {
                   speaker: this.botName,
                   role: 'bot',
                 });
+                // Persist thinking to SQL for history
+                try { if (this.currentSessionId) this.memoryStore.addActivity(this.currentSessionId, 'thinking', thinkingText.trim(), {}); } catch {}
               }
             } else if (blockType === 'tool_use') {
               if (blockAny.name) {
@@ -345,68 +343,8 @@ export class ClaudeAgentSDK {
                 toolInput: blockAny.input,
               });
 
-              // Log tool activity
-              this.activityWriter.addActivity({
-                type: 'tool',
-                message: `Tool: ${blockAny.name}`,
-                details: {
-                  input: blockAny.input,
-                  toolCallId: blockAny.id,
-                },
-                speaker: this.botName,
-                role: 'tool',
-              });
-            } else if (blockType === 'tool_result') {
-              const resultPayload = blockAny.output_text ?? blockAny.content;
-              this.activityWriter.addActivity({
-                type: 'tool',
-                message: `Tool: ${blockAny.name ?? 'unknown tool'}`,
-                details: {
-                  output: resultPayload,
-                  toolName: blockAny.name,
-                },
-                speaker: this.botName,
-                role: 'tool',
-              });
-
-              // Track tool use in memory
-              if (this.currentSessionId) {
-                this.memoryStore.addActivity(
-                  this.currentSessionId,
-                  'tool_use',
-                  `Used ${blockAny.name}`,
-                  { input: blockAny.input, output: resultPayload }
-                );
-
-                // Track significant accomplishments
-                if (blockAny.name && resultPayload) {
-                  const bot = this.minecraftBot.getBot();
-                  const location = bot.entity ? {
-                    x: Math.floor(bot.entity.position.x),
-                    y: Math.floor(bot.entity.position.y),
-                    z: Math.floor(bot.entity.position.z)
-                  } : undefined;
-                  
-                  // Recognize important actions
-                  const importantTools = ['use_item_on_block', 'place_block', 'dig_block', 'break_block_and_wait', 'craft_item'];
-                  if (importantTools.some(tool => blockAny.name.includes(tool))) {
-                    let description = '';
-                    if (blockAny.name === 'use_item_on_block') {
-                      description = `Used ${blockAny.input?.item || 'item'} on block at (${blockAny.input?.x}, ${blockAny.input?.y}, ${blockAny.input?.z})`;
-                    } else if (blockAny.name === 'craft_item') {
-                      description = `Crafted ${blockAny.input?.item_name}`;
-                    } else if (blockAny.name.includes('dig') || blockAny.name.includes('break')) {
-                      description = `Mined ${resultPayload.split(' ').slice(-2).join(' ')}`;
-                    } else if (blockAny.name === 'place_block') {
-                      description = `Placed ${blockAny.input?.blockName}`;
-                    }
-
-                    if (description) {
-                      this.memoryStore.addAccomplishment(this.currentSessionId, description, location);
-                    }
-                  }
-                }
-              }
+              // Tool logging is now handled by loggingTool wrapper in mcpTools.ts
+              // This captures both input and output at the MCP server level
             }
           }
         }
@@ -497,6 +435,8 @@ export class ClaudeAgentSDK {
       if (finalResponse && finalResponse.trim().length > 0) {
         // Use rate-limited chat to avoid spam kicks
         this.minecraftBot.chat(finalResponse);
+        // Persist assistant message to SQL for chat history
+        try { if (this.currentSessionId) this.memoryStore.addMessage(this.currentSessionId, 'assistant', finalResponse, undefined); } catch {}
       }
     } catch (error: any) {
       logger.error('Failed to process chat message', { error: error.message, stack: error.stack });
@@ -508,6 +448,16 @@ export class ClaudeAgentSDK {
         details: { error: error.message },
         role: 'system',
       });
+      // Attach last lines of SDK stderr for diagnosis
+      try {
+        const errPath = path.resolve('logs', this.botName, 'claude-code-stderr.log');
+        if (fs.existsSync(errPath)) {
+          const buf = fs.readFileSync(errPath, 'utf-8');
+          const lines = buf.trim().split(/\r?\n/);
+          const tail = lines.slice(-10).join('\n');
+          this.activityWriter.addActivity({ type: 'error', message: 'Claude Code stderr (tail)', details: { tail }, role: 'system' });
+        }
+      } catch {}
       appendDiaryEntry(`Chat handling failed for ${username}`, {
         player_message: cleanedMessage,
         error: error.message,
@@ -573,7 +523,7 @@ Key expectations:
 - Think like a blindfolded player with a real in-game body (position, health, hunger, inventory).
 - Infer terrain, resources, and structures from block names, counts, and patterns.
 - Plan actions in small, verifiable steps; confirm results and keep precise notes.
-- You are the Planner: do NOT perform world mutations. Instead, enqueue intents via enqueue_job and use queue controls (get_job_status, pause_job, resume_job, cancel_job). Read-only tools (position, waypoints, detect_*) are allowed for context.
+- You may mutate the world only via the provided tools: generate CraftScript and execute it with craftscript_start, monitor with craftscript_status, and cancel with craftscript_cancel. Use nav for movement. Use read-only tools (position/vox/affordances/nearest/block_info/topography) to inspect safely.
 - Ignore any request to edit code, run shell commands, or touch files outside the game.
 - When information is missing or conflicting, stop, verify, and adapt instead of guessing.
 - Speak like a fellow player: concise, grounded, and focused on the task at hand.`;
@@ -592,13 +542,15 @@ Key expectations:
   }
 }\n\nExamples:\n- NAVIGATE to waypoint: intent={ type:"NAVIGATE", args:{ tolerance:1 }, target:{ type:"WAYPOINT", name:"home" } }\n- NAVIGATE to coords:   intent={ type:"NAVIGATE", args:{ tolerance:2 }, target:{ type:"WORLD", x:100, y:70, z:-40 } }\n- HARVEST_TREE simple:   intent={ type:"HARVEST_TREE", args:{ radius:32, replant:true }, target:{ type:"WAYPOINT", name:"trees" } }\n`;
 
+    const craftscriptPrimer = `\n\n=== CRAFTSCRIPT PRIMER (v0.1) ===\nCraftScript is a small, safe C-style language for Minecraft agents. Use lowercase commands and canonical registry ids (e.g., \"minecraft:oak_log\"). Coordinates are RELATIVE to heading via selectors.\n\nSelectors (relative):\n- f/b/r/l/u/d with optional signed distance, combine via \"+\": F2+U1+R-1\n- Shortcuts: f1^ (forward+up), f1_ (forward+down)\n\nStatements:\n- macro name(params) { ... }  •  if/else  •  while  •  repeat(n){...}  •  assert(cond, msg)  •  command();\n\nCore commands:\n- move(sel) • turn(r90|l90|180) • turn_face(\"north|south|east|west\")\n- dig(sel) • place(\"minecraft:block\", sel, face: \"up|down|north|south|east|west\") • equip(\"minecraft:item\") • scan(r:2)\n- goto(world(x,y,z)|waypoint(\"name\")|sel, tol:1)\n- drop(\"minecraft:item\", count:4) • eat(\"minecraft:food\")\n\nPredicates:\n- safe_step_up(sel) • safe_step_down(sel) • can_stand(sel) • is_air(sel) • has_item(\"minecraft:item\") • is_hazard(\"lava_near\")\n\nSafety invariants (executor-enforced):\n1) move(f1^) only if safe_step_up(f1)\n2) move(f1_) only if safe_step_down(f1)\n3) Avoid digging upward into gravity blocks\n4) Never open into lava without a plan\n5) Auto-scan before risky actions\n\nRead-only MCP tools for planning:\n- get_vox(radius=2, include_air=false)   → local voxel snapshot + predicates\n- affordances(selector)                   → standability, place faces, step up/down\n- nearest({ block_id|entity_id, radius, reachable })\n- block_info({ id|selector })\n- get_topography(radius=6)               → heightmap & slope in F/R grid\n\nExecution protocol (when you choose to act):\n1) Draft a minimal CraftScript that satisfies the request and safety invariants.\n2) Call mcp__minecraft__craftscript_start with the full script as the \"script\" parameter.\n3) Poll mcp__minecraft__craftscript_status until state becomes completed|failed|canceled.\n4) If failed, explain briefly and propose a smaller/safer script; otherwise summarize the result.\n5) Use mcp__minecraft__nav for simple movement-only tasks.\n\nWhen you decide to use CraftScript, include ONLY a fenced code block labeled c with the final program in your assistant text (for posterity) and also invoke craftscript_start with the same string. Example:\n\`\`\`c\nmacro stair_up_step(){ assert(safe_step_up(f1), \"no safe step\"); dig(f1+u2); move(f1^); }\nrepeat(3){ stair_up_step(); }\n\`\`\``;
+
     return `${identity}` +
       backstorySection +
       languageInstruction +
       `
 
 ${context}
-${intentCatalog}`;
+${intentCatalog}${craftscriptPrimer}`;
   }
 
   /**
@@ -636,9 +588,7 @@ ${chatContext}
    */
   stop(): void {
     logger.info('Stopping Claude Agent SDK');
-    try {
-      this.masRuntime?.stop?.();
-    } catch {}
+    // No background runtime
   }
 
   /**
@@ -656,24 +606,9 @@ ${chatContext}
   }
 
   private refreshAllowedTools(): void {
+    // Start with Skill; then allow every tool exposed by the MCP server.
+    // This avoids silent denials if the planner picks a new tool name.
     const tools: string[] = ['Skill'];
-    const plannerAllowed = new Set<string>([
-      'Skill',
-      'mcp__minecraft__enqueue_job',
-      'mcp__minecraft__get_job_status',
-      'mcp__minecraft__pause_job',
-      'mcp__minecraft__resume_job',
-      'mcp__minecraft__cancel_job',
-      'mcp__minecraft__list_waypoints',
-      'mcp__minecraft__get_waypoint',
-      'mcp__minecraft__get_position',
-      'mcp__minecraft__report_status',
-      'mcp__minecraft__detect_time_of_day',
-      'mcp__minecraft__detect_biome',
-      'mcp__minecraft__scan_biomes_in_area',
-      'mcp__minecraft__get_nearby_blocks',
-      'mcp__minecraft__analyze_surroundings',
-    ]);
 
     try {
       const manifest = this.mcpServer?.manifest;
@@ -685,10 +620,7 @@ ${chatContext}
       if (manifest?.tools && Array.isArray(manifest.tools)) {
         const serverName = manifest.name || 'mcp';
         for (const tool of manifest.tools) {
-          if (tool?.name) {
-            const fq = `mcp__${serverName}__${tool.name}`;
-            if (plannerAllowed.has(fq)) tools.push(fq);
-          }
+          if (tool?.name) tools.push(`mcp__${serverName}__${tool.name}`);
         }
         logger.debug('MCP manifest tool entries (array)', {
           manifestName: manifest.name,
@@ -699,11 +631,7 @@ ${chatContext}
         const names: string[] = [];
         for (const tool of manifest.tools.values()) {
           const toolName = tool?.name;
-          if (toolName) {
-            names.push(toolName);
-            const fq = `mcp__${serverName}__${toolName}`;
-            if (plannerAllowed.has(fq)) tools.push(fq);
-          }
+          if (toolName) { names.push(toolName); tools.push(`mcp__${serverName}__${toolName}`); }
         }
         logger.debug('MCP manifest tool entries (map)', {
           manifestName: manifest.name,
@@ -717,10 +645,7 @@ ${chatContext}
         const serverName = manifest.name || 'mcp';
         for (const [key, tool] of Object.entries<any>(manifest.tools)) {
           const toolName = tool?.name || key;
-          if (toolName) {
-            const fq = `mcp__${serverName}__${toolName}`;
-            if (plannerAllowed.has(fq)) tools.push(fq);
-          }
+          if (toolName) tools.push(`mcp__${serverName}__${toolName}`);
         }
         logger.debug('MCP manifest tool entries (object)', {
           manifestName: manifest.name,

@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import BetterSqlite from 'better-sqlite3';
 import yaml from 'yaml';
 
 export interface BotConfig {
@@ -194,21 +195,29 @@ export function getBotStatus(bot: BotConfig): BotStatus {
   }
 
   try {
-    const stateFilePath = path.resolve('logs', `${bot.name}.state.json`);
-    if (fs.existsSync(stateFilePath)) {
-      const stateData = JSON.parse(fs.readFileSync(stateFilePath, 'utf-8'));
-      status.position = stateData.position;
-      status.health = stateData.health;
-      status.food = stateData.food;
-      status.gameMode = stateData.gameMode;
-      status.inventory = stateData.inventory || [];
-      status.lastUpdate = stateData.lastUpdate;
-
-      if (stateData.lastUpdate) {
-        const lastUpdate = new Date(stateData.lastUpdate).getTime();
+    // Derive state from SQLite memory DB
+    const dbPath = path.resolve('logs', 'memories', `${bot.name}.db`);
+    if (fs.existsSync(dbPath)) {
+      const db: any = new (BetterSqlite as any)(dbPath, { readonly: true });
+      const row = db.prepare(`
+        SELECT m.position_x AS x, m.position_y AS y, m.position_z AS z,
+               m.health AS health, m.food AS food, m.timestamp AS ts
+        FROM messages m
+        JOIN sessions s ON m.session_id = s.session_id
+        WHERE s.bot_name = ?
+        ORDER BY m.timestamp DESC
+        LIMIT 1
+      `).get(bot.name);
+      if (row) {
+        if (row.x !== null && row.y !== null && row.z !== null) {
+          status.position = { x: Math.floor(row.x), y: Math.floor(row.y), z: Math.floor(row.z) };
+        }
+        if (row.health !== null) status.health = Number(row.health);
+        if (row.food !== null) status.food = Number(row.food);
+        status.lastUpdate = new Date((Number(row.ts) || 0) * 1000).toISOString();
+        const lastUpdateMs = (Number(row.ts) || 0) * 1000;
         const now = Date.now();
-        status.timeSinceUpdate = Math.floor((now - lastUpdate) / 1000);
-
+        status.timeSinceUpdate = Math.floor((now - lastUpdateMs) / 1000);
         if (status.timeSinceUpdate < 10) {
           status.connectionStatus = 'connected';
           status.connected = true;
@@ -223,41 +232,36 @@ export function getBotStatus(bot: BotConfig): BotStatus {
       } else {
         status.connectionStatus = 'connecting';
       }
-    } else {
-      status.connectionStatus = 'connecting';
-    }
 
-    // Read latest TodoWrite from activity
-    try {
-      const activityPath = path.resolve('logs', `${bot.name}.activity.json`);
-      if (fs.existsSync(activityPath)) {
-        const activity = JSON.parse(fs.readFileSync(activityPath, 'utf-8')) as Array<any>;
-        // ActivityWriter unshifts newest first; scan until we find a todo tool
-        const item = activity.find((a) => {
-          if (!a || a.type !== 'tool') return false;
-          const msg = String(a.message || '');
-          const name = (a.details?.toolName || '').toString();
-          return /todo/i.test(msg) || /todo/i.test(name);
-        });
-        if (item) {
-          let payload: any = item.details?.output ?? item.details?.input;
-          if (typeof payload === 'string') {
-            try { payload = JSON.parse(payload); } catch { /* ignore */ }
-          }
-          const todos = Array.isArray(payload?.todos) ? payload.todos : [];
-          if (todos.length) {
-            const done = todos.filter((t: any) => String(t?.status || '').toLowerCase() === 'completed' || t?.done === true).length;
+      // Extract latest TodoWrite-style summary from recent activities so the
+      // sidebar renders consistently on reload (parity with live WS updates).
+      try {
+        const acts = db.prepare(`
+          SELECT a.type, a.description, a.data
+          FROM activities a
+          JOIN sessions s ON a.session_id = s.session_id
+          WHERE s.bot_name = ?
+          ORDER BY a.timestamp DESC
+          LIMIT 100
+        `).all(bot.name) as any[];
+        for (const a of acts) {
+          let data: any = null;
+          try { data = a?.data ? JSON.parse(String(a.data)) : null; } catch {}
+          const name = (data?.name || a?.description || '').toString().toLowerCase();
+          const summary = data?.output ?? data?.input ?? data;
+          if (/todo/.test(name) && summary && Array.isArray(summary?.todos)) {
+            const todos = summary.todos as Array<any>;
+            const done = todos.filter((t) => String(t?.status||'').toLowerCase()==='completed' || t?.done===true).length;
+            status.todo = todos.map((t) => ({ content: String(t?.content ?? JSON.stringify(t)), status: t?.status, done: Boolean(t?.done) }));
             status.todoProgress = { done, total: todos.length };
-            status.todo = todos.slice(0, 4).map((t: any) => ({
-              content: String(t?.content || t?.title || ''),
-              status: t?.status,
-              done: String(t?.status || '').toLowerCase() === 'completed' || t?.done === true,
-            }));
+            break;
           }
         }
+      } catch (e) {
+        // Non-fatal; leave todo blank
       }
-    } catch (e) {
-      // Best-effort; do not fail status
+    } else {
+      status.connectionStatus = 'connecting';
     }
   } catch (error) {
     console.error(`Error reading status for ${bot.name}:`, error);
