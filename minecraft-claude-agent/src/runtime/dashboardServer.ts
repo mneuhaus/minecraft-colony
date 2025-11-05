@@ -1,19 +1,24 @@
-import express, { Express } from 'express';
-import cors from 'cors';
+import { Hono } from 'hono';
+import { createAdaptorServer } from '@hono/node-server';
+import { cors } from 'hono/cors';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import mcAssets from 'minecraft-assets';
-import http from 'http';
+import BetterSqlite from 'better-sqlite3';
+const Database: any = (BetterSqlite as any);
 import WebSocket, { WebSocketServer } from 'ws';
-import { MasDatabase } from '../mas/db.js';
+import { SqlMemoryStore } from '../utils/sqlMemoryStore.js';
+// MAS removed; endpoints delegated elsewhere or disabled
 import {
   loadConfig,
   getBotStatus,
   getAllStatuses,
   BotStatus,
+  startBot,
+  stopBot,
 } from './botControl.js';
-import { registerMasRoutes } from '../mas/apiRoutes.js';
+// MAS routes removed
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,91 +26,275 @@ const __dirname = path.dirname(__filename);
 const MINECRAFT_VERSION = process.env.MINECRAFT_VERSION || '1.20';
 const assets: any = mcAssets(MINECRAFT_VERSION);
 
-export function createDashboardApp(): Express {
-  const app = express();
-  app.use(cors());
-  app.use(express.json());
+// Helper function to load bot history from SQLite
+function buildHistoryFromActivity(botId: string, limit: number, beforeTs: number): any[] {
+  const dbPath = path.resolve('logs', 'memories', `${botId}.db`);
+  if (!fs.existsSync(dbPath)) {
+    console.log(`No database found for bot ${botId} at ${dbPath}`);
+    return [];
+  }
 
-  app.get('/api/bots', (_req, res) => {
+  let db: any = null;
+  try {
+    db = new Database(dbPath, { readonly: true });
+    const messages: any[] = [];
+
+    // Messages (chat)
+    const rowsMsg = db.prepare(`
+      SELECT m.role, m.content, m.timestamp
+      FROM messages m
+      JOIN sessions s ON m.session_id = s.session_id
+      WHERE s.bot_name = ? AND m.timestamp < ?
+      ORDER BY m.timestamp DESC
+      LIMIT ?
+    `).all(botId, Math.floor(beforeTs/1000), limit);
+
+    for (const r of rowsMsg) {
+      const ts = (Number(r.timestamp)||0)*1000;
+      const dir = String(r.role)==='user'?'in':'out';
+      const from = dir==='in'?'player':botId;
+      const id = `chat-${ts}-${Math.random().toString(36).slice(2, 7)}`;
+      messages.push({
+        id,
+        type:'chat',
+        bot_id: botId,
+        ts,
+        payload:{
+          from,
+          text: String(r.content||''),
+          channel:'chat',
+          direction: dir
+        }
+      });
+    }
+
+    // Activities (thinking/tool/system)
+    const rowsAct = db.prepare(`
+      SELECT a.type, a.description, a.timestamp, a.data
+      FROM activities a
+      JOIN sessions s ON a.session_id = s.session_id
+      WHERE s.bot_name = ? AND a.timestamp < ?
+      ORDER BY a.timestamp DESC
+      LIMIT ?
+    `).all(botId, Math.floor(beforeTs/1000), limit);
+
+    for (const a of rowsAct) {
+      const ts = (Number(a.timestamp)||0)*1000;
+      const t = String(a.type||'').toLowerCase();
+      let data:any={};
+      try {
+        data = a.data ? JSON.parse(String(a.data)) : {};
+      } catch (e) {
+        console.warn(`Failed to parse activity data for ${botId}:`, e);
+      }
+
+      if (t==='thinking') {
+        messages.push({
+          id: `think-${ts}-${Math.random().toString(36).slice(2, 7)}`,
+          type:'chat',
+          bot_id: botId,
+          ts,
+          payload:{
+            from:'Planner',
+            text:String(a.description||''),
+            channel:'system',
+            direction:'out',
+            kind:'thinking'
+          }
+        });
+      } else if (t==='tool' || t==='tool_use') {
+        messages.push({
+          id: `tool-${ts}-${Math.random().toString(36).slice(2, 7)}`,
+          type:'tool',
+          bot_id: botId,
+          ts,
+          payload:{
+            tool_name:data?.name||'tool',
+            params_summary:data||{},
+            output:data?.output,
+            input:data?.input,
+            duration_ms:data?.duration_ms,
+            ok:true
+          }
+        });
+      } else if (t==='error' || t==='warn' || t==='info') {
+        messages.push({
+          id: `sys-${ts}-${Math.random().toString(36).slice(2, 7)}`,
+          type:'system',
+          bot_id: botId,
+          ts,
+          payload:{
+            level: t==='warn'?'warn':t,
+            message:String(a.description||'')
+          }
+        });
+      } else if (t==='skill') {
+        messages.push({
+          id: `skill-${ts}-${Math.random().toString(36).slice(2, 7)}`,
+          type:'skill',
+          bot_id: botId,
+          ts,
+          payload:{
+            name:a.description,
+            description:data?.description||''
+          }
+        });
+      }
+    }
+
+    messages.sort((a,b)=>a.ts-b.ts);
+    return messages.slice(-limit);
+  } catch (error) {
+    console.error(`Error loading history for bot ${botId}:`, error);
+    return [];
+  } finally {
     try {
-      res.json(getAllStatuses());
+      if (db) db.close();
+    } catch (e) {
+      console.warn(`Failed to close database for ${botId}:`, e);
+    }
+  }
+}
+
+export function createDashboardApp() {
+  const app = new Hono();
+  app.use('*', cors());
+
+  app.get('/api/bots', (c) => {
+    try {
+      return c.json(getAllStatuses());
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return c.json({ error: error.message }, 500);
     }
   });
 
-  app.get('/api/bots/:name', (req, res) => {
+  app.get('/api/bots/:name', (c) => {
     try {
       const bots = loadConfig();
-      const bot = bots.find((b) => b.name === req.params.name);
+      const bot = bots.find((b) => b.name === c.req.param('name'));
       if (!bot) {
-        return res.status(404).json({ error: 'Bot not found' });
+        return c.json({ error: 'Bot not found' }, 404);
       }
       const status: BotStatus = getBotStatus(bot);
-      return res.json(status);
+      return c.json(status);
     } catch (error: any) {
-      return res.status(500).json({ error: error.message });
+      return c.json({ error: error.message }, 500);
     }
   });
 
-  app.get('/api/logs/:botName', (req, res) => {
+  // Reset a bot's memory/activity/logs and restart the bot (with confirmation expected client-side)
+  app.post('/api/bots/:name/reset', async (c) => {
     try {
       const bots = loadConfig();
-      const bot = bots.find((b) => b.name === req.params.botName);
+      const bot = bots.find((b) => b.name === c.req.param('name'));
       if (!bot) {
-        return res.status(404).json({ error: 'Bot not found' });
+        return c.json({ error: 'Bot not found' }, 404);
+      }
+
+      // Stop bot if running
+      try { stopBot(bot); } catch {}
+
+      const botName = bot.name;
+      // Clear activity file
+      try {
+        const actPath = path.resolve('logs', `${botName}.activity.json`);
+        fs.mkdirSync(path.dirname(actPath), { recursive: true });
+        fs.writeFileSync(actPath, '[]\n', 'utf-8');
+      } catch {}
+
+      // Clear state file
+      try {
+        const statePath = path.resolve('logs', `${botName}.state.json`);
+        if (fs.existsSync(statePath)) fs.unlinkSync(statePath);
+      } catch {}
+
+      // Clear diary
+      try {
+        const diaryPath = path.resolve(bot.logs_dir, 'diary.md');
+        fs.mkdirSync(path.dirname(diaryPath), { recursive: true });
+        fs.writeFileSync(
+          diaryPath,
+          `# Diary reset\n\nReset at ${new Date().toISOString()}\n`,
+          'utf-8'
+        );
+      } catch {}
+
+      // Remove memory DB files
+      try {
+        const memDir = path.resolve('logs', 'memories');
+        const base = path.resolve(memDir, `${botName}.db`);
+        const candidates = [base, `${base}-wal`, `${base}-shm`];
+        for (const f of candidates) {
+          try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
+        }
+      } catch {}
+
+      // Optionally clear bot-specific log file
+      const clearLog = c.req.query('clear_log');
+      if (clearLog === 'true') {
+        try {
+          const logPath = path.resolve(bot.logs_dir, `${bot.name}.log`);
+          if (fs.existsSync(logPath)) fs.writeFileSync(logPath, `---\nLog reset at ${new Date().toISOString()}\n`, 'utf-8');
+        } catch {}
+      }
+
+      // Restart bot
+      try { startBot(bot); } catch {}
+
+      return c.json({ ok: true, reset: true, bot: botName });
+    } catch (error: any) {
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
+  app.get('/api/logs/:botName', (c) => {
+    try {
+      const bots = loadConfig();
+      const bot = bots.find((b) => b.name === c.req.param('botName'));
+      if (!bot) {
+        return c.json({ error: 'Bot not found' }, 404);
       }
 
       const logPath = path.resolve(bot.logs_dir, `${bot.name}.log`);
       if (!fs.existsSync(logPath)) {
-        return res.status(404).send('Log file not found');
+        return c.text('Log file not found', 404);
       }
 
-      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      return res.sendFile(logPath);
+      const content = fs.readFileSync(logPath, 'utf-8');
+      return c.text(content, 200, { 'Content-Type': 'text/plain; charset=utf-8' });
     } catch (error: any) {
-      return res.status(500).json({ error: error.message });
+      return c.json({ error: error.message }, 500);
     }
   });
 
-  app.get('/api/diary/:botName', (req, res) => {
+  app.get('/api/diary/:botName', (c) => {
     try {
       const bots = loadConfig();
-      const bot = bots.find((b) => b.name === req.params.botName);
+      const bot = bots.find((b) => b.name === c.req.param('botName'));
       if (!bot) {
-        return res.status(404).json({ error: 'Bot not found' });
+        return c.json({ error: 'Bot not found' }, 404);
       }
 
       const diaryPath = path.resolve(bot.logs_dir, 'diary.md');
       if (!fs.existsSync(diaryPath)) {
-        return res.status(404).send('Diary file not found');
+        return c.text('Diary file not found', 404);
       }
 
-      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
-      return res.sendFile(diaryPath);
+      const content = fs.readFileSync(diaryPath, 'utf-8');
+      return c.text(content, 200, { 'Content-Type': 'text/markdown; charset=utf-8' });
     } catch (error: any) {
-      return res.status(500).json({ error: error.message });
+      return c.json({ error: error.message }, 500);
     }
   });
 
-  // Serve activity JSON for chat/thoughts/tools stream
-  app.get('/api/activity/:botName', (req, res) => {
-    try {
-      const botName = req.params.botName;
-      const file = path.resolve('logs', `${botName}.activity.json`);
-      if (!fs.existsSync(file)) {
-        return res.status(404).json([]);
-      }
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      return res.sendFile(file);
-    } catch (error: any) {
-      return res.status(500).json({ error: error.message });
-    }
+  // Legacy endpoint (JSON activity). We migrated to SQL + WebSocket. Return 410 Gone.
+  app.get('/api/activity/:botName', (c) => {
+    return c.json({ error: 'Deprecated: use WebSocket /ws with {type:"history"} for activity history.' }, 410);
   });
 
-  app.get('/api/texture/:itemName', (req, res) => {
+  app.get('/api/texture/:itemName', (c) => {
     try {
-      const itemName = String(req.params.itemName);
+      const itemName = String(c.req.param('itemName'));
       // minecraft-assets modern API: use getTexture(name) and assets.directory
       let textureKey: string | null = null;
       try {
@@ -122,9 +311,8 @@ export function createDashboardApp(): Express {
         const filePath = path.resolve((assets as any).directory, `${textureKey}.png`);
         if (fs.existsSync(filePath)) {
           try {
-            const stream = fs.createReadStream(filePath);
-            res.setHeader('Content-Type', 'image/png');
-            return void stream.pipe(res);
+            const buf = fs.readFileSync(filePath);
+            return c.body(buf, 200, { 'Content-Type': 'image/png' });
           } catch {}
         }
 
@@ -136,9 +324,7 @@ export function createDashboardApp(): Express {
           if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
             const base64 = dataUrl.split(',')[1];
             const buf = Buffer.from(base64, 'base64');
-            res.setHeader('Content-Type', 'image/png');
-            res.setHeader('Content-Length', String(buf.length));
-            return void res.end(buf);
+            return c.body(buf, 200, { 'Content-Type': 'image/png' });
           }
         }
       }
@@ -149,21 +335,19 @@ export function createDashboardApp(): Express {
         if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
           const base64 = dataUrl.split(',')[1];
           const buf = Buffer.from(base64, 'base64');
-          res.setHeader('Content-Type', 'image/png');
-          res.setHeader('Content-Length', String(buf.length));
-          return void res.end(buf);
+          return c.body(buf, 200, { 'Content-Type': 'image/png' });
         }
       } catch {}
 
-      return void res.status(404).json({ error: 'Texture not found' });
+      return c.json({ error: 'Texture not found' }, 404);
     } catch (error: any) {
-      return void res.status(500).json({ error: error.message });
+      return c.json({ error: error.message }, 500);
     }
   });
 
   // Debug helper for textures
-  app.get('/api/texture-debug/:itemName', (req, res) => {
-    const itemName = String(req.params.itemName);
+  app.get('/api/texture-debug/:itemName', (c) => {
+    const itemName = String(c.req.param('itemName'));
     const info: any = { itemName };
     try {
       info.version = (assets as any).version;
@@ -178,386 +362,255 @@ export function createDashboardApp(): Express {
         const dataUrl = (assets as any).textureContent?.[base]?.texture;
         info.base64Available = typeof dataUrl === 'string' && dataUrl.startsWith('data:image/');
       }
-      return void res.json(info);
+      return c.json(info);
     } catch (e: any) {
       info.error = e?.message || String(e);
-      return void res.json(info);
+      return c.json(info);
     }
   });
 
-  // Serve Timeline as the main view at '/'
-  app.get('/', (_req, res) => {
-    const timelinePath = path.resolve(__dirname, 'timeline.html');
-    res.sendFile(timelinePath);
+  // Serve Vue dashboard build at '/'
+  app.get('/', (c) => {
+    const vueIndex = path.resolve(__dirname, '../../dist/dashboard/index.html');
+    if (!fs.existsSync(vueIndex)) {
+      return c.text('Dashboard not built. Run: pnpm run dashboard:build', 500);
+    }
+    const html = fs.readFileSync(vueIndex, 'utf-8');
+    return c.html(html);
   });
 
-  // Back-compat: keep /timeline but point to the same file
-  app.get('/timeline', (_req, res) => {
-    const timelinePath = path.resolve(__dirname, 'timeline.html');
-    res.sendFile(timelinePath);
+  // Serve built dashboard assets
+  app.get('/assets/*', (c) => {
+    const target = c.req.path.replace(/^\/+/, '');
+    const asset = path.resolve(__dirname, '../../dist/dashboard', target.replace(/^assets\//, 'assets/'));
+    if (fs.existsSync(asset)) {
+      const buf = fs.readFileSync(asset);
+      // Set correct MIME type
+      const ext = path.extname(asset).toLowerCase();
+      const mimeTypes: Record<string, string> = {
+        '.js': 'application/javascript',
+        '.mjs': 'application/javascript',
+        '.css': 'text/css',
+        '.json': 'application/json',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.svg': 'image/svg+xml',
+        '.ico': 'image/x-icon',
+      };
+      const contentType = mimeTypes[ext] || 'application/octet-stream';
+      return c.body(buf, 200, { 'Content-Type': contentType });
+    }
+    return c.text('Not found', 404);
   });
 
-  // Serve timeline JS
-  app.get('/timeline.js', (_req, res) => {
-    const timelineJsPath = path.resolve(__dirname, 'timeline.js');
-    res.sendFile(timelineJsPath);
+  // Favicon (return 204 No Content to avoid 404)
+  app.get('/favicon.ico', (c) => {
+    return c.body(null, 204);
   });
 
   // Serve timeline test page
-  app.get('/timeline-test', (_req, res) => {
+  app.get('/timeline-test', (c) => {
     const testPath = path.resolve(__dirname, 'timeline-test.html');
-    res.sendFile(testPath);
+    if (fs.existsSync(testPath)) {
+      const content = fs.readFileSync(testPath, 'utf-8');
+      return c.html(content);
+    }
+    return c.text('Timeline test page not found', 404);
   });
 
-  // Debug endpoint for timeline
-  app.get('/api/timeline/debug', (_req, res) => {
-    const db = new MasDatabase();
-    const h = db.handle();
-    
-    const recentJobs = h.prepare('SELECT * FROM jobs ORDER BY created_at DESC LIMIT 5').all();
-    const recentSteps = h.prepare('SELECT * FROM job_steps ORDER BY id DESC LIMIT 10').all();
-    
-    res.json({
-      jobs_count: recentJobs.length,
-      steps_count: recentSteps.length,
-      recent_jobs: recentJobs,
-      recent_steps: recentSteps
-    });
+  // Debug endpoint for timeline (MAS removed)
+  app.get('/api/timeline/debug', (c) => {
+    return c.json({ error: 'timeline debug not available (MAS removed)' }, 501);
   });
 
-  // API endpoint for bot events (for timeline)
-  app.get('/api/bots/:name/events', (req, res) => {
+  // API endpoint for bot events – reads from SQLite
+  app.get('/api/bots/:name/events', (c) => {
     try {
-      const botName = req.params.name;
-      const limit = parseInt(req.query.limit as string) || 100;
-      const before_ts = parseInt(req.query.before_ts as string) || Date.now();
-      
-      const db = new MasDatabase();
-      const h = db.handle();
-      
-      // Combine jobs and steps into timeline events
-      const events: any[] = [];
-      
-      // Get recent jobs
-      const jobs = h.prepare(`
-        SELECT j.*, jp.intent_type, jp.intent_args, jp.plan_mcrn, jp.plan_summary
-        FROM jobs j
-        LEFT JOIN jobs_payloads jp ON j.id = jp.job_id
-        WHERE j.bot_id = ? AND j.created_at < ?
-        ORDER BY j.created_at DESC
-        LIMIT ?
-      `).all(botName, before_ts, Math.floor(limit / 2));
-      
-      // Convert jobs to events
-      jobs.forEach((job: any) => {
-        // Job created event
-        events.push({
-          id: `job-${job.id}-created`,
-          ts: job.created_at,
-          bot_id: job.bot_id,
-          type: 'job',
-          payload: {
-            job_id: job.id,
-            phase: job.phase,
-            state: job.state,
-            kind: job.kind,
-            priority: job.priority,
-            intent_type: job.intent_type,
-            intent_args: job.intent_args ? JSON.parse(job.intent_args) : null
-          }
-        });
-        
-        // Plan event if exists
-        if (job.plan_mcrn) {
-          events.push({
-            id: `job-${job.id}-plan`,
-            ts: job.started_at || job.created_at + 100,
-            bot_id: job.bot_id,
-            type: 'plan',
-            payload: {
-              job_id: job.id,
-              plan_mcrn: job.plan_mcrn,
-              plan_summary: job.plan_summary ? JSON.parse(job.plan_summary) : null
-            }
-          });
-        }
-      });
-      
-      // Get recent steps for these jobs
-      if (jobs.length > 0) {
-        const jobIds = jobs.map((j: any) => j.id);
-        const placeholders = jobIds.map(() => '?').join(',');
-        const steps = h.prepare(`
-          SELECT * FROM job_steps
-          WHERE job_id IN (${placeholders})
-          ORDER BY id ASC
-        `).all(...jobIds);
-        
-        // Convert steps to events
-        steps.forEach((step: any) => {
-          events.push({
-            id: `step-${step.id}`,
-            ts: step.ts,
-            bot_id: botName,
-            type: 'step',
-            payload: {
-              job_id: step.job_id,
-              i: step.i,
-              op: step.op,
-              outcome: step.outcome,
-              ms: step.ms,
-              details: step.details ? JSON.parse(step.details) : null
-            }
-          });
-        });
-      }
-      
-      // Sort by timestamp and return
-      // Include recent activity (chat/thinking/tools) from activity.json
-      try {
-        const activityPath = path.resolve('logs', `${botName}.activity.json`);
-        if (fs.existsSync(activityPath)) {
-          const raw = fs.readFileSync(activityPath, 'utf-8');
-          const activity = JSON.parse(raw) as Array<any>;
-          for (const a of activity) {
-            const ts = Date.parse(a.timestamp || '') || Date.now();
-            if (ts >= before_ts) continue; // respect before_ts window
-            if (a.type === 'chat') {
-              events.push({
-                id: `chat-${ts}-${Math.random().toString(36).slice(2, 7)}`,
-                ts,
-                bot_id: botName,
-                type: 'chat',
-                payload: {
-                  from: a.speaker || (a.role === 'bot' ? botName : 'player'),
-                  text: a.message,
-                  channel: 'chat',
-                  direction: a.role === 'bot' ? 'out' : 'in'
-                }
-              });
-            } else if (a.type === 'thinking') {
-              events.push({
-                id: `think-${ts}-${Math.random().toString(36).slice(2, 7)}`,
-                ts,
-                bot_id: botName,
-                type: 'chat',
-                payload: {
-                  from: 'Planner',
-                  text: a.message,
-                  channel: 'system',
-                  direction: 'out',
-                  kind: 'thinking'
-                }
-              });
-            } else if (a.type === 'tool') {
-              // Tool execution summary
-              const toolName = (a.message && String(a.message).startsWith('Tool:')) ? String(a.message).replace(/^Tool:\s*/, '') : (a.details?.name || 'tool');
-              // Prefer output for summary if present; otherwise input
-              const summary = a.details?.output ?? a.details?.input;
-              let params_summary: any = summary;
-              if (typeof summary === 'string') {
-                try { params_summary = JSON.parse(summary); } catch { params_summary = summary; }
-              }
-              events.push({
-                id: `tool-${ts}-${Math.random().toString(36).slice(2, 7)}`,
-                ts,
-                bot_id: botName,
-                type: 'tool',
-                payload: {
-                  tool_name: toolName,
-                  params_summary,
-                  output: a.details?.output,
-                  input: a.details?.input,
-                  duration_ms: a.details?.duration_ms,
-                  ok: true
-                }
-              });
-            } else if (a.type === 'skill') {
-              events.push({
-                id: `skill-${ts}-${Math.random().toString(36).slice(2, 7)}`,
-                ts,
-                bot_id: botName,
-                type: 'skill',
-                payload: {
-                  name: a.message,
-                  description: a.details?.description || ''
-                }
-              });
-            } else if (a.type === 'error' || a.type === 'warn' || a.type === 'info') {
-              events.push({
-                id: `evt-${ts}-${Math.random().toString(36).slice(2, 7)}`,
-                ts,
-                bot_id: botName,
-                type: 'system',
-                payload: { level: a.type, message: a.message }
-              });
-            }
-          }
-        }
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('Failed to merge activity events:', (e as any)?.message || e);
-      }
+      const botName = c.req.param('name');
+      const limit = parseInt(c.req.query('limit') || '100');
+      const before_ts = parseInt(c.req.query('before_ts') || String(Date.now()));
 
-      events.sort((a, b) => a.ts - b.ts);
-      res.json(events.slice(-limit));
+      // Load events from SQLite
+      const events = buildHistoryFromActivity(botName, limit, before_ts);
+      return c.json(events);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return c.json({ error: error.message }, 500);
     }
   });
 
-  // Register MAS API endpoints
-  registerMasRoutes(app);
+  // MAS API endpoints removed in simplified architecture
 
   return app;
 }
 
 export function startDashboardServer(port: number) {
   const app = createDashboardApp();
-  const server = http.createServer(app);
 
-  // WebSocket for live MAS updates
-  const wss = new WebSocketServer({ server, path: '/ws' });
-  let lastStepId = 0;
-  let lastJobsUpdatedAt = 0;
-  const lastActivityTsByBot: Record<string, number> = {};
-
-  wss.on('connection', (ws: WebSocket) => {
-    ws.send(JSON.stringify({ type: 'hello', ts: Date.now() }));
+  // Create HTTP server using Hono adapter
+  const server = createAdaptorServer({
+    fetch: app.fetch,
+    port,
   });
 
-  // Poll MAS DB for changes and broadcast
-  const db = new MasDatabase();
-  setInterval(() => {
-    try {
-      const h = db.handle();
-      // New steps
-      const steps = h
-        .prepare('SELECT * FROM job_steps WHERE id > ? ORDER BY id ASC')
-        .all(lastStepId);
-      if (steps.length) {
-        lastStepId = Math.max(
-          lastStepId,
-          ...steps.map((s: any) => Number(s.id) || 0)
-        );
-        const payloads = steps.map((s: any) => {
-          // Get bot_id from job
-          const job = h.prepare('SELECT bot_id FROM jobs WHERE id = ?').get(s.job_id);
-          return {
-            type: 'job_step',
-            bot_id: job?.bot_id || 'unknown',
-            job_id: s.job_id,
-            i: s.i,
-            ts: s.ts,
-            op: s.op,
-            outcome: s.outcome,
-            ms: s.ms,
-            details: s.details ? JSON.parse(s.details) : undefined,
-          };
-        });
-        broadcast(wss, payloads);
-      }
+  // WebSocket for live updates (activity only) and low-latency ingest from agents
+  const wss = new WebSocketServer({
+    noServer: true,
+    clientTracking: true,
+    perMessageDeflate: false
+  });
+  const ingestWss = new WebSocketServer({
+    noServer: true,
+    clientTracking: true,
+    perMessageDeflate: false
+  });
+  const lastActivityTsByBot: Record<string, number> = {};
+  const sqlStores: Map<string, SqlMemoryStore> = new Map();
 
-      // Updated jobs
-      const jobs = h
-        .prepare('SELECT * FROM jobs WHERE updated_at > ? ORDER BY updated_at ASC LIMIT 100')
-        .all(lastJobsUpdatedAt);
-      if (jobs.length) {
-        lastJobsUpdatedAt = Math.max(
-          lastJobsUpdatedAt,
-          ...jobs.map((j: any) => Number(j.updated_at) || 0)
-        );
-        const payloads = jobs.map((j: any) => ({ 
-          type: 'job_update', 
-          bot_id: j.bot_id,
-          job: j 
-        }));
-        broadcast(wss, payloads);
-      }
+  function getStore(botId: string): SqlMemoryStore {
+    let store = sqlStores.get(botId);
+    if (!store) {
+      store = new SqlMemoryStore(botId);
+      sqlStores.set(botId, store);
+    }
+    return store;
+  }
 
-      // New activity items (chat/thinking/tool) from activity.json files
+  function ensureSessionId(store: SqlMemoryStore): string {
+    const existing = store.getLastActiveSessionId();
+    if (existing) return existing;
+    const sid = `ingest-${Date.now()}`;
+    store.createSession(sid);
+    return sid;
+  }
+
+  // Handle WebSocket upgrade manually
+  server.on('upgrade', (request, socket, head) => {
+    const pathname = new URL(request.url || '', `http://${request.headers.host}`).pathname;
+
+    if (pathname === '/ws') {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    } else if (pathname === '/ingest') {
+      ingestWss.handleUpgrade(request, socket, head, (ws) => {
+        ingestWss.emit('connection', ws, request);
+      });
+    } else {
+      socket.destroy();
+    }
+  });
+
+  wss.on('connection', (ws: WebSocket) => {
+    console.log('Dashboard client connected to /ws');
+
+    ws.on('message', (buf) => {
       try {
-        const logsDir = path.resolve('logs');
-        if (fs.existsSync(logsDir)) {
-          const files = fs.readdirSync(logsDir).filter((f) => f.endsWith('.activity.json'));
-          const messages: any[] = [];
-          for (const file of files) {
-            const botId = file.replace(/\.activity\.json$/, '');
-            const baseTs = lastActivityTsByBot[botId] || 0;
-            const raw = fs.readFileSync(path.join(logsDir, file), 'utf-8');
-            const arr = JSON.parse(raw) as Array<any>;
-            const nextItems = arr
-              .map((a) => ({ a, ts: Date.parse(a.timestamp || '') || 0 }))
-              .filter(({ ts }) => ts > baseTs)
-              .sort((x, y) => x.ts - y.ts);
-            if (nextItems.length) {
-              lastActivityTsByBot[botId] = Math.max(baseTs, nextItems[nextItems.length - 1].ts);
-              for (const { a, ts } of nextItems) {
-                if (a.type === 'chat') {
-                  messages.push({
-                    type: 'chat',
-                    bot_id: botId,
-                    ts,
-                    from: a.speaker || (a.role === 'bot' ? botId : 'player'),
-                    text: a.message,
-                    channel: 'chat',
-                    direction: a.role === 'bot' ? 'out' : 'in',
-                  });
-                } else if (a.type === 'thinking') {
-                  messages.push({
-                    type: 'chat',
-                    bot_id: botId,
-                    ts,
-                    from: 'Planner',
-                    text: a.message,
-                    channel: 'system',
-                    direction: 'out',
-                    kind: 'thinking',
-                  });
-                } else if (a.type === 'tool') {
-                  const toolName = (a.message && String(a.message).startsWith('Tool:')) ? String(a.message).replace(/^Tool:\s*/, '') : (a.details?.name || 'tool');
-                  const summary = a.details?.output ?? a.details?.input;
-                  let params_summary: any = summary;
-                  if (typeof summary === 'string') {
-                    try { params_summary = JSON.parse(summary); } catch { params_summary = summary; }
-                  }
-                  messages.push({
-                    type: 'tool',
-                    bot_id: botId,
-                    ts,
-                    job_id: undefined,
-                    ok: true,
-                    tool_name: toolName,
-                    params_summary,
-                    output: a.details?.output,
-                    input: a.details?.input,
-                    duration_ms: a.details?.duration_ms,
-                  });
-                } else if (a.type === 'skill') {
-                  messages.push({
-                    type: 'skill',
-                    bot_id: botId,
-                    ts,
-                    name: a.message,
-                    description: a.details?.description || ''
-                  });
-                }
-              }
-            }
-          }
-          if (messages.length) {
-            broadcast(wss, messages);
+        const msg = JSON.parse(String(buf));
+        if (!msg || typeof msg !== 'object') return;
+        // Single-bot history request
+        if (msg.type === 'history' && msg.bot_id) {
+          const botId = String(msg.bot_id);
+          const limit = Math.max(1, Math.min(Number(msg.limit || 100), 500));
+          const beforeTs = Number(msg.before_ts || Date.now());
+          const events = buildHistoryFromActivity(botId, limit, beforeTs);
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'history', bot_id: botId, events }));
           }
         }
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('Activity WS poll error:', (e as any)?.message || e);
+      } catch (error) {
+        console.error('Error handling WebSocket message:', error);
       }
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn('MAS WS poll error:', (e as any)?.message || e);
-    }
-  }, 1000);
+    });
+
+    ws.on('error', (error) => {
+      console.error('WebSocket client error:', error);
+    });
+
+    ws.on('close', () => {
+      console.log('Dashboard client disconnected from /ws');
+    });
+  });
+
+  // Accept realtime activity from agents and broadcast immediately
+  ingestWss.on('connection', (ws: WebSocket) => {
+    console.log('Agent connected to /ingest');
+
+    ws.on('error', (error) => {
+      console.error('Ingest WebSocket error:', error);
+    });
+
+    ws.on('close', () => {
+      console.log('Agent disconnected from /ingest');
+    });
+
+    ws.on('message', (buf) => {
+      try {
+        const msg = JSON.parse(String(buf));
+        if (msg && msg.type === 'activity' && msg.bot_id && msg.item) {
+          const botId = String(msg.bot_id);
+          const a = msg.item as any;
+          // Timestamp
+          const ts = Date.parse(a.timestamp || '') || Date.now();
+          lastActivityTsByBot[botId] = Math.max(lastActivityTsByBot[botId] || 0, ts);
+
+          // Persist to per-bot SQLite (best-effort)
+          try {
+            const store = getStore(botId);
+            const sessionId = ensureSessionId(store);
+            const t = String(a.type || '').toLowerCase();
+            if (t === 'chat') {
+              const role = a.role === 'bot' ? 'assistant' : a.role === 'player' ? 'user' : 'system';
+              const content = role === 'user' && a.speaker ? `${a.speaker}: ${a.message}` : String(a.message || '');
+              store.addMessage(sessionId, role as any, content);
+            } else if (t === 'thinking') {
+              store.addActivity(sessionId, 'thinking', String(a.message || ''), {});
+            } else if (t === 'tool') {
+              const name = (a.details?.name) || (typeof a.message === 'string' && a.message.startsWith('Tool:') ? a.message.replace(/^Tool:\s*/, '') : 'tool');
+              const data: any = {
+                name,
+                input: a.details?.input,
+                output: a.details?.output,
+                duration_ms: a.details?.duration_ms,
+              };
+              store.addActivity(sessionId, 'tool', `Used ${name}`, data);
+            } else if (t === 'skill') {
+              const name = String(a.message || a.details?.name || 'skill');
+              const data: any = { description: a.details?.description || '' };
+              store.addActivity(sessionId, 'skill', name, data);
+            } else if (t === 'error' || t === 'warn' || t === 'info') {
+              store.addActivity(sessionId, t, String(a.message || ''), a.details || {});
+            }
+          } catch (e) {
+            // Do not crash on persistence errors; just log
+            console.warn('Failed to persist ingest activity to SQLite', e);
+          }
+
+          const messages: any[] = [];
+          if (a.type === 'chat') {
+            messages.push({ type: 'chat', bot_id: botId, ts, from: a.speaker || (a.role === 'bot' ? botId : 'player'), text: a.message, channel: 'chat', direction: a.role === 'bot' ? 'out' : 'in' });
+          } else if (a.type === 'thinking') {
+            messages.push({ type: 'chat', bot_id: botId, ts, from: 'Planner', text: a.message, channel: 'system', direction: 'out', kind: 'thinking' });
+          } else if (a.type === 'tool') {
+            const toolName = (a.message && String(a.message).startsWith('Tool:')) ? String(a.message).replace(/^Tool:\s*/, '') : (a.details?.name || 'tool');
+            const summary = a.details?.output ?? a.details?.input;
+            let params_summary: any = summary;
+            if (typeof summary === 'string') { try { params_summary = JSON.parse(summary); } catch { params_summary = summary; } }
+            messages.push({ type: 'tool', bot_id: botId, ts, ok: true, tool_name: toolName, params_summary, output: a.details?.output, input: a.details?.input, duration_ms: a.details?.duration_ms });
+          } else if (a.type === 'skill') {
+            messages.push({ type: 'skill', bot_id: botId, ts, name: a.message, description: a.details?.description || '' });
+          } else if (a.type === 'error' || a.type === 'warn' || a.type === 'info') {
+            messages.push({ type: 'system', bot_id: botId, ts, payload: { level: a.type, message: a.message } });
+          }
+          if (messages.length) broadcast(wss, messages);
+        }
+      } catch {
+        // ignore malformed message
+      }
+    });
+  });
+
+  // No polling – rely on realtime ingest and explicit history requests
 
   server.listen(port, () => {
     console.log(`Minecraft Colony dashboard listening on http://localhost:${port}`);
