@@ -12,11 +12,22 @@ import { computed } from 'vue';
 const props = defineProps<{ item: any }>();
 function escapeHtml(s: string){ return String(s).replace(/[&<>\"]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[m])); }
 
-const direction = computed(() => props.item.payload?.direction || 'out');
+// Normalize WebSocket vs history data structure
+const normalized = computed(() => {
+  if (props.item.payload) return props.item;
+  // Live WS chat messages arrive with fields at top-level; wrap into payload for uniformity
+  const { from, text, direction } = props.item as any;
+  return {
+    ...props.item,
+    payload: { from, text, direction },
+  } as any;
+});
+
+const direction = computed(() => normalized.value.payload?.direction || 'out');
 
 // Extract player name from message text if present (format: "username: message")
 const parsedMessage = computed(() => {
-  const rawText = props.item.payload?.text || '';
+  const rawText = normalized.value.payload?.text || '';
   const match = rawText.match(/^([^:]+):\s*(.*)$/s);
   if (match) {
     return { username: match[1].trim(), message: match[2] };
@@ -30,7 +41,7 @@ const from = computed(() => {
     return parsedMessage.value.username;
   }
   // Otherwise use payload.from or fallback
-  return props.item.payload?.from || (direction.value === 'in' ? 'player' : 'bot');
+  return normalized.value.payload?.from || (direction.value === 'in' ? 'player' : 'bot');
 });
 
 const safeText = computed(() => {
