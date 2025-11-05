@@ -1,15 +1,17 @@
 <template>
   <div class="timeline">
     <div class="timeline__list">
-      <TimelineItem v-for="it in items" :key="it.id || (it.type+'-'+it.ts)" :item="normalize(it)" @openInspector="$emit('openInspector', $event)" />
+      <TimelineItem v-for="it in reversedItems" :key="it.id || (it.type+'-'+it.ts)" :item="normalize(it)" @openInspector="$emit('openInspector', $event)" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import TimelineItem from './TimelineItem.vue';
 const props = defineProps<{ items: any[] }>();
 function normalize(e: any){ return e; }
+const reversedItems = computed(() => [...props.items].reverse());
 </script>
 
 <style scoped>

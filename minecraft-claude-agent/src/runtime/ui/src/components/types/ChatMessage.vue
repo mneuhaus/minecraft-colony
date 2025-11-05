@@ -11,9 +11,32 @@
 import { computed } from 'vue';
 const props = defineProps<{ item: any }>();
 function escapeHtml(s: string){ return String(s).replace(/[&<>\"]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[m])); }
-const safeText = escapeHtml(props.item.payload?.text || '');
+
 const direction = computed(() => props.item.payload?.direction || 'out');
-const from = computed(() => props.item.payload?.from || (direction.value === 'in' ? 'player' : 'bot'));
+
+// Extract player name from message text if present (format: "username: message")
+const parsedMessage = computed(() => {
+  const rawText = props.item.payload?.text || '';
+  const match = rawText.match(/^([^:]+):\s*(.*)$/s);
+  if (match) {
+    return { username: match[1].trim(), message: match[2] };
+  }
+  return { username: null, message: rawText };
+});
+
+const from = computed(() => {
+  // If we extracted a username from the message, use it
+  if (parsedMessage.value.username) {
+    return parsedMessage.value.username;
+  }
+  // Otherwise use payload.from or fallback
+  return props.item.payload?.from || (direction.value === 'in' ? 'player' : 'bot');
+});
+
+const safeText = computed(() => {
+  const text = parsedMessage.value.message;
+  return escapeHtml(text).replace(/\n/g, '<br>');
+});
 </script>
 
 <style scoped>
