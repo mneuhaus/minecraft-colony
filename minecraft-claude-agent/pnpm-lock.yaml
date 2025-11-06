@@ -35,6 +35,9 @@ importers:
       minecraft-assets:
         specifier: ^1.17.0
         version: 1.17.0
+      minecraft-assets#update-assets:
+        specifier: github:mc-zuri/minecraft-assets#update-assets
+        version: https://codeload.github.com/mc-zuri/minecraft-assets/tar.gz/b53348b7a0f3cffe7153716e8a8df80947c1257f
       minecraft-data:
         specifier: ^3.100.0
         version: 3.100.0
@@ -50,6 +53,9 @@ importers:
       prismarine-viewer:
         specifier: ^1.33.0
         version: 1.33.0
+      three:
+        specifier: ^0.181.0
+        version: 0.181.0
       vec3:
         specifier: ^0.1.10
         version: 0.1.10
@@ -1183,6 +1189,10 @@ packages:
     resolution: {integrity: sha512-z0yWI+4FDrrweS8Zmt4Ej5HdJmky15+L2e6Wgn3+iK5fWzb6T3fhNFq2+MeTRb064c6Wr4N/wv0DzQTjNzHNGQ==}
     engines: {node: '>=10'}
 
+  minecraft-assets#update-assets@https://codeload.github.com/mc-zuri/minecraft-assets/tar.gz/b53348b7a0f3cffe7153716e8a8df80947c1257f:
+    resolution: {tarball: https://codeload.github.com/mc-zuri/minecraft-assets/tar.gz/b53348b7a0f3cffe7153716e8a8df80947c1257f}
+    version: 0.0.0
+
   minecraft-assets@1.17.0:
     resolution: {integrity: sha512-dBs+8ABdnUp9E19LVg4Y2d6BPxUI02+qLXEEsGhcaB4VHfpIMZXcH6jVWg1pFNtBCOipPdQuIb2dBnXdVZlqfQ==}
 
@@ -1543,6 +1553,9 @@ packages:
 
   three@0.128.0:
     resolution: {integrity: sha512-i0ap/E+OaSfzw7bD1TtYnPo3VEplkl70WX5fZqZnfZsE3k3aSFudqrrC9ldFZfYFkn1zwDmBcdGfiIm/hnbyZA==}
+
+  three@0.181.0:
+    resolution: {integrity: sha512-KGf6EOCOQGshXeleKxpxhbowQwAXR2dLlD93egHtZ9Qmk07Saf8sXDR+7wJb53Z1ORZiatZ4WGST9UsVxhHEbg==}
 
   toidentifier@1.0.1:
     resolution: {integrity: sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==}
@@ -2668,6 +2681,8 @@ snapshots:
 
   mimic-response@3.1.0: {}
 
+  minecraft-assets#update-assets@https://codeload.github.com/mc-zuri/minecraft-assets/tar.gz/b53348b7a0f3cffe7153716e8a8df80947c1257f: {}
+
   minecraft-assets@1.17.0: {}
 
   minecraft-data@3.100.0: {}
@@ -3198,6 +3213,8 @@ snapshots:
   three.meshline@1.4.0: {}
 
   three@0.128.0: {}
+
+  three@0.181.0: {}
 
   toidentifier@1.0.1: {}
 

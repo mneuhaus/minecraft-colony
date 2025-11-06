@@ -1,15 +1,21 @@
 <template>
   <div class="tl-item__body">
-    <div class="tl-kv">
-      <span class="tl-kv__key">CraftScript</span>
-      <span class="tl-kv__val">{{ lineCount }} line(s)</span>
+    <div class="tl-hdr">
+      <div class="tl-kv">
+        <span class="tl-kv__key">CraftScript</span>
+        <span class="tl-kv__val">{{ lineCount }} line(s)</span>
+      </div>
+      <div class="tl-actions">
+        <button class="tl-btn" :disabled="running" @click="runAgain">{{ running ? 'Running…' : 'Run Again' }}</button>
+      </div>
     </div>
     <pre class="tool-output"><code class="language-javascript hljs" v-html="highlightedCode"></code></pre>
   </div>
+  
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, inject, ref } from 'vue';
 import hljs from 'highlight.js/lib/core';
 import javascript from 'highlight.js/lib/languages/javascript';
 import 'highlight.js/styles/github-dark-dimmed.css';
@@ -18,6 +24,8 @@ import 'highlight.js/styles/github-dark-dimmed.css';
 hljs.registerLanguage('javascript', javascript);
 
 const props = defineProps<{ item: any }>();
+const store = inject<any>('store');
+const running = ref(false);
 
 const payload = computed(() => props.item.payload || {});
 
@@ -33,28 +41,52 @@ const script = computed(() => {
 const lines = computed(() => script.value.split(/\r?\n/));
 const lineCount = computed(() => lines.value.length);
 
-const scriptPreview = computed(() => {
-  const previewLines = lines.value.slice(0, 12);
-  const suffix = lines.value.length > 12 ? `\n// … ${lines.value.length - 12} more line(s)` : '';
-  return previewLines.join('\n') + suffix;
-});
-
 // Generate highlighted HTML
 const highlightedCode = computed(() => {
   try {
-    console.log('[ToolCraftScript] Highlighting code, preview length:', scriptPreview.value.length);
-    const result = hljs.highlight(scriptPreview.value, { language: 'javascript' });
+    const full = script.value;
+    console.log('[ToolCraftScript] Highlighting code, length:', full.length);
+    const result = hljs.highlight(full, { language: 'javascript' });
     console.log('[ToolCraftScript] Highlight result:', result.value.substring(0, 100));
     return result.value;
   } catch (e) {
     console.error('[ToolCraftScript] Failed to highlight code:', e);
-    return scriptPreview.value;
+    return script.value;
   }
 });
+
+async function runAgain(){
+  if (!script.value.trim()) return;
+  running.value = true;
+  try {
+    // Prefer the event's bot_id if present; fallback to active bot
+    const botName = props.item?.bot_id || store?.activeBot;
+    if (!botName) throw new Error('no_bot_selected');
+    const res = await fetch(`/api/bots/${encodeURIComponent(botName)}/craftscript`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ script: script.value })
+    });
+    if (!res.ok) {
+      let data: any = null; try { data = await res.json(); } catch {}
+      const msg = (data && (data.error || data.hint)) ? `${data.error}${data.hint? ` — ${data.hint}`:''}` : 'request_failed';
+      throw new Error(msg);
+    }
+    // The agent will report back via timeline (tool + status). No-op here.
+  } catch (e: any) {
+    alert(`Failed to start CraftScript: ${e?.message || e}`);
+  } finally {
+    running.value = false;
+  }
+}
 </script>
 
 <style scoped>
+.tl-hdr { display:flex; justify-content: space-between; align-items:center; }
+.tl-actions { display:flex; gap:6px; }
+.tl-btn { background: rgba(74, 158, 255, 0.1); border:1px solid rgba(74,158,255,0.3); color:#4A9EFF; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; }
+.tl-btn:disabled { opacity: 0.6; cursor: default; }
 .tool-output {
   margin-top: 8px;
+  max-height: none;
+  overflow: auto;
 }
 </style>

@@ -22,13 +22,18 @@
         </div>
       </div>
       <div class="sidebar__actions" v-if="activeBot">
+        <button class="chip" @click="runSample" :disabled="runningSample">{{ runningSample ? 'Running…' : 'Run Sample CraftScript' }}</button>
         <button class="chip" @click="resetActiveBot" :disabled="resetting">{{ resetting? 'Resetting…' : 'Reset Selected Bot' }}</button>
+      </div>
+      <div class="sidebar__bp">
+        <BlueprintsPanel :items="blueprints" @refresh="loadBlueprints" @view="viewBlueprint" @remove="removeBlueprint" @create="createBlueprint" />
       </div>
     </aside>
     <main class="main">
       <Timeline :items="filteredItems" @openInspector="openInspector" />
     </main>
     <Inspector :open="inspectorOpen" :item="inspectorItem" @close="inspectorOpen=false" />
+    <BlueprintDetail v-if="bpDetailOpen" :name="bpDetailName" :data="bpDetail" @close="bpDetailOpen=false" />
   </div>
 </template>
 
@@ -37,6 +42,8 @@ import { computed, inject, onMounted, ref } from 'vue';
 import type { store as Store } from './main';
 import Timeline from './components/Timeline.vue';
 import Inspector from './components/Inspector.vue';
+import BlueprintsPanel from './components/BlueprintsPanel.vue';
+import BlueprintDetail from './components/BlueprintDetail.vue';
 
 const store = inject<any>('store');
 const bots = computed(()=> store.bots);
@@ -45,6 +52,11 @@ const activeBot = computed(()=> store.activeBot);
 const viewMode = computed(()=> store.viewMode);
 
 const resetting = ref(false);
+const runningSample = ref(false);
+const blueprints = ref<any[]>([]);
+const bpDetailOpen = ref(false);
+const bpDetailName = ref('');
+const bpDetail = ref<any>(null);
 const inspectorOpen = ref(false);
 const inspectorItem = ref<any>(null);
 
@@ -85,6 +97,21 @@ async function resetActiveBot(){
   } finally { resetting.value = false; }
 }
 
+async function runSample(){
+  if (!store.activeBot || runningSample.value) return;
+  runningSample.value = true;
+  try {
+    const res = await fetch(`/api/bots/${encodeURIComponent(store.activeBot)}/run-sample-craftscript`, { method: 'POST' });
+    if (!res.ok) throw new Error('sample_failed');
+    // Pull fresh events shortly after sending
+    setTimeout(()=> { if (store.viewMode==='single') loadBotTimeline(store.activeBot); }, 1200);
+  } catch (e){
+    alert('Failed to run sample CraftScript.');
+  } finally {
+    runningSample.value = false;
+  }
+}
+
 const filteredItems = computed(()=> {
   const active = store.activeBot;
   return store.items
@@ -115,7 +142,31 @@ onMounted(async () => {
   if (store.activeBot && store.viewMode==='single') await loadBotTimeline(store.activeBot);
   else await loadAllTimeline();
   connectWebSocket();
+  loadBlueprints();
 });
+
+async function loadBlueprints(){
+  try { const res = await fetch('/api/blueprints'); blueprints.value = await res.json(); } catch {}
+}
+async function viewBlueprint(name: string){
+  try {
+    const res = await fetch(`/api/blueprints/${encodeURIComponent(name)}`);
+    const data = await res.json();
+    bpDetail.value = data; bpDetailName.value = name; bpDetailOpen.value = true;
+  } catch {}
+}
+async function removeBlueprint(name: string){
+  if (!confirm(`Remove blueprint "${name}"?`)) return;
+  const res = await fetch(`/api/blueprints/${encodeURIComponent(name)}`, { method:'DELETE' });
+  if (res.ok) loadBlueprints();
+}
+async function createBlueprint(payload: any){
+  try {
+    const res = await fetch('/api/blueprints', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok) throw new Error('create_failed');
+    loadBlueprints();
+  } catch { alert('Failed to create blueprint'); }
+}
 </script>
 
 <style scoped>
@@ -126,6 +177,7 @@ onMounted(async () => {
 .chip--active { background: #2f2f2f; border-color: #E96D2F; }
 .sidebar__view { display: flex; gap: 6px; margin-bottom: 10px; }
 .sidebar__list { display: flex; flex-direction: column; gap: 6px; }
+.sidebar__bp { margin-top: 12px; }
 .agent { border: 1px solid #2E2E2E; border-radius: 10px; padding: 8px; background: #202020; cursor: pointer; }
 .agent[aria-selected="true"] { outline: 1px solid #E96D2F; }
 .agent__row { display: flex; justify-content: space-between; align-items: center; }
@@ -138,4 +190,3 @@ onMounted(async () => {
 .todo__progress { font-size: 11px; color: #7A7A7A; }
 .main { overflow: hidden; }
 </style>
-

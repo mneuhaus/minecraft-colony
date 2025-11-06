@@ -34,6 +34,22 @@ This file contains legacy development details and debugging methodology.
 8. After either helper, review `logs/agent.log` and `logs/diary.md` to confirm the agent’s response.
 9. From inside the agent, call the `read_diary_entries` MCP tool to skim the last few diary entries (defaults to 3, accepts `limit` up to 10).
 
+## Direct Control API (Optional)
+
+- Each bot can expose a local HTTP control port for direct CraftScript execution without chat injection.
+- Configure per-bot in `bots.yaml` with `control_port: <port>`.
+- Endpoints (local to the bot process):
+  - `POST /control/craftscript/start` → `{ script }` returns `{ ok, job_id }`
+  - `GET /control/craftscript/status?id=...` → returns job state and `lastStep`
+  - `POST /control/craftscript/cancel` → `{ job_id }`
+- The dashboard will automatically use this API (when configured) for the “Run Again” action; otherwise it falls back to chat injection.
+
+## Blueprint Storage
+
+- Blueprints created by the bot or via the dashboard are stored as JSON files in `minecraft-claude-agent/logs/blueprints/`.
+- Each file is named `<name>.json` and contains `{ name, description, origin, vox:[{x,y,z,id,face?,label?}], meta }`.
+- The dashboard “Blueprints” panel lists from this directory. Removing a blueprint in the UI deletes the corresponding JSON.
+
 ### Changelog Workflow
 
 When making changes, update CHANGELOG.md following these categories:

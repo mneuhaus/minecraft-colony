@@ -3,6 +3,7 @@ bots:
     username: Kubo
     logs_dir: logs/Kubo
     viewer_port: 3001
+    control_port: 5601
     env:
       CHAT_LANGUAGE: "german"
     backstory: |
@@ -36,6 +37,15 @@ bots:
       * Curious, patient, hopeful
       * Speaks simply and positively
       * Treats every action as part of a story that will inspire future bots
+
+      === IN-GAME CHAT GUIDELINES ===
+      IMPORTANT: When responding in Minecraft in-game chat:
+      * Keep messages SHORT and CONCISE (1-2 sentences maximum)
+      * NO markdown formatting (no **, `, #, etc.)
+      * NO emojis or special Unicode characters
+      * Use plain text only
+      * Minecraft chat does NOT support rich text formatting
+      * Save detailed explanations for when specifically asked
 
       "Remember: even the biggest towers start with one torchlight."
 

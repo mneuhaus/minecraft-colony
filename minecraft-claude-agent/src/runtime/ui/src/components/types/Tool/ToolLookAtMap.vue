@@ -4,6 +4,7 @@
       <span class="tool-name">Look At Map</span>
       <span class="tool-meta">{{ gridInfo }}</span>
     </div>
+    <div class="tool-hint">2D-Karte (Draufsicht) zur schnellen Orientierung. Jede Zelle entspricht einem Zoom-Feld; ▲ / • / ▼ zeigen die relative Höhe gegenüber den Füßen.</div>
 
     <div class="map-params">
       <div class="param-row" v-if="radius">
@@ -14,6 +15,10 @@
         <span class="param-label">zoom</span>
         <span class="param-val">{{ zoom }}x ({{ zoom }}x{{ zoom }} blocks/cell)</span>
       </div>
+      <div class="param-row" v-if="grep.length">
+        <span class="param-label">filter</span>
+        <span class="param-val">{{ grep.join(', ') }}</span>
+      </div>
       <div class="param-row" v-if="botHeight !== null">
         <span class="param-label">bot height</span>
         <span class="param-val">y={{ botHeight }}</span>
@@ -22,15 +27,17 @@
 
     <div class="map-grid-container" v-if="gridCells.length > 0">
       <div class="map-orientation">
-        <div class="orientation-label">↑ Forward</div>
-        <div class="orientation-hint">← Left | Bot Center | Right →</div>
+        <div class="orientation-row">
+          <div class="orientation-label">↑ Forward</div>
+        </div>
+        <div class="orientation-hint">← Left | Bot Center | Right → • Matches outlined in blue</div>
       </div>
       <div class="map-grid" :style="{ gridTemplateColumns: `repeat(${gridWidth}, 1fr)` }">
         <div
           v-for="cell in gridCells"
           :key="cell.key"
           class="map-cell"
-          :class="{ 'map-cell--bot': cell.isBotPosition }"
+          :class="{ 'map-cell--bot': cell.isBotPosition, 'map-cell--match': cell.isMatch }"
           :style="cell.colors && cell.colors.length > 1 ? {} : { backgroundColor: cell.color }"
           :title="cell.tooltip"
         >
@@ -70,7 +77,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 
 const props = defineProps<{ item: any }>();
 
@@ -94,18 +101,23 @@ const gridInfo = computed(() => {
   return `${gridSize.value[0]}x${gridSize.value[1]}`;
 });
 
-const mapData = computed(() => raw.value?.map ?? {});
-const cellCount = computed(() => Object.keys(mapData.value).length);
+const cellsData = computed(() => Array.isArray(raw.value?.cells) ? raw.value.cells : []);
+const cellCount = computed(() => cellsData.value.length);
+const grep = computed(() => {
+  const p = props.item.payload?.params_summary ?? props.item.payload?.input ?? {};
+  const g = p.grep || p.filter || raw.value?.grep;
+  if (Array.isArray(g)) return g;
+  return [];
+});
+
+// View options
+const flipVertical = ref(true);
 
 const uniqueBlocks = computed(() => {
   const blocks = new Set<string>();
-  for (const cell of Object.values(mapData.value)) {
-    const cellData = cell as any;
-    if (cellData.blocks && Array.isArray(cellData.blocks)) {
-      cellData.blocks.forEach((b: string) => blocks.add(b));
-    } else if (cellData.block) {
-      blocks.add(cellData.block);
-    }
+  for (const cell of cellsData.value as any[]) {
+    const arr = Array.isArray(cell.blocks) ? cell.blocks : [];
+    arr.forEach((b: string) => blocks.add(b));
   }
   return Array.from(blocks).sort();
 });
@@ -113,30 +125,34 @@ const uniqueBlocks = computed(() => {
 const heightStats = computed(() => {
   let min = Infinity;
   let max = -Infinity;
-
-  for (const cell of Object.values(mapData.value)) {
-    const cellData = cell as any;
-    if (cellData.height_min !== undefined) {
-      min = Math.min(min, cellData.height_min);
-    }
-    if (cellData.height_max !== undefined) {
-      max = Math.max(max, cellData.height_max);
-    }
-    if (cellData.height !== undefined) {
-      min = Math.min(min, cellData.height);
-      max = Math.max(max, cellData.height);
-    }
+  for (const cell of cellsData.value as any[]) {
+    if (cell.height_min !== undefined) min = Math.min(min, cell.height_min);
+    if (cell.height_max !== undefined) max = Math.max(max, cell.height_max);
   }
-
   if (min === Infinity || max === -Infinity) return null;
   return { min, max };
 });
 
-// Parse FR notation key to grid coordinates
-function parseFRKey(key: string): { f: number; r: number } | null {
-  const match = key.match(/F(-?\d+)\+R(-?\d+)/);
-  if (!match) return null;
-  return { f: parseInt(match[1], 10), r: parseInt(match[2], 10) };
+// Compute grid extents from world x/z cells
+function worldToGrid(cells: any[]): { minX: number; maxX: number; minZ: number; maxZ: number; xs: number[]; zs: number[]; stepX: number; stepZ: number } {
+  const xSet = new Set<number>();
+  const zSet = new Set<number>();
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const c of cells) {
+    xSet.add(c.x);
+    zSet.add(c.z);
+    if (c.x < minX) minX = c.x;
+    if (c.x > maxX) maxX = c.x;
+    if (c.z < minZ) minZ = c.z;
+    if (c.z > maxZ) maxZ = c.z;
+  }
+  const xs = Array.from(xSet).sort((a,b)=>a-b);
+  const zs = Array.from(zSet).sort((a,b)=>a-b);
+  const dxs = xs.slice(1).map((v,i)=>v - xs[i]).filter(d=>d>0);
+  const dzs = zs.slice(1).map((v,i)=>v - zs[i]).filter(d=>d>0);
+  const stepX = dxs.length ? Math.min(...dxs) : 1;
+  const stepZ = dzs.length ? Math.min(...dzs) : 1;
+  return { minX, maxX, minZ, maxZ, xs, zs, stepX, stepZ };
 }
 
 // Map block names to representative colors
@@ -219,63 +235,39 @@ function blockToColor(blocks: string[]): string {
 }
 
 const gridWidth = computed(() => {
-  // Calculate actual grid width from map data, accounting for step
-  const rValues = new Set<number>();
-  for (const key of Object.keys(mapData.value)) {
-    const coords = parseFRKey(key);
-    if (!coords) continue;
-    rValues.add(coords.r);
-  }
-  return rValues.size;
+  if (!cellsData.value.length) return 0;
+  const { zs } = worldToGrid(cellsData.value);
+  return zs.length;
 });
 
 const gridCells = computed(() => {
   const cells = [];
   const stats = heightStats.value;
 
-  // Parse all cells from the map data
+  // Use provided cells array (world x/z) and index for quick lookup
   const cellMap = new Map<string, any>();
-
-  for (const [key, cellData] of Object.entries(mapData.value)) {
-    cellMap.set(key, cellData);
+  for (const cell of cellsData.value as any[]) {
+    cellMap.set(`${cell.x},${cell.z}`, cell);
   }
 
   if (cellMap.size === 0) return [];
 
   // Parse all keys to find actual F and R ranges and detect the step size
-  let minF = Infinity, maxF = -Infinity;
-  let minR = Infinity, maxR = -Infinity;
-  const fValues = new Set<number>();
-  const rValues = new Set<number>();
+  if (cellMap.size === 0) return [];
 
-  for (const key of cellMap.keys()) {
-    const coords = parseFRKey(key);
-    if (!coords) continue;
-    minF = Math.min(minF, coords.f);
-    maxF = Math.max(maxF, coords.f);
-    minR = Math.min(minR, coords.r);
-    maxR = Math.max(maxR, coords.r);
-    fValues.add(coords.f);
-    rValues.add(coords.r);
-  }
-
-  if (minF === Infinity) return [];
-
-  // Detect step size from the sorted unique values
-  const sortedF = Array.from(fValues).sort((a, b) => a - b);
-  const sortedR = Array.from(rValues).sort((a, b) => a - b);
-  const stepF = sortedF.length > 1 ? sortedF[1] - sortedF[0] : 1;
-  const stepR = sortedR.length > 1 ? sortedR[1] - sortedR[0] : 1;
-
-  // Use the detected step (should be consistent for both F and R with zoom)
-  const step = Math.max(stepF, stepR);
+  // Derive extents and step using world coordinates
+  const { minX, maxX, minZ, maxZ, xs, zs, stepX, stepZ } = worldToGrid(cellsData.value as any[]);
 
   // Generate all cells in proper order using the detected step
-  // Top row = far forward (maxF), bottom row = behind (minF)
+  // Default: Top row = far forward (maxF), bottom row = behind (minF)
   // Left = left (minR), right = right (maxR)
-  for (let f = maxF; f >= minF; f -= step) {
-    for (let r = minR; r <= maxR; r += step) {
-      const key = `F${f}+R${r}`;
+  // If flipVertical is enabled, invert the F sweep so users can switch perspective.
+  const xList = flipVertical.value ? xs : [...xs].reverse();
+  const originX = raw.value?.grid?.origin?.x ?? null;
+  const originZ = raw.value?.grid?.origin?.z ?? null;
+  for (const f of xList) {
+    for (const r of zs) {
+      const key = `${f},${r}`;
       const cell = cellMap.get(key);
 
       if (cell && cell.blocks && cell.blocks.length > 0) {
@@ -300,8 +292,9 @@ const gridCells = computed(() => {
           colors: colors.length > 1 ? colors : undefined,
           heightLabel: heightSymbol,
           heightValue: heightDiff,
-          isBotPosition: key === 'F0+R0',
-          tooltip: `${key}${key === 'F0+R0' ? ' (BOT HERE)' : ''}\nRelative height: ${heightDiff}\nRange: ${cell.height_min} to ${cell.height_max}\nBlocks: ${blocksList}`,
+          isBotPosition: originX !== null && originZ !== null && f === originX && r === originZ,
+          isMatch: Array.isArray((cell as any).matched) && (cell as any).matched.length > 0,
+          tooltip: `${key}\nRelative height: ${heightDiff}\nRange: ${cell.height_min} to ${cell.height_max}\nBlocks: ${blocksList}${(cell as any).matched?.length ? `\nMatched: ${(cell as any).matched.join(', ')}` : ''}`,
         });
       } else {
         // Cell exists in backend data but has no blocks - show as unknown
@@ -311,8 +304,9 @@ const gridCells = computed(() => {
           colors: undefined,
           heightLabel: '?',
           heightValue: 0,
-          isBotPosition: key === 'F0+R0',
-          tooltip: `${key}${key === 'F0+R0' ? ' (BOT HERE)' : ''}\nNo block data`,
+          isBotPosition: originX !== null && originZ !== null && f === originX && r === originZ,
+          isMatch: false,
+          tooltip: `${key}\nNo block data`,
         });
       }
     }
@@ -337,6 +331,12 @@ const gridCells = computed(() => {
   color: #7A7A7A;
   font-size: 11px;
   font-weight: 400;
+}
+
+.tool-hint {
+  color: #9A9A9A;
+  font-size: 11px;
+  margin-bottom: 8px;
 }
 
 .map-params {
@@ -435,6 +435,13 @@ const gridCells = computed(() => {
   border-bottom: 1px solid #2E2E2E;
 }
 
+.orientation-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
 .orientation-label {
   color: #FFB86C;
   font-size: 12px;
@@ -445,6 +452,20 @@ const gridCells = computed(() => {
 .orientation-hint {
   color: #7A7A7A;
   font-size: 10px;
+}
+
+.flip-btn {
+  background: #2a2a2a;
+  color: #EAEAEA;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.flip-btn:hover {
+  border-color: #5a5a5a;
 }
 
 .map-grid {
@@ -480,6 +501,11 @@ const gridCells = computed(() => {
   border: 3px solid #FFD700;
   box-shadow: 0 0 12px rgba(255, 215, 0, 0.6), inset 0 0 8px rgba(255, 215, 0, 0.2);
   animation: bot-pulse 2s ease-in-out infinite;
+}
+
+.map-cell--match {
+  outline: 2px solid #4A9EFF;
+  box-shadow: 0 0 8px rgba(74, 158, 255, 0.6);
 }
 
 @keyframes bot-pulse {

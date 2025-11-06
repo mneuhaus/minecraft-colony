@@ -132,15 +132,15 @@ Removed/Legacy
 - Optional subagents: only when a separate transcript/model adds clear value; background jobs are preferred for long ops today.
 
 
-## 2) MCRN — Minecraft Relational Notation (v0.3‑nav)
+## 2) (Historical) MCRN — superseded by world x/y/z
 
-### 2.1 Coordinate frame (local)
+### 2.1 Coordinate frame (local) — historical
 - Heading `H ∈ {E,S,W,N}`.
 - `(0,0,0)` = the block under the agent’s feet (current floor).
 - Axes: `F` (forward), `B` (back), `R` (right), `L` (left), `U` (+Y), `D` (−Y).
 - Selectors: `F1`, `U2`, `R-1`, sums `F2+U1+R-1`, or tuple `(df,du,dr)`.
 
-### 2.2 Atomic actions
+### 2.2 Atomic actions — historical
 - `TURN L90|R90|180|FACE E|S|W|N`
 - `MOVE F1|B1|R1|L1|F1^|F1_` where `^`=step up 1, `_`=step down 1 (safety‑checked)
 - `DIG <targets>`
@@ -150,13 +150,13 @@ Removed/Legacy
 - `SCAN [r=<int>]` (refresh local voxel cache)
 - Targets: selector(s); `WORLD(x,y,z)`; `WAYPOINT("name")`; `BLOCK(id="oak_log", r=32)` (nearest reachable).
 
-### 2.3 Navigation intents (compile to pathfinder)
-- `GOTO @ <target> [tol=<int>] [timeout=<ticks>]`
+### 2.3 Navigation intents (compile to pathfinder) — updated
+- Use nav with WORLD targets: `{ action:'start', target:{ type:'WORLD', x,y,z }, tol, timeout_ms }`
 - `APPROACH @ <target> [within=<int>]`
 - `FOLLOW name:"Alex"|nearest:"player"|id:"uuid" [within=<int>]`
 - `LOOK_AT @ <target>`
 
-### 2.4 Predicates & conditions
+### 2.4 Predicates & conditions — historical
 - `BLOCK[sel]=ID`, `IS_AIR[sel]`, `IS_SOLID[sel]`, `IS_LIQUID[sel]`, `IS_GRAVITY[sel]`
 - `CAN_STAND[sel]` (solid floor and 2 blocks of headroom)
 - `SAFE_STEP_UP[F1] := SOLID[F1+U1] ∧ AIR[U2] ∧ AIR[F1+U2]`
@@ -164,14 +164,14 @@ Removed/Legacy
 - Combine with `AND | OR`.
 - Control flow: `IF/THEN/ELSE`, `REPEAT n {}`, `UNTIL cond {}`, `ASSERT cond`.
 
-### 2.5 Safety invariants (executor MUST enforce)
+### 2.5 Safety invariants (executor MUST enforce) — general
 - Never `MOVE F1^` unless `SAFE_STEP_UP[F1]`.
 - Never `MOVE F1_` unless `SAFE_STEP_DOWN[F1]`.
 - Don’t `DIG` gravity blocks above head without top‑down mitigation.
 - Don’t open faces adjacent to lava without a plug/fill plan.
 - Auto‑inject `SCAN r=2` before destructive ops if cache is stale.
 
-### 2.6 Core macro library (names are normative; body is illustrative)
+### 2.6 Core macro library — historical
 - `STAIR_UP_STEP` → `ASSERT SAFE_STEP_UP[F1]; DIG { F1+U2, U2 }; MOVE F1^;`
 - `STAIR_DOWN_STEP` → `ASSERT SAFE_STEP_DOWN[F1]; DIG { F1, F1+U1 }; MOVE F1_;`
 - `TUNNEL_FWD` → `DIG { F1, F1+U1 }; MOVE F1;`
@@ -208,7 +208,7 @@ Removed/Legacy
 - Consumes jobs with `kind=intent` and `phase=plan`.
 - Uses read‑only world context (position, `SCAN`, waypoints, inventory snapshot).
 - Produces:
-  - `plan.mcrn` — a valid MCRN program (macro‑heavy)
+  - `plan_script` — a CraftScript program (world x/y/z)
   - `plan_summary` — `{ materials, risks, est_steps, assumptions }`
 - On missing preconditions, fail the plan with a crisp reason (e.g., “needs iron pickaxe, none found”).
 - No world mutation; does not perform the job—only compiles it.
@@ -224,7 +224,7 @@ GOTO @ BLOCK(id="oak_log", r=48) tol=1; LOOK_AT @ F1;
 ```
 
 ## 5) Executor (code) — program → world
-- Pulls `phase=exec` jobs with `plan.mcrn`.
+- Pulls `phase=exec` jobs with `plan_script`.
 - Expands macros, enforces invariants, manages voxel cache (`SCAN`), calls MCP tools.
 - Emits `job_step`, `job_update`, `inventory`, `usage` events.
 - Stalls: try `UNSTUCK` once; if still blocked, fail with reason.
@@ -248,7 +248,7 @@ GOTO @ BLOCK(id="oak_log", r=48) tol=1; LOOK_AT @ F1;
 - `bots`: `id, alias, created_at, last_seen_at, world, pos(x,y,z), heading, health, hunger, saturation, light, biome, status`
 - `bot_inventory`: `bot_id, slot, item_id, count, meta` (snapshot rows)
 - `jobs`: `id, bot_id, priority, kind(intent|program), phase(plan|exec|done|failed|canceled), state(queued|running|paused|success|fail|canceled), created_at, started_at, updated_at, ended_at, lease_until, error`
-- `jobs_payloads`: `job_id, intent_type, intent_args(json), constraints(json), plan_mcrn(text), plan_summary(json)`
+- `jobs_payloads`: `job_id, intent_type, intent_args(json), constraints(json), plan_script(text), plan_summary(json)`
 - `job_steps`: `id, job_id, i, ts, op, outcome(ok|warn|fail), ms, details(json)`
 - `events`: `id, bot_id, ts, type(chat_in|chat_out|system|safety|job_state), payload(json)`
 - `usage_ticks`: `id, bot_id, ts, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, usd`
@@ -271,7 +271,7 @@ GET /api/bots/:id/usage?window=24h
 ```http
 POST /api/jobs
 { kind:"intent", bot_id, intent:{ type, args, constraints, target?, stop_conditions? }, priority? }
-{ kind:"program", bot_id, mcrn, priority? }
+{ kind:"program", bot_id, script, priority? }
 
 POST /api/jobs/:id/pause
 POST /api/jobs/:id/resume
@@ -283,7 +283,7 @@ POST /api/jobs/:id/cancel
 bot_status { bot:{ id,status,pos,heading,health,hunger,light,biome,updated_at } }
 job_phase  { job_id, phase, state }
 job_update { job:{ id, bot_id, state, progress, eta_seconds, updated_at } }
-job_plan   { job_id, plan_mcrn, plan_summary }
+job_plan   { job_id, plan_script, plan_summary }
 job_step   { job_id, i, ts, op, outcome, ms, details }
 event      { bot_id, ts, type, payload }
 inventory  { bot_id, items:[...] }
@@ -294,7 +294,7 @@ usage      { bot_id, ts, usd, input, output, cache_read, cache_creation }
 
 ## 10) Macro Registry & “Learned” Macros
 - Registry buckets: Core (bundled, versioned with spec), Custom (team‑authored), Learned (mined from successful sequences; disabled by default)
-- Entry fields: `name, params, body(MCRN), pre, post, safety_level, macro_version, provenance, pass_rate, enabled`
+- Entry fields: `name, params, body(CraftScript), pre, post, safety_level, macro_version, provenance, pass_rate, enabled`
 - Learning pipeline (offline):
   - Mine frequent contiguous sequences from successful `job_steps` (parameterize counts).
   - Draft macro with pre/post predicates; attach provenance.

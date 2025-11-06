@@ -8,7 +8,7 @@ allowed-tools: place_block, use_item_on_block, move_to_position, look_at, dig_bl
 
 **Ziel:** Ein rechteckiges Minecraft‑Haus bauen, mit **eingelassenem Fundament**, **Wände schichtweise** aufmauern (der Bot läuft auf der Wandkrone mit) und **temporären Außentreppen**, um später wieder hochzukommen.
 
-**Notation:** MCRN (F/B/R/L/U relativ zum Bot).
+**Notation:** Weltkoordinaten (x, y, z) mit optionalen relativen Schritten (dx, dy, dz) entlang des Perimeters. Alle Positionsangaben sind absolute Minecraft‑Koordinaten.
 
 **Parameter:**
 
@@ -20,7 +20,7 @@ allowed-tools: place_block, use_item_on_block, move_to_position, look_at, dig_bl
 ## 0) Sicherheits‑ und Reichweitenregeln (hart erzwungen)
 
 * **REACHABLE_PLACE[target]**: `DIST(feet, target) ≤ 3.5` Blöcke **UND** `target ≠ (0,0,0)` (Bot darf **nicht** auf dem Zielblock stehen).
-* **HEADCLEAR** beim Springen: `AIR[U2]` **UND** `AIR[F1+U2]`.
+* **Kopffreiheit beim Hochgehen**: Vor einem vertikalen Schritt verifizieren, dass an (x, y+1, z) und (x, y+2, z) Luft ist; sonst Zwischenstufe setzen.
 * **CAN_STAND[x]** bevor dorthin bewegt wird.
 * **Kein Platzieren in Spieler‑Hitbox**: nie `PLACE @ (0,0,0)` oder `PLACE @ U0`.
 * **Kein Graben über Kopf von GRAVITY** (`SAND/GRAVEL`) ohne Top‑Down‑Mitigation.
@@ -42,18 +42,18 @@ allowed-tools: place_block, use_item_on_block, move_to_position, look_at, dig_bl
 
 ---
 
-## 2) Kern‑Prädikate & Hilfen
+## 2) Kern‑Prädikate & Hilfen (in Weltkoordinaten)
 
-* `RECT(p0, width, length)` — Rechteck vom **Start‑Eckpunkt** `p0` (aktueller Standort als Eckpunkt).
-* `PERIMETER(rect)` — Liste der Randpositionen (Bodenkoordinaten).
-* `LAYER(y)` — alle Positionen der Schicht `y`.
+* `RECT(p0, width, length)` — Rechteck vom **Start‑Eckpunkt** `p0=(x0,y0,z0)`.
+* `PERIMETER(rect)` — Randpositionen (Bodenkoordinaten) im Uhrzeigersinn: inkrementiere x bzw. z in ganzen Schritten.
+* `LAYER(y)` — alle Positionen der Schicht `y` relativ zu `p0.y` (also bei `y = p0.y + k`).
 * `SAFE_DIG[t]` — kein GRAVITY darüber / falls doch → erst von oben lösen.
-* `SAFE_PLACE[t]` — `IS_AIR[t]` und `REACHABLE_PLACE[t]`.
-* `WALLTOP(y)` — Wandkronen‑Zielkoordinaten der aktuellen Schicht.
+* `SAFE_PLACE[t]` — Block an (x,y,z) ist Luft und innerhalb Reichweite; andernfalls zuerst Hilfsblock setzen oder näher heran navigieren.
+* `WALLTOP(y)` — Wandkronen‑Zielkoordinaten der aktuellen Schicht (x/z unverändert, y = p0.y + Schichthöhe).
 
 ---
 
-## 3) Makro‑Bausteine (MCRN‑Stil)
+## 3) Makro‑Bausteine (x/y/z‑Stil)
 
 > Syntax bewusst knapp gehalten; Kommentare mit `#`.
 
@@ -96,23 +96,29 @@ Ziel: jede Schicht **einmal ringsrum**, Bot steht **auf der Wand**, um die näch
 
 ```
 MACRO BUILD_WALLS_LAYERED(p0, width, length, wall_block, wall_height, torch_cadence) {
-  y := 1;                # erste Lage über Fundament
+  y := 1;                # erste Lage über Fundament (p0.y + y)
   step := 0;
   WHILE y <= wall_height {
     FOR each rim r IN PERIMETER(RECT(p0,width,length)) {
-      target := r + U(y);             # Blockposition der aktuellen Schicht
-      IF SAFE_PLACE[target] {
-        PLACE wall_block @ target;
-      }
-      # Krone begehbar machen/entlang laufen
-      IF SAFE_STEP_UP[F1] { MOVE F1^; } ELSE { MOVE F1; }
+      target := (r.x, p0.y + y, r.z);   # Blockposition der aktuellen Schicht
+      IF SAFE_PLACE[target] { PLACE wall_block @ target; }
 
-      # Beleuchtung in Taktung
+      # Entlang des Randes einen Schritt weiter: (dx, dz) ist der nächste Perimeter‑Schritt
+      next := (r.x + dx, r.y, r.z + dz);
+      # Bei Höhenstufe: erst prüfen, ob Kopf frei ist; sonst Zwischenstufe setzen
+      IF HEAD_CLEAR(next) {
+        MOVE world(next.x, next.y, next.z);
+      } ELSE {
+        PLACE wall_block @ world(next.x, next.y, next.z) FACE up;  # Zwischenstufe
+        MOVE world(next.x, next.y, next.z);
+      }
+
+      # Beleuchtung in Taktung – Fackel außen an der Wand platzieren
       step := step + 1;
-      IF (step % torch_cadence == 0) { PLACE TORCH @ R1 ON WEST; }
+      IF (step % torch_cadence == 0) { PLACE TORCH @ OUTER_FACE_OF_WALL(target); }
     }
-    # eine Lage höher auf die neue Krone wechseln
-    IF SAFE_STEP_UP[F1] { MOVE F1^; } ELSE { MOVE U1; }
+    # eine Lage höher auf die neue Krone wechseln (senkrecht +1)
+    MOVE world(CURRENT_X, CURRENT_Y + 1, CURRENT_Z);
     y := y + 1;
   }
 }
@@ -124,10 +130,10 @@ Ziel: später **wieder hoch** auf die Wandkrone kommen (z. B. zum Dach).
 
 ```
 MACRO EXT_TEMP_STAIR(outside_anchor, height, stair_block) {
-  # outside_anchor liegt direkt außerhalb der Außenwand auf Bodenniveau
+  # outside_anchor = Weltposition direkt außerhalb der Außenwand auf Bodenniveau
   h := 0;
   WHILE h < height {
-    tread := outside_anchor + F(h) + U(h);   # 45° Treppe: vor + hoch
+    tread := (outside_anchor.x + h*dx, outside_anchor.y + h, outside_anchor.z + h*dz);   # 45° Treppe: vor + hoch
     IF SAFE_PLACE[tread] { PLACE stair_block @ tread; }
     h := h + 1;
   }
@@ -153,7 +159,7 @@ MACRO CLEAR_TEMP_STAIR(outside_anchor, height) {
 
 **Intent:** `BUILD_HOUSE` mit `{ width:7, length:9, wall_height:3, floor_block:COBBLE, wall_block:OAK_PLANKS, stair_block:COBBLE, torch_cadence:7 }`.
 
-**Kompilierter Plan (MCRN‑Skizze):**
+**Kompilierter Plan (x/y/z‑Skizze):**
 
 ```
 # 1) Vermessen
@@ -170,7 +176,7 @@ BUILD_WALLS_LAYERED(start_corner, 7, 9, OAK_PLANKS, 3, 7);
 
 # 5) Temporäre Außentreppe an der Südwand (Beispiel)
 TURN FACE S;
-anchor := F1;                 # direkt vor die Südwand
+anchor := (start.x + dx, start.y, start.z + dz);   # 1 Block außerhalb der Südwand in Laufrichtung
 EXT_TEMP_STAIR(anchor, 3, COBBLESTONE);
 
 # (optional) Dach / Decke …
@@ -191,8 +197,8 @@ CLEAR_TEMP_STAIR(anchor, 3);
 
 Für die **Mauer‑Kante**:
 
-* Bewegung **auf der Krone** nutzt bevorzugt `MOVE F1` / `MOVE F1^` (wenn nötig).
-* Jede Ecke: prüfen, ob `CAN_STAND[next_corner]`, sonst eine **kleine Zwischenstufe** setzen (`PLACE wall_block @ F1; MOVE F1`) und danach wieder entfernen.
+* Bewegung **auf der Krone**: gehe per Perimeter‑Schritt (dx, dz) weiter; wenn ein Stufensprung nötig ist, erhöhe y um +1.
+* Jede Ecke: prüfen, ob `CAN_STAND[next_corner]`; wenn nicht, kleine Zwischenstufe setzen (`PLACE wall_block @ (x+dx, y, z+dz); MOVE (x+dx, y, z+dz)`) und danach wieder entfernen.
 
 ---
 
@@ -224,4 +230,3 @@ Für die **Mauer‑Kante**:
 * **Wände**: **Schicht für Schicht**, der Bot läuft **oben** mit.
 * **Zugang**: **temporäre Außentreppe** zum Wieder‑Hochkommen.
 * **Reichweite**: **max. ~3–4 Blöcke** zum Zielblock, **nie** auf dem Block stehen, der gesetzt werden soll.
-

@@ -1,7 +1,10 @@
 <template>
   <div class="tl-item-wrapper" :class="wrapperClass">
-    <div class="tl-item" :class="cssClass" @click="$emit('openInspector', item)">
+    <div class="tl-item" :class="cssClass">
       <div class="tl-item__header">
+        <button class="inspector-toggle" @click="$emit('openInspector', item)" title="Open Inspector">
+          🔍
+        </button>
         <span class="tl-time">{{ time }}</span>
       </div>
       <component :is="componentName" :item="item" />
@@ -76,17 +79,12 @@ const componentName = computed(()=> {
   border-radius: 12px;
   padding: 10px 80px 10px 10px;
   max-width: 80%;
-  cursor: pointer;
   transition: border-color 0.2s ease;
 }
 
 .tl-item__body {
   margin: 0;
   padding: 0;
-}
-
-.tl-item:hover {
-  border-color: #4A4A4A;
 }
 
 .tl-wrapper--center .tl-item {
@@ -97,7 +95,31 @@ const componentName = computed(()=> {
   position: absolute;
   top: 8px;
   right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 11px;
+}
+
+.inspector-toggle {
+  background: rgba(74, 158, 255, 0.1);
+  border: 1px solid rgba(74, 158, 255, 0.3);
+  color: #4A9EFF;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  opacity: 0.7;
+}
+
+.inspector-toggle:hover {
+  background: rgba(74, 158, 255, 0.2);
+  border-color: rgba(74, 158, 255, 0.5);
+  opacity: 1;
+}
+
+.tl-time {
   color: #7A7A7A;
   opacity: 0.7;
 }

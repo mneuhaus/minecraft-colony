@@ -48,7 +48,7 @@ export interface JobPayloadRecord {
   constraints?: any | null;
   target?: any | null;
   stop_conditions?: string | null;
-  plan_mcrn?: string | null;
+  plan_script?: string | null;
   plan_summary?: any | null;
 }
 

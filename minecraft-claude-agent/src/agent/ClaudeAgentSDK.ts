@@ -7,6 +7,8 @@ import { ActivityWriter, type ActivityRole } from '../utils/activityWriter.js';
 import { SqlMemoryStore } from '../utils/sqlMemoryStore.js';
 import fs from 'fs';
 import path from 'path';
+import { Hono } from 'hono';
+import { createAdaptorServer } from '@hono/node-server';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -30,6 +32,7 @@ export class ClaudeAgentSDK {
   private readonly backstory?: string;
   private activityWriter: ActivityWriter;
   private memoryStore: SqlMemoryStore;
+  public getActivityWriter(){ return this.activityWriter; }
 
   constructor(
     private config: Config,
@@ -62,13 +65,20 @@ export class ClaudeAgentSDK {
       this.minecraftBot.on('ready', () => {
         try {
           // Create unified minimal MCP server
-          this.mcpServer = createUnifiedMcpServer(this.minecraftBot);
+          this.mcpServer = createUnifiedMcpServer(
+            this.minecraftBot,
+            this.activityWriter,
+            this.botName,
+            this.memoryStore,
+            () => this.currentSessionId
+          );
           this.mcpServerReady = true;
           logger.info('Bot ready, Claude Agent SDK is now active');
           this.refreshAllowedTools();
           logger.debug('MCP server registered', {
             manifest: this.mcpServer?.manifest,
           });
+          try { this.startControlServerIfEnabled(); } catch (e: any) { logger.warn('Control server not started', { error: String(e?.message||e) }); }
           // Do not preload skills: Agent SDK exposes a Skill tool for lazy loading.
           // We keep startup lightweight; skills are discovered/loaded only when used.
           resolve();
@@ -101,6 +111,83 @@ export class ClaudeAgentSDK {
       logger.warn('Bot damaged, notifying Claude', data);
       // Could trigger defensive behavior here
     });
+  }
+
+  private startControlServerIfEnabled() {
+    const portStr = process.env.CONTROL_PORT;
+    const port = portStr ? parseInt(portStr, 10) : NaN;
+    if (!port || !Number.isFinite(port)) {
+      logger.info('Control server disabled (no CONTROL_PORT set)');
+      return;
+    }
+    logger.info(`Starting control server on port ${port}`);
+
+    const app = new Hono();
+    app.get('/health', (c) => c.json({ ok: true, bot: this.botName }));
+
+    // CraftScript direct control (no chat injection)
+    app.post('/control/craftscript/start', async (c) => {
+      try {
+        const body = await c.req.json();
+        const script = String(body?.script || '').trim();
+        if (!script) return c.json({ error: 'script_required' }, 400);
+        const { createCraftscriptJob, getCraftscriptStatus } = await import('./craftscriptJobs.js');
+        const id = createCraftscriptJob(this.minecraftBot, script, this.activityWriter, this.botName);
+        // Log to timeline as a tool-like event for observability
+        try {
+          const details = { name: 'craftscript_start', tool_name: 'craftscript_start', input: { script }, params_summary: { lines: script.split(/\r?\n/).length }, output: JSON.stringify({ job_id: id }), duration_ms: 0 };
+          this.activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_start (API)', details, role: 'tool', speaker: this.botName });
+        } catch {}
+        // Short-lived poll to surface terminal state quickly
+        setTimeout(async () => {
+          try {
+            const st = getCraftscriptStatus(id);
+            if (st && (st.state === 'completed' || st.state === 'failed')) {
+              const details = { name: 'craftscript_status', tool_name: 'craftscript_status', input: { job_id: id }, params_summary: { job_id: id }, output: JSON.stringify(st), duration_ms: 0 };
+              this.activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_status (API)', details, role: 'tool', speaker: this.botName });
+            }
+          } catch {}
+        }, 1200);
+        return c.json({ ok: true, job_id: id });
+      } catch (e: any) {
+        return c.json({ error: e?.message || String(e) }, 500);
+      }
+    });
+    app.get('/control/craftscript/status', async (c) => {
+      const id = String(c.req.query('id') || '');
+      if (!id) return c.json({ error: 'id_required' }, 400);
+      const { getCraftscriptStatus } = await import('./craftscriptJobs.js');
+      const st = getCraftscriptStatus(id);
+      if (!st) return c.json({ error: 'not_found' }, 404);
+      return c.json(st);
+    });
+    app.post('/control/craftscript/cancel', async (c) => {
+      try {
+        const body = await c.req.json();
+        const id = String(body?.job_id || '');
+        if (!id) return c.json({ error: 'job_id_required' }, 400);
+        const { cancelCraftscriptJob } = await import('./craftscriptJobs.js');
+        cancelCraftscriptJob(id);
+        try {
+          const details = { name: 'craftscript_cancel', tool_name: 'craftscript_cancel', input: { job_id: id }, params_summary: { job_id: id }, output: JSON.stringify({ job_id: id, state: 'canceled' }), duration_ms: 0 };
+          this.activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_cancel (API)', details, role: 'tool', speaker: this.botName });
+        } catch {}
+        return c.json({ ok: true, job_id: id });
+      } catch (e: any) {
+        return c.json({ error: e?.message || String(e) }, 500);
+      }
+    });
+
+    try {
+      const server = createAdaptorServer({ fetch: app.fetch, port, hostname: '127.0.0.1' });
+      server.on('error', (err: any) => logger.error('Control server error', { error: String(err?.message || err) }));
+      server.listen(port, '127.0.0.1', () => {
+        logger.info(`Control server listening on http://127.0.0.1:${port}`);
+      });
+    } catch (e: any) {
+      logger.error('Failed to start control server', { error: String(e?.message || e) });
+      throw e;
+    }
   }
 
   /**
@@ -542,7 +629,7 @@ Key expectations:
   }
 }\n\nExamples:\n- NAVIGATE to waypoint: intent={ type:"NAVIGATE", args:{ tolerance:1 }, target:{ type:"WAYPOINT", name:"home" } }\n- NAVIGATE to coords:   intent={ type:"NAVIGATE", args:{ tolerance:2 }, target:{ type:"WORLD", x:100, y:70, z:-40 } }\n- HARVEST_TREE simple:   intent={ type:"HARVEST_TREE", args:{ radius:32, replant:true }, target:{ type:"WAYPOINT", name:"trees" } }\n`;
 
-    const craftscriptPrimer = `\n\n=== CRAFTSCRIPT PRIMER (v0.1) ===\nCraftScript is a small, safe C-style language for Minecraft agents. Use lowercase commands and canonical registry ids (e.g., \"minecraft:oak_log\"). Coordinates are RELATIVE to heading via selectors.\n\nSelectors (relative):\n- f/b/r/l/u/d with optional signed distance, combine via \"+\": F2+U1+R-1\n- Shortcuts: f1^ (forward+up), f1_ (forward+down)\n\nStatements:\n- macro name(params) { ... }  •  if/else  •  while  •  repeat(n){...}  •  assert(cond, msg)  •  command();\n\nCore commands:\n- move(sel) • turn(r90|l90|180) • turn_face(\"north|south|east|west\")\n- dig(sel) • place(\"minecraft:block\", sel, face: \"up|down|north|south|east|west\") • equip(\"minecraft:item\") • scan(r:2)\n- goto(world(x,y,z)|waypoint(\"name\")|sel, tol:1)\n- drop(\"minecraft:item\", count:4) • eat(\"minecraft:food\")\n\nPredicates:\n- safe_step_up(sel) • safe_step_down(sel) • can_stand(sel) • is_air(sel) • has_item(\"minecraft:item\") • is_hazard(\"lava_near\")\n\nSafety invariants (executor-enforced):\n1) move(f1^) only if safe_step_up(f1)\n2) move(f1_) only if safe_step_down(f1)\n3) Avoid digging upward into gravity blocks\n4) Never open into lava without a plan\n5) Auto-scan before risky actions\n\nRead-only MCP tools for planning:\n- get_vox(radius=2, include_air=false)   → local voxel snapshot + predicates\n- affordances(selector)                   → standability, place faces, step up/down\n- nearest({ block_id|entity_id, radius, reachable })\n- block_info({ id|selector })\n- get_topography(radius=6)               → heightmap & slope in F/R grid\n\nExecution protocol (when you choose to act):\n1) Draft a minimal CraftScript that satisfies the request and safety invariants.\n2) Call mcp__minecraft__craftscript_start with the full script as the \"script\" parameter.\n3) Poll mcp__minecraft__craftscript_status until state becomes completed|failed|canceled.\n4) If failed, explain briefly and propose a smaller/safer script; otherwise summarize the result.\n5) Use mcp__minecraft__nav for simple movement-only tasks.\n\nWhen you decide to use CraftScript, include ONLY a fenced code block labeled c with the final program in your assistant text (for posterity) and also invoke craftscript_start with the same string. Example:\n\`\`\`c\nmacro stair_up_step(){ assert(safe_step_up(f1), \"no safe step\"); dig(f1+u2); move(f1^); }\nrepeat(3){ stair_up_step(); }\n\`\`\``;
+    const craftscriptPrimer = `\n\n=== WORLD COORDINATES PRIMER ===\nUse x/y/z world coordinates by default. Inspect first, then act:\n\nRead-only tools:\n- get_position() → { x,y,z }\n- get_vox(radius?) → voxels as [{x,y,z,id}] near the bot\n- block_info({ id? | x,y,z? })\n- nearest({ block_id|entity_id, radius, reachable? })\n- get_topography(radius?) → heightmap keyed by \"x,z\"\n- affordances({ x,y,z }) → standability/place faces at a world location\n\nActions:\n- nav { action:'start', target:{ type:'WORLD', x,y,z }, tol?, timeout_ms?, policy? } • status • cancel\n- craftscript_* is experimental; prefer nav + atomic tools.\n\nProtocol:\n1) Inspect using read-only tools.\n2) Plan small, safe steps (world coordinates).\n3) Use nav for movement and simple actions; summarize results.\n`;
 
     return `${identity}` +
       backstorySection +

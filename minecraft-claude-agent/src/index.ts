@@ -5,6 +5,7 @@ dotenv.config();
 import { config } from './config.js';
 import { MinecraftBot } from './bot/MinecraftBot.js';
 import { ClaudeAgentSDK } from './agent/ClaudeAgentSDK.js';
+import { createCraftscriptJob, getCraftscriptStatus, cancelCraftscriptJob } from './agent/craftscriptJobs.js';
 import logger from './logger.js';
 
 /**
@@ -19,6 +20,32 @@ async function main() {
   // Create instances
   const minecraftBot = new MinecraftBot(config);
   const claudeAgent = new ClaudeAgentSDK(config, minecraftBot, backstory);
+
+  // Log control port for diagnostics
+  const controlPort = process.env.CONTROL_PORT ? parseInt(process.env.CONTROL_PORT, 10) : undefined;
+  logger.info('Startup diagnostics', { CONTROL_PORT: controlPort || 'unset' });
+
+  // IPC control for CraftScript (dashboard → bot)
+  if (typeof (process as any).send === 'function') {
+    process.on('message', async (msg: any) => {
+      try {
+        if (!msg || typeof msg !== 'object') return;
+        if (msg.type === 'craftscript:start') {
+          const script = String(msg.script||'');
+          const id = createCraftscriptJob(minecraftBot, script, claudeAgent.getActivityWriter() as any, config.minecraft.username);
+          (process as any).send?.({ type:'craftscript:started', id: msg.id, job_id: id });
+        } else if (msg.type === 'craftscript:status') {
+          const st = getCraftscriptStatus(String(msg.job_id||''));
+          (process as any).send?.({ type:'craftscript:status', id: msg.id, status: st||null });
+        } else if (msg.type === 'craftscript:cancel') {
+          cancelCraftscriptJob(String(msg.job_id||''));
+          (process as any).send?.({ type:'craftscript:canceled', id: msg.id, ok: true });
+        }
+      } catch (e) {
+        try { (process as any).send?.({ type:'craftscript:error', id: msg?.id, error: String((e as any)?.message||e) }); } catch {}
+      }
+    });
+  }
 
   // Handle bot errors to prevent crashes
   minecraftBot.on('error', (error) => {

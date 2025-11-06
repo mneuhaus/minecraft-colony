@@ -85,6 +85,8 @@ status-agents:
 	@cd $(AGENT_DIR) && pnpm colony-ctl status
 
 start-colony:
+	@cd $(AGENT_DIR) && pnpm run dashboard:build
+	@cd $(AGENT_DIR) && pnpm -s run build
 	@if [ -f $(COLONY_PID_FILE) ] && kill -0 $$(cat $(COLONY_PID_FILE)) 2>/dev/null; then \
 		echo "Colony already running (PID $$(cat $(COLONY_PID_FILE))) – http://localhost:$(DASHBOARD_PORT)"; \
 		exit 0; \

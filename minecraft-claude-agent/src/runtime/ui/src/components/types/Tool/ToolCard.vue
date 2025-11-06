@@ -13,6 +13,7 @@ import ToolAffordances from './ToolAffordances.vue';
 import ToolCraftScript from './ToolCraftScript.vue';
 import ToolTopography from './ToolTopography.vue';
 import ToolBlockInfo from './ToolBlockInfo.vue';
+import ToolBlueprint from './ToolBlueprint.vue';
 import ToolLookAtMap from './ToolLookAtMap.vue';
 import ToolGeneric from './ToolGeneric.vue';
 
@@ -42,6 +43,7 @@ const key = computed(()=> {
   if (/get_vox$/.test(n)) return 'vox';
   if (/get_topography$/.test(n)) return 'topography';
   if (/look_at_map/.test(n)) return 'look_at_map';
+  if (/^(get|create|update)_blueprint$/.test(n)) return 'blueprint';
   if (/block_info$/.test(n)) return 'block_info';
   if (/affordances$/.test(n)) return 'affordances';
   if (/nearest$/.test(n)) return 'nearest';
@@ -59,6 +61,7 @@ const toolComponent = computed(()=> ({
   topography: ToolTopography,
   look_at_map: ToolLookAtMap,
   block_info: ToolBlockInfo,
+  blueprint: ToolBlueprint,
   affordances: ToolAffordances,
   craftscript: ToolCraftScript,
   generic: ToolGeneric,

@@ -8,6 +8,7 @@ import mcAssets from 'minecraft-assets';
 import BetterSqlite from 'better-sqlite3';
 const Database: any = (BetterSqlite as any);
 import WebSocket, { WebSocketServer } from 'ws';
+import { spawn } from 'child_process';
 import { SqlMemoryStore } from '../utils/sqlMemoryStore.js';
 // MAS removed; endpoints delegated elsewhere or disabled
 import {
@@ -284,6 +285,159 @@ export function createDashboardApp() {
       return c.text(content, 200, { 'Content-Type': 'text/markdown; charset=utf-8' });
     } catch (error: any) {
       return c.json({ error: error.message }, 500);
+    }
+  });
+
+  // Blueprints API
+  app.get('/api/blueprints', async (c) => {
+    try {
+      const mod = await import('../tools/blueprints/storage.js');
+      return c.json(mod.listBlueprints());
+    } catch (e: any) {
+      return c.json({ error: e?.message || String(e) }, 500);
+    }
+  });
+  app.get('/api/blueprints/:name', async (c) => {
+    try {
+      const mod = await import('../tools/blueprints/storage.js');
+      const name = c.req.param('name');
+      const bp = mod.getBlueprint(name);
+      if (!bp) return c.json({ error: 'not_found' }, 404);
+      const v = mod.validateBlueprint(bp);
+      return c.json({ ok: v.ok, issues: v.issues, blueprint: bp });
+    } catch (e: any) {
+      return c.json({ error: e?.message || String(e) }, 500);
+    }
+  });
+  app.post('/api/blueprints', async (c) => {
+    try {
+      const body = await c.req.json();
+      const mod = await import('../tools/blueprints/storage.js');
+      const bp = mod.createBlueprint(body);
+      return c.json(bp);
+    } catch (e: any) {
+      return c.json({ error: e?.message || String(e) }, 400);
+    }
+  });
+  app.put('/api/blueprints/:name', async (c) => {
+    try {
+      const name = c.req.param('name');
+      const body = await c.req.json();
+      const mod = await import('../tools/blueprints/storage.js');
+      const bp = mod.updateBlueprint(name, body);
+      return c.json(bp);
+    } catch (e: any) {
+      return c.json({ error: e?.message || String(e) }, 400);
+    }
+  });
+  app.delete('/api/blueprints/:name', async (c) => {
+    try {
+      const name = c.req.param('name');
+      const mod = await import('../tools/blueprints/storage.js');
+      const ok = mod.removeBlueprint(name);
+      return c.json({ ok });
+    } catch (e: any) {
+      return c.json({ error: e?.message || String(e) }, 500);
+    }
+  });
+  app.post('/api/blueprints/:name/instantiate', async (c) => {
+    try {
+      const name = c.req.param('name');
+      const body = await c.req.json();
+      const mod = await import('../tools/blueprints/storage.js');
+      const bp = mod.getBlueprint(name);
+      if (!bp) return c.json({ error: 'not_found' }, 404);
+      const origin = body?.origin || { x: 0, y: 0, z: 0 };
+      const rotation = body?.rotation ?? 0;
+      const vox = mod.instantiateBlueprint(bp, origin, rotation);
+      return c.json({ ok: true, count: vox.length, voxels: vox });
+    } catch (e: any) {
+      return c.json({ error: e?.message || String(e) }, 400);
+    }
+  });
+
+  // Run a small sample CraftScript by sending a chat instruction to the selected bot
+  app.post('/api/bots/:name/run-sample-craftscript', async (c) => {
+    try {
+      const bots = loadConfig();
+      const bot = bots.find((b) => b.name === c.req.param('name'));
+      if (!bot) {
+        return c.json({ error: 'Bot not found' }, 404);
+      }
+      // One-line CraftScript to stay within chat limits
+      const sample = 'repeat(2){ scan(2); move(F1); }';
+      const atUser = `@${bot.username}`;
+      const msg = `${atUser} please run this sample CraftScript via craftscript_start, then poll status and summarize: \`\`\`c ${sample} \`\`\``;
+
+      // Use debug sender to inject chat without disturbing the main bot
+      const pnpmCmd = process.env.PNPM_CMD || 'pnpm';
+      const child = spawn(pnpmCmd, ['-s', 'send', msg], {
+        cwd: process.cwd(),
+        env: { ...process.env, DEBUG_SENDER_USERNAME: 'Dashboard' },
+        stdio: 'ignore',
+        detached: false,
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        child.on('error', reject);
+        child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`sender exited ${code}`))));
+      });
+
+      return c.json({ ok: true, message: 'sample_craftscript_sent', bot: bot.name });
+    } catch (error: any) {
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
+  // Run CraftScript again (from a timeline entry) via IPC if available; fallback to control_port; finally chat
+  app.post('/api/bots/:name/craftscript', async (c) => {
+    try {
+      const bots = loadConfig();
+      const bot = bots.find((b) => b.name === c.req.param('name'));
+      if (!bot) {
+        return c.json({ error: 'Bot not found' }, 404);
+      }
+      const body = await c.req.json();
+      const script = String(body?.script || '').trim();
+      if (!script) return c.json({ error: 'script_required' }, 400);
+      // Try IPC first (child process message)
+      try {
+        const mod: any = await import('./botControl.js');
+        if (typeof mod.sendCraftscriptStartIPC === 'function') {
+          const out = await mod.sendCraftscriptStartIPC(bot.name, script);
+          return c.json({ ok: true, job_id: out.job_id, via: 'ipc' });
+        }
+      } catch {}
+      if ((bot as any).control_port) {
+        // Direct control to the bot's local control server
+        try {
+          const url = `http://127.0.0.1:${(bot as any).control_port}/control/craftscript/start`;
+          const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ script }) } as any);
+          let data: any = null; try { data = await res.json(); } catch {}
+          if (!res.ok) return c.json({ error: (data && data.error) || 'control_failed', hint: `control server at ${url} unreachable or returned error`, status: res.status }, 502);
+          return c.json({ ok: true, job_id: data?.job_id, via: 'control_port' });
+        } catch (err: any) {
+          return c.json({ error: 'control_unreachable', hint: 'Bot control server not reachable. Ensure CONTROL_PORT is set and restart the colony (make restart-colony).', details: String(err?.message||err) }, 502);
+        }
+      }
+
+      // Fallback: inject via chat when control_port is not configured
+      const atUser = `@${bot.username}`;
+      const msg = `${atUser} please run this CraftScript now via craftscript_start and report any errors inline. \`\`\`c\n${script}\n\`\`\``;
+      const pnpmCmd = process.env.PNPM_CMD || 'pnpm';
+      const child = spawn(pnpmCmd, ['-s', 'send', msg], {
+        cwd: process.cwd(),
+        env: { ...process.env, DEBUG_SENDER_USERNAME: 'Dashboard' },
+        stdio: 'ignore',
+        detached: false,
+      });
+      await new Promise<void>((resolve, reject) => {
+        child.on('error', reject);
+        child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`sender exited ${code}`))));
+      });
+      return c.json({ ok: true, via: 'chat' });
+    } catch (error: any) {
+      return c.json({ error: error.message || String(error) }, 500);
     }
   });
 

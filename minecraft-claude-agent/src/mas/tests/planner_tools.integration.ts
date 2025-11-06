@@ -21,7 +21,10 @@ function extractToolNames(manifest: any): string[] {
 function assert(cond: any, msg: string){ if(!cond){ console.error('FAIL:', msg); process.exit(1); } }
 
 async function main(){
-  const server: any = createPlannerMcpServer(new FakeMinecraftBot() as any);
+  const mockActivityWriter = { addActivity: () => {} }; // Mock activity writer for test
+  const mockMemoryStore = { addActivity: () => {} }; // Mock memory store for test
+  const mockGetSessionId = () => 'test-session'; // Mock session ID getter
+  const server: any = createPlannerMcpServer(new FakeMinecraftBot() as any, mockActivityWriter, 'TestBot', mockMemoryStore, mockGetSessionId);
   const manifest = (server && (server.manifest || server.getManifest && server.getManifest())) || {};
   const names = extractToolNames(manifest);
   // Required tools present

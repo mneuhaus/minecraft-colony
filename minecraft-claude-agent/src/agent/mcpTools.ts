@@ -2,17 +2,7 @@ import { tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { MinecraftBot } from '../bot/MinecraftBot.js';
 
-// Minimal selector parser for string keys like F1+U2+R-1
-function selectorKeyToAst(key: string): any {
-  const terms = key.trim().toUpperCase().split('+').filter(Boolean).map((part) => {
-    const axis = part[0];
-    const n = Number(part.slice(1));
-    const axisMap: any = { F: 'f', B: 'b', R: 'r', L: 'l', U: 'u', D: 'd' };
-    if (!axisMap[axis] || Number.isNaN(n)) throw new Error(`Invalid selector segment: ${part}`);
-    return { type: 'SelTerm', axis: axisMap[axis], n };
-  });
-  return { type: 'Selector', terms };
-}
+// MCRN removed — all tool inputs/outputs use world coordinates (x,y,z)
 
 // Wrapper to log tool calls and results
 function loggingTool<T extends z.ZodRawShape>(
@@ -136,34 +126,35 @@ export function createUnifiedMcpServer(
         const p = bot.entity?.position; if (!p) return { content: [{ type: 'text', text: 'Not spawned' }], isError: true };
         return { content: [{ type: 'text', text: JSON.stringify({ x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) }) }] };
       }, context),
-      loggingTool('get_vox', 'Local voxel snapshot and safety predicates. Use radius for quick surround or dims for custom cube (fx/bx/uy/dy/rz/lz)', {
+      loggingTool('get_vox', '3D voxel snapshot of the local area around the bot (x/y/z world coordinates). Use for precise short-range understanding; combine with look_at_map for 2D overview.', {
         radius: z.number().optional(),
         include_air: z.boolean().optional(),
-        dims: z.object({ fx: z.number().optional(), bx: z.number().optional(), uy: z.number().optional(), dy: z.number().optional(), rz: z.number().optional(), lz: z.number().optional() }).optional()
-      }, async ({ radius, include_air = false, dims }) => {
+        grep: z.array(z.string()).optional(),
+        filter: z.array(z.string()).optional()
+      }, async ({ radius, include_air = false, grep, filter }) => {
         const { get_vox } = await import('../craftscript/env.js');
-        const snap = await get_vox(bot, radius, include_air, dims);
-        const pose = { heading: 'E', feet_world: [Math.floor(bot.entity.position.x), Math.floor(bot.entity.position.y), Math.floor(bot.entity.position.z)] };
-        return { content: [{ type: 'text', text: JSON.stringify({ version: 'mcrn-vox/1.1', pose, ts: Math.floor(Date.now()/1000), ...snap }) }] };
+        const patterns = (grep && Array.isArray(grep) ? grep : (filter && Array.isArray(filter) ? filter : undefined));
+        const snap = await get_vox(bot, radius, include_air, undefined, patterns as any);
+        return { content: [{ type: 'text', text: JSON.stringify(snap) }] };
       }, context),
-      loggingTool('affordances', 'Affordances at selector', { selector: z.string() }, async ({ selector }) => {
+      loggingTool('affordances', 'Affordances at world position', { x: z.number(), y: z.number(), z: z.number() }, async ({ x, y, z }) => {
         const { affordances } = await import('../craftscript/env.js');
-        const selAst = selectorKeyToAst(selector);
-        return { content: [{ type: 'text', text: JSON.stringify(affordances(bot, selAst)) }] };
+        return { content: [{ type: 'text', text: JSON.stringify(affordances(bot, { x, y, z })) }] };
       }, context),
       loggingTool('nearest', 'Find nearest block/entity', { block_id: z.string().optional(), entity_id: z.string().optional(), radius: z.number().optional(), reachable: z.boolean().optional() }, async (params) => {
         const { nearest } = await import('../craftscript/env.js');
         const res = await nearest(bot, params as any);
         return { content: [{ type: 'text', text: JSON.stringify(res) }] };
       }, context),
-      loggingTool('block_info', 'Block info by id or selector', { id: z.string().optional(), selector: z.string().optional() }, async ({ id, selector }) => {
+      loggingTool('block_info', 'Block info by id or x/y/z position', { id: z.string().optional(), x: z.number().optional(), y: z.number().optional(), z: z.number().optional() }, async ({ id, x, y, z }) => {
         const { block_info } = await import('../craftscript/env.js');
-        const info = block_info(bot, { id, selector: selector ? selectorKeyToAst(selector) as any : undefined });
+        const info = block_info(bot, { id, x, y, z });
         return { content: [{ type: 'text', text: JSON.stringify(info) }] };
       }, context),
-      loggingTool('look_at_map', 'Birds eye view: 2D map with relative heights and block types. Use zoom to reduce data: zoom=1 (1x1 per cell), zoom=2 (2x2 per cell), etc.', { radius: z.number().optional(), zoom: z.number().optional() }, async ({ radius, zoom }) => {
+      loggingTool('look_at_map', 'Top-down 2D map for fast orientation (world x/z cells). Each cell summarizes a zoom block; symbols show relative height (▲/•/▼).', { radius: z.number().optional(), zoom: z.number().optional(), grep: z.array(z.string()).optional(), filter: z.array(z.string()).optional() }, async ({ radius, zoom, grep, filter }) => {
         const { look_at_map } = await import('../craftscript/env.js');
-        return { content: [{ type: 'text', text: JSON.stringify(look_at_map(bot, radius ?? 10, zoom ?? 1)) }] };
+        const patterns = (grep && Array.isArray(grep) ? grep : (filter && Array.isArray(filter) ? filter : undefined));
+        return { content: [{ type: 'text', text: JSON.stringify(look_at_map(bot, radius ?? 10, zoom ?? 1, patterns as any)) }] };
       }, context),
       loggingTool('look_at_map_4', 'Birds eye view with 4x zoom (4x4 blocks per cell) for medium range scanning', { radius: z.number().optional() }, async ({ radius }) => {
         const { look_at_map } = await import('../craftscript/env.js');
@@ -173,16 +164,15 @@ export function createUnifiedMcpServer(
         const { look_at_map } = await import('../craftscript/env.js');
         return { content: [{ type: 'text', text: JSON.stringify(look_at_map(bot, radius ?? 25, 5)) }] };
       }, context),
-      loggingTool('nav', 'Navigation wrapper (start/status/cancel)', { action: z.enum(['start','status','cancel']), nav_id: z.string().optional(), target: z.object({ type: z.literal('WORLD'), x: z.number(), y: z.number(), z: z.number() }).or(z.object({ type: z.literal('SELECTOR'), sel: z.string() })).optional(), tol: z.number().optional(), timeout_ms: z.number().optional(), policy: z.object({ allow_dig: z.boolean().optional(), max_drop: z.number().optional(), max_step: z.number().optional() }).optional() }, async (params) => {
+      loggingTool('nav', 'Navigation wrapper (start/status/cancel)', { action: z.enum(['start','status','cancel']), nav_id: z.string().optional(), target: z.object({ type: z.literal('WORLD'), x: z.number(), y: z.number(), z: z.number() }).optional(), tol: z.number().optional(), timeout_ms: z.number().optional(), policy: z.object({ allow_dig: z.boolean().optional(), max_drop: z.number().optional(), max_step: z.number().optional() }).optional() }, async (params) => {
         const { nav } = await import('../craftscript/env.js');
         const req: any = { ...params };
-        if (req.target?.type === 'SELECTOR' && typeof req.target.sel === 'string') req.target.sel = selectorKeyToAst(req.target.sel);
         return { content: [{ type: 'text', text: JSON.stringify(nav(bot, req)) }] };
       }, context),
       loggingTool('craftscript_start', 'Start CraftScript in background; returns job_id', { script: z.string() }, async ({ script }) => {
         const { createCraftscriptJob } = await import('./craftscriptJobs.js');
         try { const enable = (process.env.CRAFTSCRIPT_CHAT_ENABLED ?? 'true').toLowerCase() !== 'false'; if (enable) { const max = Math.max(0, parseInt(process.env.CRAFTSCRIPT_CHAT_PREVIEW_LINES ?? '12', 10)); const lines = String(script||'').split(/\r?\n/); const preview = max>0?lines.slice(0,max).join('\n'):''; const suffix=max>0&&lines.length>max?`\n… ${lines.length-max} more line(s)`:''; minecraftBot.chat(`Start CraftScript (${lines.length} lines)\n\`\`\`c\n${preview}${suffix}\n\`\`\``);} } catch {}
-        const id = createCraftscriptJob(minecraftBot, script);
+        const id = createCraftscriptJob(minecraftBot, script, context.activityWriter as any, context.botName);
         return { content: [{ type: 'text', text: JSON.stringify({ job_id: id, state: 'queued' }) }] };
       }, context),
       loggingTool('craftscript_status', 'Poll CraftScript job status', { job_id: z.string() }, async ({ job_id }) => {
@@ -195,13 +185,61 @@ export function createUnifiedMcpServer(
         cancelCraftscriptJob(job_id);
         return { content: [{ type: 'text', text: JSON.stringify({ job_id, state: 'canceled' }) }] };
       }, context),
+
+      // Blueprint tools
+      loggingTool('list_blueprints', 'List stored blueprints (name, description, count)', {}, async () => {
+        const { listBlueprints } = await import('../tools/blueprints/storage.js');
+        const list = listBlueprints();
+        return { content: [{ type: 'text', text: JSON.stringify(list) }] };
+      }, context),
+      loggingTool('create_blueprint', 'Create a new blueprint with vox at origin (0,0,0). Vox is an array of {x,y,z,id,face?}.', {
+        name: z.string(),
+        description: z.string().optional(),
+        vox: z.array(z.object({ x: z.number(), y: z.number(), z: z.number(), id: z.string(), face: z.enum(['up','down','north','south','east','west']).optional(), label: z.string().optional() })),
+      }, async ({ name, description, vox }) => {
+        const { createBlueprint } = await import('../tools/blueprints/storage.js');
+        const bp = createBlueprint({ name, description, vox } as any);
+        return { content: [{ type: 'text', text: JSON.stringify(bp) }] };
+      }, context),
+      loggingTool('update_blueprint', 'Update an existing blueprint; can change description and vox.', {
+        name: z.string(),
+        description: z.string().optional(),
+        vox: z.array(z.object({ x: z.number(), y: z.number(), z: z.number(), id: z.string(), face: z.enum(['up','down','north','south','east','west']).optional(), label: z.string().optional() })).optional(),
+      }, async ({ name, description, vox }) => {
+        const { updateBlueprint } = await import('../tools/blueprints/storage.js');
+        const bp = updateBlueprint(name, { description, vox } as any);
+        return { content: [{ type: 'text', text: JSON.stringify(bp) }] };
+      }, context),
+      loggingTool('remove_blueprint', 'Remove a blueprint by name', { name: z.string() }, async ({ name }) => {
+        const { removeBlueprint } = await import('../tools/blueprints/storage.js');
+        const ok = removeBlueprint(name);
+        return { content: [{ type: 'text', text: JSON.stringify({ ok }) }] };
+      }, context),
+      loggingTool('get_blueprint', 'Get a blueprint by name with validation issues if any', { name: z.string() }, async ({ name }) => {
+        const { getBlueprint, validateBlueprint } = await import('../tools/blueprints/storage.js');
+        const bp = getBlueprint(name);
+        if (!bp) return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'not_found' }) }], isError: true } as any;
+        const v = validateBlueprint(bp as any);
+        return { content: [{ type: 'text', text: JSON.stringify({ ok: v.ok, issues: v.issues, blueprint: bp }) }] };
+      }, context),
+      loggingTool('instantiate_blueprint', 'Instantiate a blueprint at origin with rotation (0|90|180|270). Returns absolute voxels.', { name: z.string(), origin: z.object({ x: z.number(), y: z.number(), z: z.number() }), rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional() }, async ({ name, origin, rotation }) => {
+        const { getBlueprint, instantiateBlueprint } = await import('../tools/blueprints/storage.js');
+        const bp = getBlueprint(name);
+        if (!bp) return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'not_found' }) }], isError: true } as any;
+        const vox = instantiateBlueprint(bp as any, origin as any, (rotation as any) ?? 0);
+        return { content: [{ type: 'text', text: JSON.stringify({ ok: true, voxels: vox, count: vox.length }) }] };
+      }, context),
     ],
   });
-  if (!server.manifest) server.manifest = { name: 'minecraft', tools: [{ name: 'send_chat' }, { name: 'get_position' }, { name: 'get_vox' }, { name: 'affordances' }, { name: 'nearest' }, { name: 'block_info' }, { name: 'look_at_map' }, { name: 'look_at_map_4' }, { name: 'look_at_map_5' }, { name: 'nav' }, { name: 'craftscript_start' }, { name: 'craftscript_status' }, { name: 'craftscript_cancel' }] };
+  if (!server.manifest) server.manifest = { name: 'minecraft', tools: [
+    { name: 'send_chat' }, { name: 'get_position' }, { name: 'get_vox' }, { name: 'affordances' },
+    { name: 'nearest' }, { name: 'block_info' }, { name: 'look_at_map' }, { name: 'look_at_map_4' }, { name: 'look_at_map_5' },
+    { name: 'nav' }, { name: 'craftscript_start' }, { name: 'craftscript_status' }, { name: 'craftscript_cancel' },
+    { name: 'list_blueprints' }, { name: 'create_blueprint' }, { name: 'update_blueprint' }, { name: 'remove_blueprint' }, { name: 'get_blueprint' }, { name: 'instantiate_blueprint' }
+  ] };
   return server;
 }
 
 // Back-compat exports
 export const createMinecraftMcpServer = createUnifiedMcpServer;
 export const createPlannerMcpServer = createUnifiedMcpServer;
-

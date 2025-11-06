@@ -9,6 +9,7 @@ export interface BotConfig {
   username: string;
   logs_dir: string;
   viewer_port?: number | null;
+  control_port?: number | null;
   env?: Record<string, string>;
   backstory?: string;
 }
@@ -50,6 +51,35 @@ export function loadConfig(): BotConfig[] {
   return parsed.bots;
 }
 
+// Track child processes for IPC
+const CHILDREN = new Map<string, ChildProcess>();
+const PENDING: Map<string, { resolve: (v: any)=>void, reject: (e:any)=>void }> = new Map();
+
+function onChildMessage(_botName: string, msg: any) {
+  try {
+    const id = msg && msg.id;
+    if (id && PENDING.has(id)) {
+      const { resolve } = PENDING.get(id)!;
+      PENDING.delete(id);
+      resolve(msg);
+    }
+  } catch {}
+}
+
+function nextId(): string { return Math.random().toString(36).slice(2, 10); }
+
+export async function sendCraftscriptStartIPC(botName: string, script: string): Promise<{ job_id: string }>{
+  const child = CHILDREN.get(botName);
+  if (!child) throw new Error('bot_process_not_found');
+  const id = nextId();
+  const payload = { type: 'craftscript:start', id, script };
+  return new Promise((resolve, reject) => {
+    PENDING.set(id, { resolve: (msg) => resolve({ job_id: String(msg.job_id||'') }), reject });
+    try { (child as any).send(payload); } catch (e) { PENDING.delete(id); reject(e); }
+    setTimeout(() => { if (PENDING.has(id)) { PENDING.delete(id); reject(new Error('ipc_timeout')); } }, 10000);
+  });
+}
+
 function ensureDirs(bot: BotConfig) {
   const base = path.resolve(bot.logs_dir);
   fs.mkdirSync(base, { recursive: true });
@@ -75,6 +105,11 @@ function buildEnv(bot: BotConfig) {
     env.VIEWER_PORT = String(bot.viewer_port);
   } else {
     delete env.VIEWER_PORT;
+  }
+  if (bot.control_port) {
+    env.CONTROL_PORT = String(bot.control_port);
+  } else {
+    delete env.CONTROL_PORT;
   }
   env.LOG_PATH = logFile(bot);
   env.DIARY_PATH = path.resolve(bot.logs_dir, 'diary.md');
@@ -114,8 +149,8 @@ export function startBot(bot: BotConfig): ChildProcess | null {
   const child = spawn(PNPM_CMD, [BOT_CMD], {
     cwd: process.cwd(),
     env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    detached: true,
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    detached: false,
   });
 
   child.stdout?.pipe(outStream, { end: false });
@@ -124,8 +159,13 @@ export function startBot(bot: BotConfig): ChildProcess | null {
   fs.writeFileSync(pidPath, String(child.pid));
   console.log(`[${bot.name}] started (PID ${child.pid}) → ${outPath}`);
 
+  // Register for IPC
+  CHILDREN.set(bot.name, child);
+  (child as any).on('message', (msg: any)=> onChildMessage(bot.name, msg));
+
   child.on('exit', (code, signal) => {
     console.log(`[${bot.name}] exited with code=${code} signal=${signal}`);
+    CHILDREN.delete(bot.name);
     if (fs.existsSync(pidPath)) fs.unlinkSync(pidPath);
     outStream.write(`\n---\n${bot.name} exited at ${new Date().toISOString()} (code=${code}, signal=${signal})\n`);
     outStream.end();

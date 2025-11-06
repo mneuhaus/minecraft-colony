@@ -122,13 +122,23 @@ export class CraftscriptExecutor {
 
     try {
       if (name === 'move') {
-        const sel = this.requireSelectorArg(cmd.args[0]);
-        // If move includes u/d segment "^/_" already parsed, evaluate invariants based on delta y
-        const delta = this.selectorToWorld(sel).minus(this.bot.entity.position.floored());
-        if (delta.y > 0 && !safe_step_up(this.bot, sel)) return this.fail('invariant_violation', 'unsafe step up', cmd);
-        if (delta.y < 0 && !safe_step_down(this.bot, sel)) return this.fail('invariant_violation', 'unsafe step down', cmd);
-        await this.gotoSelector(sel, 0);
-        return this.ok('move', t0, { selector: '...' });
+        const arg0 = cmd.args[0];
+        if ((arg0 as any)?.type === 'World') {
+          const w = arg0 as World;
+          const named = this.namedArgs(cmd.args.slice(1));
+          const tol = named.tol ? Math.max(0, Number(this.evalExprSync(named.tol))) : 0;
+          try {
+            await this.bot.pathfinder.goto(new goals.GoalNear(w.x, w.y, w.z, tol));
+            return this.ok('move', t0, { world: [w.x, w.y, w.z], tol });
+          } catch (e: any) {
+            return this.fail('no_path', `cannot reach world(${w.x},${w.y},${w.z})`, cmd);
+          }
+        } else {
+          const sel = this.requireSelectorArg(arg0);
+          // Invariants relaxed: rely on pathfinder
+          await this.gotoSelector(sel, 0);
+          return this.ok('move', t0, { selector: 'rel' });
+        }
       }
       if (name === 'turn') {
         const arg = cmd.args[0];
@@ -142,37 +152,50 @@ export class CraftscriptExecutor {
         return this.ok('turn_face', t0, { face: dir.value });
       }
       if (name === 'dig') {
-        const sel = this.requireSelectorArg(cmd.args[0]);
+        const arg0 = cmd.args[0];
+        const worldPos = ((arg0 as any)?.type === 'World')
+          ? new Vec3((arg0 as World).x, (arg0 as World).y, (arg0 as World).z)
+          : this.selectorToWorld(this.requireSelectorArg(arg0));
         // Prevent digging upwards if gravity blocks overhead
-        const worldPos = this.selectorToWorld(sel);
         const above1 = this.bot.blockAt(worldPos.offset(0, 1, 0));
         const above2 = this.bot.blockAt(worldPos.offset(0, 2, 0));
         const grav = (b: any) => b && (b.name.includes('gravel') || b.name.includes('sand'));
         if (grav(above1) || grav(above2)) return this.fail('invariant_violation', 'gravity_block_overhead', cmd);
         const target = this.bot.blockAt(worldPos);
-        if (!target || target.name === 'air') return this.fail('move_blocked', 'no block to dig', cmd);
-        if (this.bot.entity.position.distanceTo(worldPos) > 4.5) return this.fail('move_blocked', 'out of reach', cmd);
-        await this.bot.dig(target);
-        return this.ok('dig', t0, { selector: sel });
+        if (!target || target.name === 'air') return this.fail('no_target', 'no block to dig', cmd);
+        if (this.bot.entity.position.distanceTo(worldPos) > 4.5) return this.fail('out_of_reach', 'target beyond reach (4.5)', cmd);
+        try {
+          await this.bot.dig(target);
+          return this.ok('dig', t0, { world: [worldPos.x, worldPos.y, worldPos.z], id: target.name });
+        } catch (e: any) {
+          return this.fail('runtime_error', e?.message || 'dig_failed', cmd);
+        }
       }
       if (name === 'place') {
         const id = this.requireString(cmd.args[0]).value;
-        const sel = this.requireSelectorArg(cmd.args[1]);
+        const arg1 = cmd.args[1];
         const named = this.namedArgs(cmd.args.slice(2));
         const face = (named.face && this.exprToString(named.face)) || 'up';
-        const worldPos = this.selectorToWorld(sel);
+        const worldPos = ((arg1 as any)?.type === 'World')
+          ? new Vec3((arg1 as World).x, (arg1 as World).y, (arg1 as World).z)
+          : this.selectorToWorld(this.requireSelectorArg(arg1));
         // Equip
         const itemName = id.replace('minecraft:', '');
         const item = this.bot.inventory.items().find((i) => i.name === itemName);
         if (!item) return this.fail('unavailable', `no ${id} in inventory`, cmd);
         await this.bot.equip(item, 'hand');
-        // place against reference block
+        // place against reference block: in Mineflayer, placement occurs at reference.position + faceVector.
+        // To place at worldPos, choose the block at worldPos - faceVector as the reference.
         const faceVector = faceToVec(face);
-        const reference = this.bot.blockAt(worldPos.plus(faceVector));
+        const reference = this.bot.blockAt(worldPos.minus(faceVector));
         if (!reference || reference.name === 'air') return this.fail('blocked', 'no reference to place against', cmd);
-        if (this.bot.entity.position.distanceTo(reference.position) > 4.5) return this.fail('move_blocked', 'out of reach', cmd);
-        await this.bot.placeBlock(reference, faceVector);
-        return this.ok('place', t0, { id, selector: sel, face });
+        if (this.bot.entity.position.distanceTo(reference.position) > 4.5) return this.fail('out_of_reach', 'reference beyond reach (4.5)', cmd);
+        try {
+          await this.bot.placeBlock(reference, faceVector);
+          return this.ok('place', t0, { id, world: [worldPos.x, worldPos.y, worldPos.z], face });
+        } catch (e: any) {
+          return this.fail('runtime_error', e?.message || 'place_failed', cmd);
+        }
       }
       if (name === 'equip') {
         const id = this.requireString(cmd.args[0]).value.replace('minecraft:', '');

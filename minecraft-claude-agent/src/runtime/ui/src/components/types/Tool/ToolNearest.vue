@@ -12,7 +12,6 @@
         <tr>
           <th>dist</th>
           <th>reach</th>
-          <th>selector</th>
           <th>world</th>
         </tr>
       </thead>
@@ -20,7 +19,6 @@
         <tr v-for="r in rows.slice(0,5)" :key="r.key">
           <td class="td-dist">{{ r.dist }}</td>
           <td class="td-reach">{{ r.reach }}</td>
-          <td class="td-sel"><code>{{ r.sel }}</code></td>
           <td class="td-world">{{ r.world }}</td>
         </tr>
       </tbody>
@@ -39,7 +37,6 @@ const rows = computed(()=> Array.isArray(out.value) ? out.value.map((m: any, i: 
   key: String(i),
   dist: (m?.dist!==undefined) ? Number(m.dist).toFixed(1) : '',
   reach: m?.reachable===undefined ? '—' : (m.reachable ? '✓' : '✗'),
-  sel: String(m?.selector||''),
   world: Array.isArray(m?.world) && m.world.length===3 ? `(${m.world[0]}, ${m.world[1]}, ${m.world[2]})` : ''
 })) : []);
 </script>
@@ -100,4 +97,3 @@ const rows = computed(()=> Array.isArray(out.value) ? out.value.map((m: any, i: 
   font-size: 10px;
 }
 </style>
-

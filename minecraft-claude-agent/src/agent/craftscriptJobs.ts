@@ -1,6 +1,7 @@
 import { MinecraftBot } from '../bot/MinecraftBot.js';
 import { CraftscriptExecutor } from '../craftscript/executor.js';
 import { parse as parseCraft } from '../craftscript/parser.js';
+import { ActivityWriter } from '../utils/activityWriter.js';
 
 type JobState = 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
 
@@ -20,11 +21,11 @@ function uid(): string {
   return 'cs_' + Math.random().toString(36).slice(2, 10);
 }
 
-export function createCraftscriptJob(minecraftBot: MinecraftBot, script: string): string {
+export function createCraftscriptJob(minecraftBot: MinecraftBot, script: string, activityWriter?: ActivityWriter, botName?: string): string {
   const id = uid();
   const job: Job = { id, state: 'queued', script };
   JOBS.set(id, job);
-  runJob(minecraftBot, job).catch(() => {});
+  runJob(minecraftBot, job, activityWriter, botName).catch(() => {});
   return id;
 }
 
@@ -40,7 +41,7 @@ export function cancelCraftscriptJob(id: string): void {
   job.endedAt = Date.now();
 }
 
-async function runJob(minecraftBot: MinecraftBot, job: Job): Promise<void> {
+async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: ActivityWriter, botName?: string): Promise<void> {
   try {
     const bot = minecraftBot.getBot();
     job.state = 'running';
@@ -48,6 +49,20 @@ async function runJob(minecraftBot: MinecraftBot, job: Job): Promise<void> {
     const ast = parseCraft(job.script);
     const exec = new CraftscriptExecutor(bot);
     const result = await exec.run(ast as any);
+    // Emit steps once finished (simple implementation). For true streaming, executor would need a callback.
+    try {
+      if (activityWriter) {
+        for (const r of result.results) {
+          activityWriter.addActivity({
+            type: 'tool',
+            message: 'Tool: craftscript_step',
+            details: { name: 'craftscript_step', tool_name: 'craftscript_step', input: {}, params_summary: {}, output: JSON.stringify(r), duration_ms: ((r as any).ms) ?? 0 },
+            role: 'tool',
+            speaker: botName || minecraftBot.getBot().username || 'bot'
+          });
+        }
+      }
+    } catch {}
     for (const r of result.results) {
       job.lastStep = r;
       if (!r.ok) {
@@ -66,10 +81,14 @@ async function runJob(minecraftBot: MinecraftBot, job: Job): Promise<void> {
     job.state = 'failed';
     job.error = e?.message || String(e);
     job.endedAt = Date.now();
+    try {
+      if (activityWriter) {
+        activityWriter.addActivity({ type: 'error', message: 'CraftScript error', details: { error: job.error }, role: 'system', speaker: botName || minecraftBot.getBot().username || 'bot' });
+      }
+    } catch {}
   }
 }
 
 function JOB_CANCELLED(job: Job): boolean {
   return job.state === 'canceled';
 }
-

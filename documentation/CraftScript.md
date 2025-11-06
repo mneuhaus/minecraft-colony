@@ -13,7 +13,7 @@ It’s readable for humans, simple for LLMs, and maps directly onto Mineflayer &
 | **Readable** | familiar C/JavaScript syntax |
 | **Deterministic** | no randomness, no hidden state |
 | **Minecraft-native** | real registry IDs (`"minecraft:stone"`) and faces (`"up"`, `"north"`) |
-| **Relative** | coordinates expressed as `f/r/u/b/l/d` |
+| **Coordinates** | use `world(x,y,z)` for absolute positions; selectors `f/r/u/b/l/d` also supported |
 | **Safe** | executor enforces invariants; never damages itself |
 | **LLM-friendly** | few keywords, small grammar, clear errors |
 
@@ -348,23 +348,9 @@ It uses **Minecraft’s real IDs**, **relative coordinates**, and a strict execu
 
 # Runtime Introspection & Navigation API (vox + nav)
 
-Great — since you already have **mineflayer-pathfinder**, let’s keep it simple and **wrap what you have** instead of inventing new nav logic. Below is a tight set of **5 core world-understanding methods + 1 navigation wrapper** that plug straight into your stack and use **vanilla Minecraft IDs/names** (no mapping).
-
-I’m also showing exactly **how the nav wrapper should talk to pathfinder** and what status/errors you should emit so the planner can react.
+Below is a tight set of **world-understanding methods + one navigation wrapper** that map directly to Mineflayer and return simple JSON with real Minecraft IDs and absolute world coordinates.
 
 ---
-
-## Common envelope (all successes)
-
-```json
-{ "version":"mcrn-vox/1.1", "pose":{ "heading":"E", "feet_world":[x,y,z] }, "ts": 1710000000 }
-```
-
-**Uniform error**
-
-```json
-{ "ok": false, "error": "OUT_OF_BOUNDS|TIMEOUT|UNREACHABLE|BLOCKED|UNAVAILABLE", "message": "...", "ts": 1710000000 }
-```
 
 IDs must be **registry strings** like `"minecraft:oak_log"`, faces `"up|down|north|south|east|west"`.
 
@@ -372,39 +358,35 @@ IDs must be **registry strings** like `"minecraft:oak_log"`, faces `"up|down|nor
 
 # The 6 methods (minimal, practical)
 
-## 1) `get_vox(radius=2, include_air=false)`
+## 1) `get_vox(radius=2, include_air=false, grep?: string[])`
 
-Local 3D snapshot (5×5×5 default), **relative selectors** keyed (e.g. `"F1+U2"`), plus precomputed safety predicates.
+Local 3D snapshot (5×5×5 default) as a list of voxels with world coordinates and an optional `matches` array when `grep` is provided.
 
 **Response payload**
 
 ```json
 {
-  "window": { "radius": 2, "shape": [5,5,5] },
-  "vox": {
-    "F1": "minecraft:dirt",
-    "F1+U1": "minecraft:dirt",
-    "F1+U2": "minecraft:stone",
-    "U2": "minecraft:gravel"
-  },
-  "predicates": {
-    "SAFE_STEP_UP[F1]": false,
-    "SAFE_STEP_DOWN[F1]": true,
-    "CAN_STAND[F1]": true,
-    "HAZARDS": ["gravel_overhead"]
-  }
+  "window": { "radius": 2, "shape": [5,5,5], "origin": { "x": 120, "y": 64, "z": -80 } },
+  "voxels": [
+    { "x": 120, "y": 64, "z": -79, "id": "minecraft:dirt" },
+    { "x": 120, "y": 65, "z": -79, "id": "minecraft:dirt" },
+    { "x": 120, "y": 66, "z": -79, "id": "minecraft:stone" }
+  ],
+  "predicates": { "HAZARDS": ["gravel_overhead"] },
+  "grep": ["oak_log"],
+  "matches": [ { "x": 121, "y": 64, "z": -81, "id": "minecraft:oak_log" } ]
 }
 ```
 
 ---
 
-## 2) `affordances(selector="F1")`
+## 2) `affordances({ x, y, z })`
 
-What’s safely doable **at/into** a spot (standability, step up/down, place faces, tool hint).
+What’s safely doable **at/into** a world position (standability, step up/down, place faces, tool hint).
 
 ```json
 {
-  "selector": "F1",
+  "position": { "x": 121, "y": 64, "z": -80 },
   "can_stand": true,
   "safe_step_up": false,
   "safe_step_down": true,
@@ -430,8 +412,8 @@ Find nearest **block** or **entity** with reachability hint.
 ```json
 {
   "matches": [
-    { "selector":"F6+R1", "world":[x,y,z], "dist":6, "reachable":true },
-    { "selector":"F9",    "world":[x,y,z], "dist":9, "reachable":false }
+    { "world":[120,65,-80], "dist":6.0, "reachable":true },
+    { "world":[125,65,-84], "dist":9.2, "reachable":false }
   ]
 }
 ```
@@ -444,10 +426,10 @@ Find nearest **block** or **entity** with reachability hint.
 
 On-demand block properties for reasoning (don’t dump catalogs).
 
-**Request** (by id **or** selector)
+**Request** (by id **or** world coordinates)
 
 ```json
-{ "id":"minecraft:gravel" }  // or { "selector":"F1+U2" }
+{ "id":"minecraft:gravel" }  // or { "x":120, "y":66, "z":-80 }
 ```
 
 **Response**
@@ -473,13 +455,13 @@ On-demand block properties for reasoning (don’t dump catalogs).
 
 ## 5) `get_topography(radius=6)`
 
-Bird’s-eye **heightmap & slope** around the agent (still relative F/R).
+Bird’s-eye **heightmap & slope** around the agent (world x/z keys).
 
 ```json
 {
-  "grid": { "size": [13,13], "origin": "F0/R0" },
-  "heightmap": { "F0+R0": 0, "F1+R0": 1, "F2+R0": 2, "B1+R-1": -1 },
-  "slope": { "F1+R0": "gentle_up", "B2+R-1": "down" },
+  "grid": { "size": [13,13], "origin": { "x": 120, "z": -80 } },
+  "heightmap": { "120,-80": 0, "121,-80": 1, "122,-80": 2, "119,-81": -1 },
+  "slope": { "121,-80": "gentle_up", "118,-81": "down" },
   "summary": { "min": -3, "max": 4, "flat_cells": 89 }
 }
 ```
@@ -497,7 +479,7 @@ One method for **start / status / cancel**, so we don’t add more endpoints.
 ```json
 {
   "action": "start",
-  "target": { "type":"WORLD", "x":140, "y":64, "z":92 },   // or { "type":"SELECTOR", "sel":"F6" }
+  "target": { "type":"WORLD", "x":140, "y":64, "z":92 },
   "tol": 1,
   "timeout_ms": 8000,
   "policy": { "allow_dig": false, "max_drop": 1, "max_step": 1 }

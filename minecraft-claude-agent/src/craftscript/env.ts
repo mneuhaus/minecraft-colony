@@ -2,14 +2,14 @@ import type { Bot } from 'mineflayer';
 import minecraftData from 'minecraft-data';
 import { Vec3 } from 'vec3';
 import pathfinderPkg from 'mineflayer-pathfinder';
-import { headingToBasis, selectorToKey, selectorToOffset, yawToHeadingRadians, type Heading } from './selector.js';
+import { yawToHeadingRadians } from './selector.js';
 import type { Selector as SelAst } from './types.js';
 
 const { goals, Movements } = pathfinderPkg as any;
 
 export type VoxSnapshot = {
-  window: { radius: number; shape: [number, number, number] };
-  vox: Record<string, string>;
+  window: { radius: number; shape: [number, number, number]; origin: { x: number; y: number; z: number } };
+  voxels: Array<{ x: number; y: number; z: number; id: string }>;
   predicates: Record<string, any>;
 };
 
@@ -23,32 +23,14 @@ export async function get_vox(
   bot: Bot,
   radius?: number,
   include_air = false,
-  dims?: { fx?: number; bx?: number; uy?: number; dy?: number; rz?: number; lz?: number }
+  _dims?: { fx?: number; bx?: number; uy?: number; dy?: number; rz?: number; lz?: number },
+  grep?: string[]
 ): Promise<VoxSnapshot> {
   const center = bot.entity.position.floored();
-  const heading = yawToHeadingRadians(bot.entity.yaw);
-  const vox: Record<string, string> = {};
+  const voxels: Array<{ x: number; y: number; z: number; id: string }> = [];
 
-  // Determine bounds: either use dims or fallback to radius
-  let xMin, xMax, yMin, yMax, zMin, zMax;
-  if (dims) {
-    // Use provided dimensions (in forward/back/up/down/right/left)
-    xMin = -(dims.bx ?? 0);
-    xMax = dims.fx ?? 0;
-    yMin = -(dims.dy ?? 0);
-    yMax = dims.uy ?? 0;
-    zMin = -(dims.lz ?? 0);
-    zMax = dims.rz ?? 0;
-  } else {
-    // Use radius (default 2)
-    const r = radius ?? 2;
-    xMin = -r;
-    xMax = r;
-    yMin = -r;
-    yMax = r;
-    zMin = -r;
-    zMax = r;
-  }
+  const r = radius ?? 2;
+  const xMin = -r, xMax = r, yMin = -r, yMax = r, zMin = -r, zMax = r;
 
   for (let dx = xMin; dx <= xMax; dx++) {
     for (let dy = yMin; dy <= yMax; dy++) {
@@ -58,89 +40,96 @@ export async function get_vox(
         if (!b) continue;
         const name = b.name;
         if (!include_air && name === 'air') continue;
-        // Convert (dx,dy,dz) to selector key in relative F/R/U basis
-        const key = deltaToSelectorKey(dx, dy, dz, heading);
-        vox[key] = `minecraft:${name}`.startsWith('minecraft:') ? name : `minecraft:${name}`;
+        voxels.push({ x: pos.x, y: pos.y, z: pos.z, id: name });
       }
     }
   }
 
-  // Precompute predicates for F1
   const pred: Record<string, any> = {};
-  const f1 = selectorFromTerms([{ axis: 'f', n: 1 }]);
-  pred[`SAFE_STEP_UP[F1]`] = safe_step_up(bot, f1);
-  pred[`SAFE_STEP_DOWN[F1]`] = safe_step_down(bot, f1);
-  pred[`CAN_STAND[F1]`] = can_stand(bot, f1);
-  const hazardRadius = radius ?? 2;
-  pred[`HAZARDS`] = detect_hazards(bot, hazardRadius);
+  pred[`HAZARDS`] = detect_hazards(bot, r);
 
-  const effectiveRadius = radius ?? Math.max(xMax, yMax, zMax);
+  // Optional filtering (grep)
+  const patterns = Array.isArray(grep) ? grep.map(s => String(s).toLowerCase()).filter(Boolean) : [];
+  const matches = patterns.length
+    ? voxels.filter(v => patterns.some(p => v.id.toLowerCase().includes(p)))
+    : [];
+
   return {
-    window: { radius: effectiveRadius, shape: [xMax - xMin + 1, yMax - yMin + 1, zMax - zMin + 1] },
-    vox,
+    window: { radius: r, shape: [xMax - xMin + 1, yMax - yMin + 1, zMax - zMin + 1], origin: { x: center.x, y: center.y, z: center.z } },
+    voxels,
+    ...(patterns.length ? { grep: patterns, matches } : {}),
     predicates: pred,
-  };
+  } as any;
 }
 
 // Bird's eye view - 2D map with relative heights
-export function look_at_map(bot: Bot, radius = 10, zoom = 1) {
+export function look_at_map(bot: Bot, radius = 10, zoom = 1, grep?: string[]) {
   const center = bot.entity.position.floored();
   const botY = center.y;
-  const heading = yawToHeadingRadians(bot.entity.yaw);
-  const map: Record<string, { blocks: string[]; height_min: number; height_max: number }> = {};
+  const cells: Array<{ x: number; z: number; blocks: string[]; height_min: number; height_max: number }> = [];
 
   // Zoom controls grid size: zoom=1 is 1x1 (1 block), zoom=2 is 2x2 (4 blocks), etc.
   const step = Math.max(1, Math.floor(zoom));
 
-  for (let fx = -radius; fx <= radius; fx += step) {
-    for (let fr = -radius; fr <= radius; fr += step) {
-      const key = `${frKey(fx)}+${rrKey(fr)}`.replace('+L0', '+R0').replace('F0+', 'F0+');
+  for (let dx = -radius; dx <= radius; dx += step) {
+    for (let dz = -radius; dz <= radius; dz += step) {
 
       // Sample all blocks in the zoom grid
       const blockTypes = new Set<string>();
       let minHeight = Infinity;
       let maxHeight = -Infinity;
 
-      for (let dx = 0; dx < step; dx++) {
-        for (let dz = 0; dz < step; dz++) {
-          const sampleFx = fx + dx;
-          const sampleFr = fr + dz;
-
-          const delta = relativeFRtoDelta(sampleFx, sampleFr, heading);
-          const colTopY = findSurfaceY(bot, center.offset(delta.x, 0, delta.z));
+      for (let ox = 0; ox < step; ox++) {
+        for (let oz = 0; oz < step; oz++) {
+          const wx = center.x + dx + ox;
+          const wz = center.z + dz + oz;
+          const colTopY = findSurfaceY(bot, new Vec3(wx, center.y, wz));
           const relHeight = colTopY - botY;
 
           minHeight = Math.min(minHeight, relHeight);
           maxHeight = Math.max(maxHeight, relHeight);
 
-          const surfacePos = center.offset(delta.x, colTopY - center.y, delta.z);
-          const block = bot.blockAt(surfacePos);
-          if (block) {
-            blockTypes.add(block.name);
+          // Scan column from surface down a few blocks to capture logs under leaves
+          const SCAN_DEPTH = 8;
+          for (let y = colTopY; y > colTopY - SCAN_DEPTH; y--) {
+            const b = bot.blockAt(new Vec3(wx, y, wz));
+            if (b && b.name && b.name !== 'air') blockTypes.add(b.name);
           }
         }
       }
 
-      map[key] = {
+      const cell = {
+        x: center.x + dx,
+        z: center.z + dz,
         blocks: Array.from(blockTypes),
         height_min: minHeight === Infinity ? 0 : minHeight,
         height_max: maxHeight === -Infinity ? 0 : maxHeight
-      };
+      } as any;
+      // mark match if requested
+      const patterns = Array.isArray(grep) ? grep.map(s => String(s).toLowerCase()).filter(Boolean) : [];
+      if (patterns.length) {
+        const matched = cell.blocks.filter((b: string) => patterns.some((p: string) => b.toLowerCase().includes(p)));
+        if (matched.length) cell.matched = matched;
+      }
+      cells.push(cell);
     }
   }
 
+  const patterns = Array.isArray(grep) ? grep.map(s => String(s).toLowerCase()).filter(Boolean) : [];
+  const matches = patterns.length ? cells.filter((c: any) => Array.isArray(c.matched) && c.matched.length) : [];
+
   return {
-    grid: { size: [Math.ceil((radius * 2 + 1) / step), Math.ceil((radius * 2 + 1) / step)], origin: 'F0+R0' },
+    grid: { size: [Math.ceil((radius * 2 + 1) / step), Math.ceil((radius * 2 + 1) / step)], origin: { x: center.x, z: center.z } },
     bot_height: botY,
     zoom: step,
-    map,
-  };
+    cells,
+    ...(patterns.length ? { grep: patterns, matches } : {}),
+  } as any;
 }
 
-export function affordances(bot: Bot, selector: SelAst) {
-  const heading = yawToHeadingRadians(bot.entity.yaw);
-  const target = bot.entity.position.floored().plus(selectorToOffset(selector, heading));
-  const canStand = can_stand_at_world(bot, target);
+export function affordances(bot: Bot, target: { x: number; y: number; z: number }) {
+  const targetVec = new Vec3(Math.floor(target.x), Math.floor(target.y), Math.floor(target.z));
+  const canStand = can_stand_at_world(bot, targetVec);
   // prefetch surrounding blocks
   const selF1: SelAst = selectorFromTerms([{ axis: 'f', n: 1 }]);
   const safeUp = safe_step_up(bot, selF1);
@@ -157,12 +146,12 @@ export function affordances(bot: Bot, selector: SelAst) {
     ['east', new Vec3(1, 0, 0)],
   ];
   for (const [name, off] of adj) {
-    const b = bot.blockAt(target.plus(off));
+    const b = bot.blockAt(targetVec.plus(off));
     if (b && b.name !== 'air') faces.push(name as any);
   }
 
   // Provide a naive best tool hint for the block currently at target
-  const block = bot.blockAt(target);
+  const block = bot.blockAt(targetVec);
   let break_best: string | null = null;
   if (block) {
     const best = bot.pathfinder?.bestHarvestTool?.(block);
@@ -170,7 +159,7 @@ export function affordances(bot: Bot, selector: SelAst) {
   }
 
   return {
-    selector: selectorToKey(selector, heading),
+    position: { x: targetVec.x, y: targetVec.y, z: targetVec.z },
     can_stand: canStand,
     safe_step_up: safeUp,
     safe_step_down: safeDown,
@@ -180,7 +169,6 @@ export function affordances(bot: Bot, selector: SelAst) {
 }
 
 export async function nearest(bot: Bot, query: { block_id?: string; entity_id?: string; radius?: number; reachable?: boolean }) {
-  const heading = yawToHeadingRadians(bot.entity.yaw);
   const origin = bot.entity.position.floored();
   const radius = query.radius ?? 48;
   const matches: any[] = [];
@@ -194,9 +182,8 @@ export async function nearest(bot: Bot, query: { block_id?: string; entity_id?: 
           if (!b) continue;
           const id = `minecraft:${b.name}`;
           if (id === query.block_id) {
-            const sel = deltaToSelectorKey(dx, dy, dz, heading);
             const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-            matches.push({ selector: sel, world: [pos.x, pos.y, pos.z], dist, reachable: undefined });
+            matches.push({ world: [pos.x, pos.y, pos.z], dist, reachable: undefined });
           }
         }
       }
@@ -210,9 +197,8 @@ export async function nearest(bot: Bot, query: { block_id?: string; entity_id?: 
         const dx = Math.floor(e.position.x) - origin.x;
         const dy = Math.floor(e.position.y) - origin.y;
         const dz = Math.floor(e.position.z) - origin.z;
-        const sel = deltaToSelectorKey(dx, dy, dz, heading);
         const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        matches.push({ selector: sel, world: [Math.floor(e.position.x), Math.floor(e.position.y), Math.floor(e.position.z)], dist, reachable: undefined });
+        matches.push({ world: [Math.floor(e.position.x), Math.floor(e.position.y), Math.floor(e.position.z)], dist, reachable: undefined });
       }
     }
   }
@@ -235,13 +221,14 @@ export async function nearest(bot: Bot, query: { block_id?: string; entity_id?: 
   return { matches };
 }
 
-export function block_info(bot: Bot, target: { id?: string; selector?: SelAst }) {
+export function block_info(bot: Bot, target: { id?: string; x?: number; y?: number; z?: number }) {
   if (target.id) {
     return staticBlockInfo(bot, target.id);
   }
-  if (!target.selector) throw new Error('selector or id required');
-  const heading = yawToHeadingRadians(bot.entity.yaw);
-  const pos = bot.entity.position.floored().plus(selectorToOffset(target.selector, heading));
+  if (typeof target.x !== 'number' || typeof target.y !== 'number' || typeof target.z !== 'number') {
+    throw new Error('id or x,y,z required');
+  }
+  const pos = new Vec3(Math.floor(target.x), Math.floor(target.y), Math.floor(target.z));
   const b = bot.blockAt(pos);
   if (!b) return { id: null, state: null, props: {} };
   const info = staticBlockInfo(bot, `minecraft:${b.name}`);
@@ -249,7 +236,6 @@ export function block_info(bot: Bot, target: { id?: string; selector?: SelAst })
 }
 
 export function get_topography(bot: Bot, radius = 6) {
-  const heading = yawToHeadingRadians(bot.entity.yaw);
   const origin = bot.entity.position.floored();
   const gridSize = radius * 2 + 1;
   const heightmap: Record<string, number> = {};
@@ -258,11 +244,12 @@ export function get_topography(bot: Bot, radius = 6) {
   let max = 0;
   let flat = 0;
 
-  for (let fx = -radius; fx <= radius; fx++) {
-    for (let fr = -radius; fr <= radius; fr++) {
-      const key = `${frKey(fx)}+${rrKey(fr)}`.replace('+L0', '+R0').replace('F0+', 'F0+');
-      const delta = relativeFRtoDelta(fx, fr, heading);
-      const colTopY = findSurfaceY(bot, origin.offset(delta.x, 0, delta.z));
+  for (let dx = -radius; dx <= radius; dx++) {
+    for (let dz = -radius; dz <= radius; dz++) {
+      const wx = origin.x + dx;
+      const wz = origin.z + dz;
+      const key = `${wx},${wz}`;
+      const colTopY = findSurfaceY(bot, new Vec3(wx, origin.y, wz));
       const rel = colTopY - origin.y;
       heightmap[key] = rel;
       if (rel === 0) flat++;
@@ -274,7 +261,7 @@ export function get_topography(bot: Bot, radius = 6) {
   }
 
   return {
-    grid: { size: [gridSize, gridSize], origin: 'F0/R0' },
+    grid: { size: [gridSize, gridSize], origin: { x: origin.x, z: origin.z } },
     heightmap,
     slope,
     summary: { min, max, flat_cells: flat },
@@ -295,7 +282,6 @@ type NavState = {
 const NAV_SESSIONS = new Map<string, NavState>();
 
 export function nav(bot: Bot, req: any) {
-  const heading = yawToHeadingRadians(bot.entity.yaw);
 
   if (req.action === 'start') {
     const id = `nav_${Math.random().toString(36).slice(2, 6)}`;
@@ -303,11 +289,6 @@ export function nav(bot: Bot, req: any) {
     let x: number, y: number, z: number;
     if (target.type === 'WORLD') {
       ({ x, y, z } = target);
-    } else if (target.type === 'SELECTOR') {
-      const sel = target.sel as SelAst | string;
-      if (typeof sel === 'string') throw new Error('Selector string not supported here');
-      const pos = bot.entity.position.floored().plus(selectorToOffset(sel as SelAst, heading));
-      x = pos.x; y = pos.y; z = pos.z;
     } else {
       throw new Error('Unknown target type');
     }
@@ -395,28 +376,9 @@ export function nav(bot: Bot, req: any) {
 }
 
 // Helpers
-function deltaToSelectorKey(dx: number, dy: number, dz: number, heading: Heading): string {
-  // Convert world-space delta to relative F/R/U key
-  const { f, r } = headingToBasis(heading);
-  // Solve for coefficients a, b where a*f + b*r + (0,dy,0) = (dx,dy,dz)
-  // f and r are orthonormal in XZ plane.
-  const a = dot2D(dx, dz, f.x, f.z);
-  const b = dot2D(dx, dz, r.x, r.z);
-  const parts = [] as string[];
-  if (a !== 0) parts.push(`${a >= 0 ? 'F' : 'B'}${Math.abs(a)}`);
-  if (b !== 0) parts.push(`${b >= 0 ? 'R' : 'L'}${Math.abs(b)}`);
-  if (dy !== 0) parts.push(`${dy >= 0 ? 'U' : 'D'}${Math.abs(dy)}`);
-  return parts.join('+') || 'F0';
-}
+// Removed: deltaToSelectorKey (MCRN) — using world coordinates directly
 
-function dot2D(ax: number, az: number, bx: number, bz: number): number {
-  // For our discrete basis vectors, projection reduces to choosing component
-  if (bx === 0 && bz === 1) return az; // N
-  if (bx === 0 && bz === -1) return -az; // S
-  if (bx === 1 && bz === 0) return ax; // E
-  if (bx === -1 && bz === 0) return -ax; // W
-  return 0;
-}
+// FR projection helpers removed
 
 function selectorFromTerms(terms: { axis: any; n: number }[]): SelAst {
   return { type: 'Selector', terms } as any;
@@ -429,22 +391,19 @@ function can_stand_at_world(bot: Bot, pos: Vec3): boolean {
   return !!below && below.name !== 'air' && (!feet || feet.name === 'air') && (!head || head.name === 'air');
 }
 
-export function can_stand(bot: Bot, selector: SelAst): boolean {
-  const heading = yawToHeadingRadians(bot.entity.yaw);
-  const pos = bot.entity.position.floored().plus(selectorToOffset(selector, heading));
+export function can_stand(bot: Bot, _selector: SelAst): boolean {
+  const pos = bot.entity.position.floored();
   return can_stand_at_world(bot, pos);
 }
 
-export function is_air(bot: Bot, selector: SelAst): boolean {
-  const heading = yawToHeadingRadians(bot.entity.yaw);
-  const pos = bot.entity.position.floored().plus(selectorToOffset(selector, heading));
+export function is_air(bot: Bot, _selector: SelAst): boolean {
+  const pos = bot.entity.position.floored();
   const b = bot.blockAt(pos);
   return !b || b.name === 'air';
 }
 
-export function safe_step_up(bot: Bot, selector: SelAst): boolean {
-  const heading = yawToHeadingRadians(bot.entity.yaw);
-  const pos = bot.entity.position.floored().plus(selectorToOffset(selector, heading));
+export function safe_step_up(bot: Bot, _selector: SelAst): boolean {
+  const pos = bot.entity.position.floored();
   // Need a solid block at feet (pos) and two air blocks above that position
   const foot = bot.blockAt(pos);
   const step = bot.blockAt(pos.offset(0, 1, 0));
@@ -452,10 +411,8 @@ export function safe_step_up(bot: Bot, selector: SelAst): boolean {
   return !!foot && foot.name !== 'air' && (!step || step.name === 'air') && (!head || head.name === 'air');
 }
 
-export function safe_step_down(bot: Bot, selector: SelAst): boolean {
-  const heading = yawToHeadingRadians(bot.entity.yaw);
-  const from = bot.entity.position.floored();
-  const to = from.plus(selectorToOffset(selector, heading));
+export function safe_step_down(bot: Bot, _selector: SelAst): boolean {
+  const to = bot.entity.position.floored();
   const belowTo = bot.blockAt(to.offset(0, -1, 0));
   const toFeet = bot.blockAt(to);
   const toHead = bot.blockAt(to.offset(0, 1, 0));
@@ -517,17 +474,7 @@ function guessPreferredTool(mc: any, block: any): string | null {
   return null;
 }
 
-function relativeFRtoDelta(f: number, r: number, heading: Heading): Vec3 {
-  const basis = headingToBasis(heading);
-  return basis.f.scaled(f).plus(basis.r.scaled(r));
-}
-
-function mkKey(n: number, positive: string, negative: string) {
-  if (n === 0) return `${positive}0`;
-  return `${n >= 0 ? positive : negative}${Math.abs(n)}`;
-}
-export function rrKey(n: number) { return mkKey(n, 'R', 'L'); }
-export function frKey(n: number) { return mkKey(n, 'F', 'B'); }
+// Removed FR helpers (relativeFRtoDelta, rrKey, frKey)
 
 function findSurfaceY(bot: Bot, xz: Vec3): number {
   // scan up and down from current Y to find first solid block top surface
