@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { Database } from 'bun:sqlite';
 import fs from 'fs';
 import path from 'path';
 import { EventEmitter } from 'events';
@@ -9,9 +9,11 @@ import { SCHEMA_SQL, SCHEMA_VERSION, BotStatus } from './schema.js';
  *
  * All bots read/write to this single database with bot_id for multi-tenancy.
  * Provides EventEmitter for realtime updates without WebSocket complexity.
+ *
+ * Now using Bun's built-in SQLite - no native compilation needed!
  */
 export class ColonyDatabase extends EventEmitter {
-  private db: Database.Database;
+  private db: Database;
   private dbPath: string;
   private static instance: ColonyDatabase | null = null;
 
@@ -51,11 +53,11 @@ export class ColonyDatabase extends EventEmitter {
 
   private initialize(): void {
     // Enable WAL mode for better concurrent access
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('foreign_keys = ON');
+    this.db.run('PRAGMA journal_mode = WAL');
+    this.db.run('PRAGMA foreign_keys = ON');
 
     // Create schema
-    this.db.exec(SCHEMA_SQL);
+    this.db.run(SCHEMA_SQL);
 
     // Store schema version
     const version = this.getMetadata('schema_version');

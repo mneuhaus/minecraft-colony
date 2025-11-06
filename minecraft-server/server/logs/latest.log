@@ -344,3 +344,37 @@
 [09:24:01] [User Authenticator #187/INFO]: UUID of player Kubo is e1b21cf6-be9b-3aa9-a17f-4fdd06162202
 [09:24:02] [Server thread/INFO]: Kubo joined the game
 [09:24:02] [Server thread/INFO]: Kubo[/[0:0:0:0:0:0:0:1]:53127] logged in with entity id 110524 at ([world]104.49961665396263, 64.0, 86.5)
+[10:06:19] [Server thread/INFO]: Kubo lost connection: Disconnected
+[10:06:19] [Server thread/INFO]: Kubo left the game
+[10:06:25] [User Authenticator #188/INFO]: UUID of player Kubo is e1b21cf6-be9b-3aa9-a17f-4fdd06162202
+[10:06:25] [Server thread/INFO]: Kubo joined the game
+[10:06:25] [Server thread/INFO]: Kubo[/[0:0:0:0:0:0:0:1]:65439] logged in with entity id 111911 at ([world]104.49961665396263, 64.0, 86.5)
+[10:09:28] [Server thread/INFO]: Kubo lost connection: Disconnected
+[10:09:28] [Server thread/INFO]: Kubo left the game
+[10:09:35] [User Authenticator #189/INFO]: UUID of player Kubo is e1b21cf6-be9b-3aa9-a17f-4fdd06162202
+[10:09:35] [Server thread/INFO]: Kubo joined the game
+[10:09:35] [Server thread/INFO]: Kubo[/[0:0:0:0:0:0:0:1]:50108] logged in with entity id 112029 at ([world]104.49961665396263, 64.0, 86.5)
+[10:10:04] [User Authenticator #189/INFO]: UUID of player mneuhaus is 3e30a878-b5ad-3497-b8b0-17f563f6f319
+[10:10:05] [Server thread/INFO]: mneuhaus joined the game
+[10:10:05] [Server thread/INFO]: mneuhaus[/127.0.0.1:50301] logged in with entity id 112045 at ([world]99.81967041859184, 64.0, 75.11113280616263)
+[10:10:09] [Async Chat Thread - #344/INFO]: [Not Secure] <mneuhaus> hey kubo
+[10:10:18] [Async Chat Thread - #344/INFO]: [Not Secure] <Kubo> Hey! Wie kann ich dir helfen?
+[10:10:20] [Async Chat Thread - #345/INFO]: [Not Secure] <Kubo> Das kleine Haus mit Schrägdach steht jetzt fertig auf dem Sandstrand (X=100-104, Z=84-88). Möchtest du noch etwas am Haus ändern, oder soll ich etwas anderes für dich bauen?
+[10:12:42] [Server thread/INFO]: Kubo lost connection: Disconnected
+[10:12:42] [Server thread/INFO]: Kubo left the game
+[10:15:07] [User Authenticator #190/INFO]: UUID of player Kubo is e1b21cf6-be9b-3aa9-a17f-4fdd06162202
+[10:15:07] [Server thread/INFO]: Kubo joined the game
+[10:15:07] [Server thread/INFO]: Kubo[/[0:0:0:0:0:0:0:1]:52102] logged in with entity id 112204 at ([world]104.49961665396263, 64.0, 86.5)
+[10:16:24] [Async Chat Thread - #348/INFO]: [Not Secure] <mneuhaus> hey dud
+[10:16:32] [Async Chat Thread - #348/INFO]: [Not Secure] <Kubo> Hey dud! Was gibt's? 😊
+[10:16:34] [Async Chat Thread - #348/INFO]: [Not Secure] <Kubo> Brauchst du noch was am Haus, oder hast du eine neue Idee für ein Projekt?
+[10:19:52] [Server thread/INFO]: Kubo lost connection: Disconnected
+[10:19:53] [Server thread/INFO]: Kubo left the game
+[10:20:02] [User Authenticator #191/INFO]: UUID of player Kubo is e1b21cf6-be9b-3aa9-a17f-4fdd06162202
+[10:20:03] [Server thread/INFO]: Kubo joined the game
+[10:20:03] [Server thread/INFO]: Kubo[/[0:0:0:0:0:0:0:1]:53893] logged in with entity id 112365 at ([world]104.49961665396263, 64.0, 86.5)
+[10:20:23] [Server thread/INFO]: Kubo lost connection: Disconnected
+[10:20:23] [Server thread/INFO]: Kubo left the game
+[10:21:04] [User Authenticator #192/INFO]: UUID of player Kubo is e1b21cf6-be9b-3aa9-a17f-4fdd06162202
+[10:21:04] [Server thread/INFO]: Kubo joined the game
+[10:21:04] [Server thread/INFO]: Kubo[/[0:0:0:0:0:0:0:1]:54285] logged in with entity id 112400 at ([world]104.49961665396263, 64.0, 86.5)

@@ -10,7 +10,7 @@
  *   pnpm tsx scripts/migrate-to-shared-db.ts
  */
 
-import Database from 'better-sqlite3';
+import { Database } from 'bun:sqlite';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -367,9 +367,9 @@ async function main() {
   // Initialize colony database
   console.log(`\n[Migrate] Initializing colony database: ${COLONY_DB_PATH}`);
   const colonyDb = new Database(COLONY_DB_PATH);
-  colonyDb.pragma('journal_mode = WAL');
-  colonyDb.pragma('foreign_keys = ON');
-  colonyDb.exec(SCHEMA_SQL);
+  colonyDb.run('PRAGMA journal_mode = WAL');
+  colonyDb.run('PRAGMA foreign_keys = ON');
+  colonyDb.run(SCHEMA_SQL);
 
   // Migrate each bot database
   const mappings: BotMapping[] = [];

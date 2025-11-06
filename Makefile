@@ -16,7 +16,7 @@ SHOW_FAIL_LOG ?= 0
 
 # Dashboard port (used by colony runtime / timeline UI)
 DASHBOARD_PORT ?= 4242
-COLONY_CMD := env $(AGENT_ENV) DASHBOARD_PORT=$(DASHBOARD_PORT) pnpm colony
+COLONY_CMD := env $(AGENT_ENV) DASHBOARD_PORT=$(DASHBOARD_PORT) bun run colony
 
 .PHONY: start-server stop-server restart-server status-server \
         start-agents stop-agents restart-agents status-agents \
@@ -85,8 +85,8 @@ status-agents:
 	@cd $(AGENT_DIR) && pnpm colony-ctl status
 
 start-colony:
-	@cd $(AGENT_DIR) && pnpm run dashboard:build
-	@cd $(AGENT_DIR) && pnpm -s run build
+	@cd $(AGENT_DIR) && bun run dashboard:build
+	@echo "Skipping TypeScript build - Bun runs TS directly"
 	@if [ -f $(COLONY_PID_FILE) ] && kill -0 $$(cat $(COLONY_PID_FILE)) 2>/dev/null; then \
 		echo "Colony already running (PID $$(cat $(COLONY_PID_FILE))) – http://localhost:$(DASHBOARD_PORT)"; \
 		exit 0; \
