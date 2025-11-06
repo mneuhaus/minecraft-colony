@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env bun
 
 /**
  * Migration script: Per-bot SQLite databases → Single shared colony.db
@@ -7,7 +7,7 @@
  * into the new shared logs/colony.db database.
  *
  * Usage:
- *   pnpm tsx scripts/migrate-to-shared-db.ts
+ *   bun scripts/migrate-to-shared-db.ts
  */
 
 import { Database } from 'bun:sqlite';
@@ -260,7 +260,7 @@ async function main() {
     const schema = await import(schemaPath);
     SCHEMA_SQL = schema.SCHEMA_SQL;
   } catch (error) {
-    console.error('[Migrate] Failed to import schema. Make sure to build first: pnpm build');
+    console.error('[Migrate] Failed to import schema. Make sure to build first: bun run build');
     console.error('[Migrate] Using inline schema as fallback...');
 
     // Inline fallback schema (same as in schema.ts)

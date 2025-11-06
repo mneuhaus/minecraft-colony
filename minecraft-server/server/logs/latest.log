@@ -378,3 +378,13 @@
 [10:21:04] [User Authenticator #192/INFO]: UUID of player Kubo is e1b21cf6-be9b-3aa9-a17f-4fdd06162202
 [10:21:04] [Server thread/INFO]: Kubo joined the game
 [10:21:04] [Server thread/INFO]: Kubo[/[0:0:0:0:0:0:0:1]:54285] logged in with entity id 112400 at ([world]104.49961665396263, 64.0, 86.5)
+[10:39:12] [Server thread/INFO]: Kubo lost connection: Disconnected
+[10:39:12] [Server thread/INFO]: Kubo left the game
+[10:39:16] [User Authenticator #193/INFO]: UUID of player Kubo is e1b21cf6-be9b-3aa9-a17f-4fdd06162202
+[10:39:17] [Server thread/INFO]: Kubo joined the game
+[10:39:17] [Server thread/INFO]: Kubo[/[0:0:0:0:0:0:0:1]:61143] logged in with entity id 112998 at ([world]104.49961665396263, 64.0, 86.5)
+[10:50:46] [Server thread/INFO]: Kubo lost connection: Disconnected
+[10:50:46] [Server thread/INFO]: Kubo left the game
+[10:50:51] [User Authenticator #194/INFO]: UUID of player Kubo is e1b21cf6-be9b-3aa9-a17f-4fdd06162202
+[10:50:51] [Server thread/INFO]: Kubo joined the game
+[10:50:51] [Server thread/INFO]: Kubo[/[0:0:0:0:0:0:0:1]:65403] logged in with entity id 113390 at ([world]104.49961665396263, 64.0, 86.5)

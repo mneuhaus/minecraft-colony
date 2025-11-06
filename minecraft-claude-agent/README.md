@@ -1,6 +1,6 @@
 # Claude Minecraft Agent
 
-A standalone Node.js agent that connects to Minecraft servers using [mineflayer](https://github.com/PrismarineJS/mineflayer) and is powered by Claude AI through the [Anthropic SDK](https://github.com/anthropics/anthropic-sdk-typescript).
+A Bun-powered agent that connects to Minecraft servers using [mineflayer](https://github.com/PrismarineJS/mineflayer) and is driven by Claude AI through the [Claude Agent SDK](https://github.com/anthropics/anthropic-sdk-typescript).
 
 ## Features
 
@@ -50,8 +50,8 @@ A standalone Node.js agent that connects to Minecraft servers using [mineflayer]
 
 ## Prerequisites
 
-- Node.js 16+ (with ES module support)
-- pnpm (or npm/yarn)
+- Bun 1.1+ (TS runs natively)
+- pnpm (for dependency installation)
 - A running Minecraft server (Paper/Spigot/Vanilla 1.21.1+)
 - Anthropic API key ([get one here](https://console.anthropic.com/))
 
@@ -62,7 +62,7 @@ A standalone Node.js agent that connects to Minecraft servers using [mineflayer]
    cd minecraft-claude-agent
    ```
 
-2. **Install dependencies**:
+2. **Install dependencies** (using pnpm):
    ```bash
    pnpm install
    ```
@@ -94,48 +94,57 @@ A standalone Node.js agent that connects to Minecraft servers using [mineflayer]
    LOG_LEVEL=info
    ```
 
-5. **Build the project**:
+5. (Optional) **Build the project**:
    ```bash
-   pnpm build
+   bun run build
    ```
 
 ## Usage
 
 ### Minecraft Colony Runtime
 
-Launch all bots defined in `bots.yaml` and the dashboard together:
+Launch the unified runtime (all bots from `bots.yaml` + dashboard):
 
 ```bash
-pnpm colony
+bun run colony
 ```
 
-The runtime keeps the bot supervisor and dashboard in one place, shutting everything down cleanly on Ctrl+C. Set `DISABLE_VIEWER=true` if you want to skip Prismarine Viewer for headless runs.
-
-### Bot Control CLI
-
-Use `colony-ctl` for targeted actions against specific bots:
+Or from the repo root using the Makefile (detached + PID management):
 
 ```bash
-pnpm colony-ctl start-all     # start every bot
-pnpm colony-ctl stop-all      # stop every bot
-pnpm colony-ctl restart <botName>
+make start-colony
 ```
+
+Set `DISABLE_VIEWER=true` to skip Prismarine Viewer for headless runs.
+
+### Debug helpers
+
+- Send a chat message without joining Minecraft:
+
+  ```bash
+  bun run send "cut down the nearest tree"
+  ```
+
+- Capture a prismarine-viewer screenshot:
+
+  ```bash
+  bun run screenshot
+  ```
 
 ### Development Mode (with hot reload)
 
 ```bash
-pnpm dev
+bun run dev
 ```
 
-This uses `tsx watch` to automatically rebuild and restart when you make changes.
+Bun runs TypeScript directly and watches for changes.
 
-### Production Mode
+### Stop / Restart
 
 ```bash
-pnpm start
+make stop-colony
+make restart-colony
 ```
-
-This runs the compiled JavaScript from the `dist/` folder.
 
 ## Available Tools
 
@@ -240,9 +249,9 @@ Example skills you might create:
 | **Latency** | Multiple network hops | In-process (fast) |
 | **Events** | Polling required | Native event emitters |
 | **Context** | Must query state | Continuous awareness |
-| **Deployment** | External process | Single Node.js app |
-| **Debugging** | Harder (multiple processes) | Standard Node.js tools |
-| **Hot Reload** | Requires restart | `tsx watch` mode |
+| **Deployment** | External process | Single Bun app |
+| **Debugging** | Harder (multiple processes) | Standard Bun/TS tools |
+| **Hot Reload** | Requires restart | Bun `--watch` mode |
 
 ## Future Enhancements
 

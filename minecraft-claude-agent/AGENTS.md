@@ -28,9 +28,9 @@ This file contains legacy development details and debugging methodology.
 2. Record human context with **`appendDiaryEntry`**. Summaries should be a sentence; details can be bullet lists or fenced YAML (`details` object).
 3. Reference `latest.log` in reviews/diary when you need proof of in-game changes.
 4. Control the viewer with `DISABLE_VIEWER=true` (skip prismarine viewer) and `VIEWER_PORT` when sharing the dev server.
-5. To avoid duplicate-login kicks while debugging, run `MC_USERNAME=YourName DISABLE_VIEWER=true pnpm start`.
-6. Use `pnpm send "message"` to simulate player chat without opening Minecraft (set `DEBUG_SENDER_USERNAME=Name` if you need a specific sender).
-7. Capture viewer screenshots with `pnpm screenshot` (tweak `VIEWER_URL`, `VIEWER_SCREENSHOT_DIR`, etc. as needed). Outputs land in `logs/screenshots/` by default.
+5. To avoid duplicate-login kicks while debugging, run `MC_USERNAME=YourName DISABLE_VIEWER=true bun run colony` (or `make start-colony`).
+6. Use `bun run send "message"` to simulate player chat without opening Minecraft (set `DEBUG_SENDER_USERNAME=Name` if you need a specific sender).
+7. Capture viewer screenshots with `bun run screenshot` (tweak `VIEWER_URL`, `VIEWER_SCREENSHOT_DIR`, etc. as needed). Outputs land in `logs/screenshots/` by default.
 8. After either helper, review `logs/agent.log` and `logs/diary.md` to confirm the agent’s response.
 9. From inside the agent, call the `read_diary_entries` MCP tool to skim the last few diary entries (defaults to 3, accepts `limit` up to 10).
 
@@ -431,13 +431,8 @@ private startViewer(): void {
 - Right-click and drag: Pan view
 - Third-person view (firstPerson: false) recommended for better spatial awareness
 
-**Canvas Dependency Fix:**
-```bash
-# Canvas needs native bindings - rebuild after install
-npm rebuild canvas
-# Or build canvas in its directory
-cd node_modules/.pnpm/canvas@*/node_modules/canvas && npm run install
-```
+**Canvas Dependency:**
+With the Bun runtime and `bun:sqlite`, native Canvas rebuilds are no longer required here. If you see Canvas-related errors, verify you’re not pulling in optional peer dependencies.
 
 **Taking Screenshots with Playwright MCP:**
 ```typescript
@@ -639,7 +634,7 @@ By offloading heavy operations to subagents:
 ### Standard Debug Process
 
 1. **Reproduce the issue**
-   - Run the bot: `pnpm start`
+   - Start the unified runtime: `make start-colony` (or `bun run colony`)
    - Observe behavior in-game or viewer
 
 2. **Visual Verification**
@@ -654,8 +649,8 @@ By offloading heavy operations to subagents:
 
 4. **Fix and Test**
    - Make code changes
-   - Rebuild: `pnpm run build`
-   - Restart bot and verify fix with screenshots
+   - Optional build: `bun run build` (Bun runs TS directly)
+   - Restart runtime and verify fix with screenshots (`make restart-colony`)
 
 ### Common Gotchas
 
@@ -711,21 +706,21 @@ Before considering any block placement feature "done":
 
 ```bash
 # Development
-pnpm run dev              # Watch mode with tsx
-pnpm run build            # Compile TypeScript
-pnpm start                # Run compiled bot
+bun run dev               # Watch mode (Bun runs TS directly)
+bun run build             # Compile TypeScript (optional)
 
 # Colony runtime & management
-pnpm colony               # Start all bots and the dashboard (http://localhost:4242)
-pnpm colony-ctl status    # Show per-bot status summary
-pnpm colony-ctl start-all # Launch bots from bots.yaml without the dashboard
+make start-colony         # Start unified runtime + dashboard (detached)
+make status-colony        # Check runtime PID/status
+make restart-colony       # Restart runtime cleanly
 
 # Debugging
-lsof -i :3000            # Check if viewer port is in use
-npm rebuild canvas       # Fix canvas native module
+lsof -i :3000             # Check if viewer port is in use
+bun run send "hello"       # Inject chat message into server
+bun run screenshot         # Capture prismarine-viewer screenshot
 
-# Clean restart
-rm -rf dist && pnpm run build && pnpm start
+# Clean restart (foreground alternative)
+bun run colony            # Start runtime in foreground
 ```
 
 ## Future Improvements

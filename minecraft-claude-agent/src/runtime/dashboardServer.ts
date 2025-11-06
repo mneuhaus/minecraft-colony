@@ -341,7 +341,7 @@ export function createDashboardApp(botManager: BotManager) {
       const html = fs.readFileSync(indexPath, 'utf-8');
       return c.html(html);
     }
-    return c.text('Dashboard UI not built. Run: cd src/runtime/ui && pnpm build', 404);
+    return c.text('Dashboard UI not built. Run: bun run dashboard:build', 404);
   });
 
   app.get('/assets/*', (c) => {

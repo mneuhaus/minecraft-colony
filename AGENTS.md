@@ -33,7 +33,8 @@ minecraft/
 **Purpose:** Claude-powered autonomous Minecraft bot using mineflayer and the Claude Agent SDK.
 
 **Technology:**
-- Node.js/TypeScript
+- Bun/TypeScript (Bun runs TS directly)
+- bun:sqlite (built-in SQLite; no native modules)
 - mineflayer (Minecraft bot framework)
 - Claude Agent SDK (automatic skill loading)
 - prismarine-viewer (visual debugging at http://localhost:3000)
@@ -44,9 +45,9 @@ minecraft/
 - `minecraft-server/server/logs/latest.log` — Server truth for all in-world actions.
 
 **Quick Debug Messaging:**
-- Run `pnpm send "your message"` from `minecraft-claude-agent/` to inject chat messages without joining the game yourself.
-- Override username via `DEBUG_SENDER_USERNAME=YourName pnpm send "..."` when needed.
-- Capture viewer snapshots with `pnpm screenshot` (set `VIEWER_URL`, `VIEWER_SCREENSHOT_DIR`, etc. as needed). Screenshots land in `minecraft-claude-agent/logs/screenshots/` by default.
+- Run `bun run send "your message"` from `minecraft-claude-agent/` to inject chat messages without joining the game yourself.
+- Override username via `DEBUG_SENDER_USERNAME=YourName bun run send "..."` when needed.
+- Capture viewer snapshots with `bun run screenshot` (set `VIEWER_URL`, `VIEWER_SCREENSHOT_DIR`, etc. as needed). Screenshots land in `minecraft-claude-agent/logs/screenshots/` by default.
 - The helpers spawn disposable processes and exit automatically—check `logs/agent.log` and `logs/diary.md` to confirm the bot handled the interaction.
 - Inside the agent, use the `read_diary_entries` MCP tool to let Claude skim recent diary history (defaults to three entries, supports `limit` up to 10).
 
@@ -96,13 +97,13 @@ Follow this sequence to validate new behavior end-to-end:
    - `make status-server` to see if the Paper server is already running; start it with `make start-server` only when needed.
    - `make start-colony` to launch the bot colony detached. Confirm with `make status-colony`; if you need a fresh run use `make restart-colony`.
 2. **Drive the bot via chat**
-   - From `minecraft-claude-agent/`, send instructions with `pnpm send "cut down the nearest tree"` (prefix with `DEBUG_SENDER_USERNAME=YourName` when you want the message labeled).
+   - From `minecraft-claude-agent/`, send instructions with `bun run send "cut down the nearest tree"` (prefix with `DEBUG_SENDER_USERNAME=YourName` when you want the message labeled).
 3. **Inspect activity**
    - Tail `minecraft-claude-agent/logs/agent.log` for structured turn-by-turn details and tool calls.
    - Read `minecraft-claude-agent/logs/diary.md` for the bot’s natural-language commentary.
    - Cross-check `minecraft-server/server/logs/latest.log` for authoritative in-world events.
 4. **Capture ground truth when needed**
-   - Run `pnpm screenshot` from `minecraft-claude-agent/` to trigger the screenshot bot (configure viewer env vars as needed). Files land in `minecraft-claude-agent/logs/screenshots/`.
+   - Run `bun run screenshot` from `minecraft-claude-agent/` to trigger the screenshot bot (configure viewer env vars as needed). Files land in `minecraft-claude-agent/logs/screenshots/`.
 5. **Shut down cleanly**
    - When finished, `make stop-colony` (which also tears down agents) and `make stop-server`.
 
@@ -147,21 +148,22 @@ make stop-colony          # stop bots & dashboard
 make restart-colony       # restart bots & dashboard (detached)
 make status-colony        # check runtime PID/status
 
-# Direct bot control (inside minecraft-claude-agent/)
-pnpm colony-ctl status    # show individual bot status
-pnpm colony-ctl restart <BotName>
+# Direct bot control (inside `minecraft-claude-agent/`)
+bun run send "hello"      # send a one-off chat message
+bun run screenshot        # capture a viewer screenshot
 
-# Development (inside minecraft-claude-agent/)
-pnpm run dev              # watch mode with tsx
-pnpm run build            # compile TypeScript
-pnpm start                # run compiled bot (single instance)
+# Development (inside `minecraft-claude-agent/`)
+bun run dev               # watch mode (Bun runs TS directly)
+bun run build             # compile TypeScript (optional)
+# Unified runtime (alternative to Make):
+bun run colony            # start unified runtime + dashboard (foreground)
 ```
 
 ## Important Notes
 
 - **Do** use Claude Agent SDK - provides automatic skill loading and better tooling
 - **Do** use git for version control (not _v1, _v2 files)
-- **Do** use pnpm as package manager
+- **Do** use Bun runtime for all scripts (`bun run ...`)
 - **Skills** automatically load from `.claude/skills/` directory with Agent SDK
 
 ## Architecture Decision: Agent SDK Migration

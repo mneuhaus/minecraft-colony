@@ -8,7 +8,7 @@ const [, , ...args] = process.argv;
 const message = args.join(' ').trim();
 
 if (!message) {
-  console.error('Usage: pnpm send "<message>"');
+  console.error('Usage: bun run send "<message>"');
   process.exit(1);
 }
 

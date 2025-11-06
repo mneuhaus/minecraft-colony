@@ -68,21 +68,16 @@ status-server:
 	fi
 
 start-agents:
-	@printf "Starting agents... "
-	@cd $(AGENT_DIR) && $(AGENT_ENV) pnpm -s colony-ctl start-all >/dev/null 2>&1 || true
-	@echo "done"
+	@echo "[deprecated] Unified runtime manages bots in-process. Use: make start-colony"
 
 stop-agents:
-	@printf "Stopping agents... "
-	@cd $(AGENT_DIR) && pnpm -s colony-ctl stop-all >/dev/null 2>&1 || true
-	@echo "done"
+	@echo "[deprecated] Unified runtime manages bots in-process. Use: make stop-colony"
 
 restart-agents:
-	@$(MAKE) stop-agents
-	@$(MAKE) start-agents
+	@echo "[deprecated] Unified runtime manages bots in-process. Use: make restart-colony"
 
 status-agents:
-	@cd $(AGENT_DIR) && pnpm colony-ctl status
+	@echo "[deprecated] Unified runtime manages bots in-process. Use: make status-colony"
 
 start-colony:
 	@cd $(AGENT_DIR) && bun run dashboard:build

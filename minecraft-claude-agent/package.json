@@ -16,7 +16,6 @@
     "dashboard:dev": "vite --config src/runtime/ui/vite.config.ts",
     "dashboard:build": "vite build --config src/runtime/ui/vite.config.ts",
     "colony": "bun src/runtime/colonyRuntime.ts",
-    "colony-ctl": "bun src/runtime/colonyControl.ts",
     "migrate-memories": "bun src/utils/migrateMemories.ts"
   },
   "keywords": [

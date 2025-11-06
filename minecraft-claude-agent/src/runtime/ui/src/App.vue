@@ -72,9 +72,15 @@ async function loadBots(){
 }
 async function loadBotTimeline(botName: string){
   const res = await fetch(`/api/bots/${encodeURIComponent(botName)}/events?limit=120`);
-  const events = await res.json();
+  const data = await res.json();
+  const events = data.events || [];
+  // Get bot ID to properly filter
+  const bot = store.bots.find((b: any) => b.name === botName);
+  const botId = bot?.id;
   // reset bot-specific items
-  store.items = store.items.filter((i: any) => i.bot_id !== botName);
+  if (botId) {
+    store.items = store.items.filter((i: any) => i.bot_id !== botId);
+  }
   events.forEach((e: any) => store.items.push(e));
 }
 async function loadAllTimeline(){
@@ -83,7 +89,9 @@ async function loadAllTimeline(){
   const perBot = Math.max(10, Math.floor(300 / Math.max(1, store.bots.length)));
   await Promise.all(store.bots.map(async (b: any) => {
     const res = await fetch(`/api/bots/${encodeURIComponent(b.name)}/events?limit=${perBot}`);
-    (await res.json()).forEach((e: any) => store.items.push(e));
+    const data = await res.json();
+    const events = data.events || [];
+    events.forEach((e: any) => store.items.push(e));
   }));
 }
 async function resetActiveBot(){
@@ -114,8 +122,12 @@ async function runSample(){
 
 const filteredItems = computed(()=> {
   const active = store.activeBot;
+  // Get bot ID from bot name
+  const activeBot = store.bots.find((b: any) => b.name === active);
+  const activeBotId = activeBot?.id;
+
   return store.items
-    .filter((e: any) => store.viewMode==='all' || e.bot_id===active)
+    .filter((e: any) => store.viewMode==='all' || e.bot_id===activeBotId)
     .filter((e: any) => !(e.type==='tool' && /send_chat/i.test(String(e?.payload?.tool_name||''))));
 });
 
