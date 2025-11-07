@@ -257,28 +257,60 @@ export class CraftscriptExecutor {
           // Equip building material
           await this.bot.equip(buildingMaterial, 'hand');
 
-          // Look straight down
-          await this.bot.look(0, Math.PI / 2);
+          // Reference is the block directly under current feet
+          const referenceBlock = this.bot.blockAt(this.bot.entity.position.offset(0, -1, 0));
+          if (!referenceBlock) return this.fail('blocked', 'no reference block beneath', cmd);
 
-          // Jump
+          // Face down to make placement more reliable
+          await this.bot.look(0, Math.PI / 2, true);
+
+          // Set a jump target height and attempt placement once we are high enough
+          const jumpY = Math.floor(this.bot.entity.position.y) + 1.0;
+          let tryCount = 0;
+          let placed = false;
+          let lastError: any = null;
+
+          const placeIfHighEnough = async () => {
+            if (this.bot.entity.position.y > jumpY && !placed) {
+              try {
+                await this.bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
+                placed = true;
+                this.bot.setControlState('jump', false);
+                (this.bot as any).removeListener('move', placeIfHighEnough);
+              } catch (err: any) {
+                lastError = err;
+                tryCount++;
+                if (tryCount > 10) {
+                  this.bot.setControlState('jump', false);
+                  (this.bot as any).removeListener('move', placeIfHighEnough);
+                }
+              }
+            }
+          };
+
+          // Start jump and attach listener
           this.bot.setControlState('jump', true);
-          await new Promise(resolve => setTimeout(resolve, 100));
+          (this.bot as any).on('move', placeIfHighEnough);
 
-          // Place block beneath while in air
-          const referenceBlock = this.bot.blockAt(this.bot.entity.position.offset(0, -2, 0));
-          if (!referenceBlock) {
-            this.bot.setControlState('jump', false);
-            return this.fail('blocked', 'no reference block beneath', cmd);
-          }
+          // Wait until either placed or retries exhausted
+          await new Promise<void>((resolve) => {
+            const check = () => {
+              if (placed || tryCount > 10) resolve();
+              else setTimeout(check, 50);
+            };
+            setTimeout(check, 50);
+          });
 
-          await this.bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
-
+          // Ensure jump is off and listener removed
           this.bot.setControlState('jump', false);
-          await new Promise(resolve => setTimeout(resolve, 300));
+          try { (this.bot as any).removeListener('move', placeIfHighEnough); } catch {}
+
+          if (!placed) {
+            return this.fail('runtime_error', (lastError?.message || 'build_up_failed'), cmd);
+          }
 
           const finalY = this.bot.entity.position.y;
           const heightGained = Math.floor(finalY - startY);
-
           return this.ok('build_up', t0, { block: buildingMaterial.name, height_gained: heightGained, y: Math.floor(finalY) });
         } catch (e: any) {
           this.bot.setControlState('jump', false);
