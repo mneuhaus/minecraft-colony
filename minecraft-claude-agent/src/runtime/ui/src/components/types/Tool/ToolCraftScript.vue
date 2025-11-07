@@ -148,15 +148,28 @@ const logs = computed(() => {
     if (!data) continue;
     const jid = data.job_id || data.id || it?.payload?.params_summary?.job_id;
     if (jid !== id) continue;
+
     if (/trace/.test(name)) {
       const t = data.trace || data; // DB shape vs stream shape
       const kind = t.kind || 'trace';
       const msg = summarizeTrace(t);
       out.push({ id: it.id || `${name}-${it.ts}`, ts: it.ts || Date.now(), kind, msg });
-    } else {
+      continue;
+    }
+
+    if (/step/.test(name)) {
       const s = data.step || data; // DB shape vs stream shape
       const msg = summarizeStep(s);
       out.push({ id: it.id || `${name}-${it.ts}`, ts: it.ts || Date.now(), kind: s.ok ? 'ok' : 'fail', msg });
+      continue;
+    }
+
+    if (/status/.test(name)) {
+      const st = data; // status has shape { id, state, script, duration_ms }
+      const msg = summarizeStatus(st);
+      const k = st.state === 'completed' ? 'ok' : (st.state === 'failed' ? 'fail' : 'status');
+      out.push({ id: it.id || `${name}-${it.ts}`, ts: it.ts || Date.now(), kind: k, msg });
+      continue;
     }
   }
   out.sort((a,b)=> (a.ts||0)-(b.ts||0));
@@ -178,7 +191,12 @@ function summarizeTrace(t:any): string {
 }
 function summarizeStep(s:any): string {
   if (s.ok) return `✓ ${s.op}${s.notes? ' '+JSON.stringify(s.notes):''}`;
-  return `✗ ${s.error}${s.message? ' — '+s.message:''}`;
+  const notes = s.notes ? ` ${JSON.stringify(s.notes)}` : '';
+  return `✗ ${s.error}${s.message? ' — '+s.message:''}${notes}`;
+}
+function summarizeStatus(st:any): string {
+  const d = typeof st.duration_ms === 'number' ? ` in ${st.duration_ms}ms` : '';
+  return `status ${st.state}${d}`;
 }
 function fmtTs(ts:number){
   const d = new Date(ts||Date.now());

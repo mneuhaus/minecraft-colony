@@ -7,11 +7,29 @@
         <button :class="['chip', viewMode==='all' && 'chip--active']" @click="setViewMode('all')">All Bots</button>
       </div>
       <div class="sidebar__list">
-        <div v-for="b in bots" :key="b.name" class="agent" :aria-selected="activeBot===b.name" @click="selectBot(b.name)">
-          <div class="agent__row">
+        <div v-for="b in bots" :key="b.name" class="agent" :aria-selected="activeBot===b.name">
+          <div class="agent__row" @click="selectBot(b.name)">
             <div class="agent__name">{{ b.name }}</div>
             <div class="agent__badge" :data-status="b.connectionStatus">{{ b.connectionStatus || 'idle' }}</div>
           </div>
+
+          <!-- Only show details for active bot -->
+          <div v-if="activeBot===b.name" class="agent__details">
+            <!-- Inventory -->
+            <SidebarInventory />
+
+            <!-- Info Row: Blueprints + Reset -->
+            <div class="agent__info-row">
+              <button class="chip chip--link" @click.stop="bpDetailOpen = true">
+                {{ blueprints.length }} Blueprint{{ blueprints.length !== 1 ? 's' : '' }}
+              </button>
+              <button class="chip chip--danger" @click.stop="resetActiveBot" :disabled="resetting">
+                {{ resetting ? 'Resetting…' : 'Reset' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Todos -->
           <div v-if="Array.isArray(b.todo) && b.todo.length" class="agent__todos">
             <div v-for="t in b.todo.slice(0,3)" :key="t.content" class="todo">
               <span class="todo__box" :class="(t.done || String(t.status||'').toLowerCase()==='completed') && 'todo__box--done'"></span>
@@ -21,11 +39,7 @@
           </div>
         </div>
       </div>
-      <div class="sidebar__actions" v-if="activeBot">
-        <button class="chip" @click="runSample" :disabled="runningSample">{{ runningSample ? 'Running…' : 'Run Sample CraftScript' }}</button>
-        <button class="chip" @click="resetActiveBot" :disabled="resetting">{{ resetting? 'Resetting…' : 'Reset Selected Bot' }}</button>
-      </div>
-      <SidebarInventory />
+
       <div class="sidebar__bp">
         <BlueprintsPanel :items="blueprints" @refresh="loadBlueprints" @view="viewBlueprint" @remove="removeBlueprint" @create="createBlueprint" />
       </div>
@@ -48,13 +62,34 @@ import BlueprintDetail from './components/BlueprintDetail.vue';
 import SidebarInventory from './components/SidebarInventory.vue';
 
 const store = inject<any>('store');
+// Simple client-side de-dup: same type/bot/tool/text/ts
+const seenKeys = new Set<string>();
+function makeKey(e:any){
+  const t = e?.type || '';
+  const b = e?.bot_id || '';
+  const ts = e?.ts || '';
+  const p = e?.payload || {};
+  const tool = p.tool_name || '';
+  const text = (p.text || p.message || JSON.stringify(p.input||{})).slice(0,200);
+  return `${t}|${b}|${tool}|${text}|${ts}`;
+}
+function pushDedup(e:any){
+  const k = makeKey(e);
+  if (seenKeys.has(k)) return;
+  seenKeys.add(k);
+  store.items.push(e);
+  if (seenKeys.size > 2000) {
+    // trim to avoid unbounded growth
+    const arr = Array.from(seenKeys);
+    for (let i=0;i<500;i++) seenKeys.delete(arr[i]);
+  }
+}
 const bots = computed(()=> store.bots);
 const items = computed(()=> store.items);
 const activeBot = computed(()=> store.activeBot);
 const viewMode = computed(()=> store.viewMode);
 
 const resetting = ref(false);
-const runningSample = ref(false);
 const blueprints = ref<any[]>([]);
 const bpDetailOpen = ref(false);
 const bpDetailName = ref('');
@@ -83,7 +118,7 @@ async function loadBotTimeline(botName: string){
   if (botId) {
     store.items = store.items.filter((i: any) => i.bot_id !== botId);
   }
-  events.forEach((e: any) => store.items.push(e));
+  events.forEach((e: any) => pushDedup(e));
 }
 async function loadAllTimeline(){
   if (!store.bots || store.bots.length===0) await loadBots();
@@ -107,21 +142,6 @@ async function resetActiveBot(){
   } finally { resetting.value = false; }
 }
 
-async function runSample(){
-  if (!store.activeBot || runningSample.value) return;
-  runningSample.value = true;
-  try {
-    const res = await fetch(`/api/bots/${encodeURIComponent(store.activeBot)}/run-sample-craftscript`, { method: 'POST' });
-    if (!res.ok) throw new Error('sample_failed');
-    // Pull fresh events shortly after sending
-    setTimeout(()=> { if (store.viewMode==='single') loadBotTimeline(store.activeBot); }, 1200);
-  } catch (e){
-    alert('Failed to run sample CraftScript.');
-  } finally {
-    runningSample.value = false;
-  }
-}
-
 const filteredItems = computed(()=> {
   const active = store.activeBot;
   // Get bot ID from bot name
@@ -141,9 +161,9 @@ function connectWebSocket(){
     const list = Array.isArray(data) ? data : [data];
     for (const msg of list) {
       if (msg.type === 'history' && Array.isArray(msg.events)) {
-        store.items.push(...msg.events);
+        for (const e of msg.events) pushDedup(e);
       } else {
-        store.items.push(msg);
+        pushDedup(msg);
       }
     }
     if (store.items.length > 800) store.items = store.items.slice(-800);
@@ -202,5 +222,12 @@ async function createBlueprint(payload: any){
 .todo__box--done { background: #2F4A3C; border-color: #365246; }
 .todo__text { color: #B3B3B3; }
 .todo__progress { font-size: 11px; color: #7A7A7A; }
+.agent__details { margin-top: 8px; padding-top: 8px; border-top: 1px solid #2E2E2E; }
+.agent__info-row { display: flex; gap: 6px; margin-top: 8px; }
+.chip--link { flex: 1; text-align: center; border-color: #E96D2F; color: #E96D2F; }
+.chip--link:hover { background: #2f2f2f; }
+.chip--danger { background: #4A2020; border-color: #6E2E2E; color: #E96D6D; }
+.chip--danger:hover:not(:disabled) { background: #5A2828; border-color: #8E3E3E; }
+.chip--danger:disabled { opacity: 0.5; cursor: not-allowed; }
 .main { overflow: hidden; }
 </style>

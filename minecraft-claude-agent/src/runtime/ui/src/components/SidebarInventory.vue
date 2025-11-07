@@ -18,7 +18,7 @@
         <template v-if="slotItem(slot-1)">
           <img :src="getItemTexture(slotItem(slot-1)!.name)" class="inv-icon" :alt="slotItem(slot-1)!.name"
                @error="(e)=>((e.target as HTMLImageElement).style.display='none')" />
-          <span class="inv-count">{{ slotItem(slot-1)!.count }}</span>
+          <span class="inv-badge">{{ slotItem(slot-1)!.count }}</span>
         </template>
       </div>
     </div>

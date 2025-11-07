@@ -28,8 +28,11 @@ Type = "int" {return "int";} / "bool" {return "bool";} / "string" {return "strin
 
 Block = "{" _ body:StatementList? _ "}" { return node("Block",{body:body||[]}); }
 
-IfStmt = "if" _ "(" _ cond:Expr _ ")" _ t:Block _ ("else" _ alt:Block)?
-  { return node("IfStmt",{test:cond,consequent:t,alternate:alt||null}); }
+IfStmt = "if" _ "(" _ cond:Expr _ ")" _ t:Block _ elsePart:("else" _ alt:Block)?
+  {
+    const alternate = elsePart ? elsePart[2] : null;
+    return node("IfStmt",{test:cond,consequent:t,alternate});
+  }
 // repeat forms:
 //  - repeat(N) { ... }
 //  - repeat(i: N) { ... }            // i = 0..N-1

@@ -655,7 +655,11 @@ export class CraftscriptExecutor {
           this.openContainer = await this.openContainerWithRetry(containerBlock);
           return this.ok('open_container', t0, { type: containerBlock.name, pos: [x, y, z] });
         } catch (e: any) {
-          return this.fail('runtime_error', e?.message || 'open_failed', cmd);
+          return this.fail('runtime_error', e?.message || 'open_failed', cmd, {
+            pos: [x, y, z],
+            block: containerBlock?.name || 'unknown',
+            hint: 'approach the container and retry',
+          });
         }
       }
       if (name === 'open') {
@@ -670,7 +674,11 @@ export class CraftscriptExecutor {
           this.openContainer = await this.openContainerWithRetry(containerBlock);
           return this.ok('open_container', t0, { type: containerBlock.name, pos: [x, y, z] });
         } catch (e: any) {
-          return this.fail('runtime_error', e?.message || 'open_failed', cmd);
+          return this.fail('runtime_error', e?.message || 'open_failed', cmd, {
+            pos: [x, y, z],
+            block: containerBlock?.name || 'unknown',
+            hint: 'ensure container is loaded/reachable and not obstructed',
+          });
         }
       }
       if (name === 'close_container') {
@@ -747,7 +755,10 @@ export class CraftscriptExecutor {
             this.openContainer = await this.openContainerWithRetry(containerBlock);
             mustClose = true;
           } catch (e: any) {
-            return this.fail('runtime_error', e?.message || 'open_failed', cmd);
+            return this.fail('runtime_error', e?.message || 'open_failed', cmd, {
+              pos: [x, y, z],
+              block: containerBlock?.name || 'unknown'
+            });
           }
             argIdx = 3;
           }
@@ -771,7 +782,11 @@ export class CraftscriptExecutor {
           if (mustClose) { this.openContainer.close(); this.openContainer = null; }
           return this.ok('container_put', t0, { item: itemId, count });
         } catch (e: any) {
-          return this.fail('runtime_error', e?.message || 'deposit_failed', cmd);
+          return this.fail('runtime_error', e?.message || 'deposit_failed', cmd, {
+            item: itemId,
+            count,
+            container: this.openContainer?.type || 'unknown'
+          });
         }
       }
       if (name === 'container_take') {
@@ -825,7 +840,10 @@ export class CraftscriptExecutor {
             this.openContainer = await this.openContainerWithRetry(containerBlock);
             mustClose = true;
           } catch (e: any) {
-            return this.fail('runtime_error', e?.message || 'open_failed', cmd);
+            return this.fail('runtime_error', e?.message || 'open_failed', cmd, {
+              pos: [x, y, z],
+              block: containerBlock?.name || 'unknown'
+            });
           }
             argIdx = 3;
           }
@@ -850,7 +868,11 @@ export class CraftscriptExecutor {
           if (mustClose) { this.openContainer.close(); this.openContainer = null; }
           return this.ok('container_take', t0, { item: itemId, count });
         } catch (e: any) {
-          return this.fail('runtime_error', e?.message || 'withdraw_failed', cmd);
+          return this.fail('runtime_error', e?.message || 'withdraw_failed', cmd, {
+            item: itemId,
+            count,
+            container: this.openContainer?.type || 'unknown'
+          });
         }
       }
       if (name === 'container_items') {
