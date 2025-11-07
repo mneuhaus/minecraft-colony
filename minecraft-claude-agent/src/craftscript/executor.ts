@@ -30,6 +30,7 @@ export class CraftscriptExecutor {
   private ops = 0;
   private macros = new Map<string, Block>();
   private options: Required<Omit<ExecutorOptions, 'onStep'>> & { onStep?: (result: CraftscriptResult) => void };
+  private vars = new Map<string, any>();
   private openContainer: any = null; // Currently open chest/furnace/etc
 
   constructor(bot: Bot, options?: ExecutorOptions) {
@@ -72,11 +73,17 @@ export class CraftscriptExecutor {
       case 'Empty':
         return null;
       case 'Block':
-        for (const s of st.body) {
-          const r = await this.execStatement(s);
-          if (r && !r.ok) return r;
+        // Block scope: snapshot and restore variables
+        const snapshot = new Map(this.vars);
+        try {
+          for (const s of st.body) {
+            const r = await this.execStatement(s);
+            if (r && !r.ok) return r;
+          }
+          return null;
+        } finally {
+          this.vars = snapshot;
         }
-        return null;
       case 'AssertStmt': {
         const val = await this.evalExpr(st.test);
         const ok = Boolean(val);
@@ -90,12 +97,51 @@ export class CraftscriptExecutor {
         return null;
       }
       case 'RepeatStmt': {
-        const n = Math.max(0, Number(await this.evalExpr(st.count)) | 0);
-        for (let i = 0; i < n; i++) {
-          const r = await this.execStatement(st.body);
-          if (r && !r.ok) return r;
+        // Three forms: legacy count, var with limit (0..N-1), var with range (start..end[:step])
+        if ((st as any).varName) {
+          const name = (st as any).varName as string;
+          const prev = this.vars.has(name) ? this.vars.get(name) : undefined;
+          const hasPrev = this.vars.has(name);
+          try {
+            if ((st as any).start && (st as any).end) {
+              const start = Number(this.evalExprSync((st as any).start));
+              const end = Number(this.evalExprSync((st as any).end));
+              let step = (st as any).step ? Number(this.evalExprSync((st as any).step)) : (start <= end ? 1 : -1);
+              if (step === 0) step = 1;
+              if (step > 0) {
+                for (let i = start; i <= end; i += step) {
+                  this.vars.set(name, i);
+                  const r = await this.execStatement((st as any).body);
+                  if (r && !r.ok) return r;
+                }
+              } else {
+                for (let i = start; i >= end; i += step) {
+                  this.vars.set(name, i);
+                  const r = await this.execStatement((st as any).body);
+                  if (r && !r.ok) return r;
+                }
+              }
+            } else {
+              const limit = Math.max(0, Number(this.evalExprSync((st as any).count)) | 0);
+              for (let i = 0; i < limit; i++) {
+                this.vars.set(name, i);
+                const r = await this.execStatement((st as any).body);
+                if (r && !r.ok) return r;
+              }
+            }
+            return null;
+          } finally {
+            if (hasPrev) this.vars.set(name, prev);
+            else this.vars.delete(name);
+          }
+        } else {
+          const n = Math.max(0, Number(this.evalExprSync((st as any).count)) | 0);
+          for (let i = 0; i < n; i++) {
+            const r = await this.execStatement((st as any).body);
+            if (r && !r.ok) return r;
+          }
+          return null;
         }
-        return null;
       }
       case 'WhileStmt': {
         let guard = 0;
@@ -106,6 +152,16 @@ export class CraftscriptExecutor {
           if (guard > this.options.opLimit) throw new Error('loop_limit_exceeded');
         }
         return null;
+      }
+      case 'LetStmt': {
+        const value = this.evalExprSync(st.value as any);
+        this.vars.set((st as any).name, value);
+        return { ok: true, op: 'let', ms: 0 } as any;
+      }
+      case 'AssignStmt': {
+        const value = this.evalExprSync(st.value as any);
+        this.vars.set((st as any).name, value);
+        return { ok: true, op: 'set', ms: 0 } as any;
       }
       case 'Command':
         return await this.execCommand(st);
@@ -865,7 +921,11 @@ export class CraftscriptExecutor {
 
   private exprToString(e: Expr): string {
     if ((e as any).type === 'String') return (e as StringLiteral).value;
-    if ((e as any).type === 'Identifier') return (e as IdentifierExpr).name;
+    if ((e as any).type === 'Identifier') {
+      const n = (e as IdentifierExpr).name;
+      if (this.vars.has(n)) return String(this.vars.get(n));
+      return n;
+    }
     if ((e as any).type === 'Number') return String((e as NumberLiteral).value);
     throw new Error('string-like required');
   }
@@ -874,7 +934,21 @@ export class CraftscriptExecutor {
     if ((e as any).type === 'Number') return (e as NumberLiteral).value;
     if ((e as any).type === 'Boolean') return (e as BooleanLiteral).value;
     if ((e as any).type === 'String') return (e as StringLiteral).value;
-    if ((e as any).type === 'Identifier') return (e as IdentifierExpr).name;
+    if ((e as any).type === 'Identifier') {
+      const n = (e as IdentifierExpr).name;
+      return this.vars.has(n) ? this.vars.get(n) : n;
+    }
+    if ((e as any).type === 'BinaryExpr') {
+      const be = e as any;
+      const l = Number(this.evalExprSync(be.left));
+      const r = Number(this.evalExprSync(be.right));
+      switch (be.op) {
+        case '+': return l + r;
+        case '-': return l - r;
+        case '*': return l * r;
+        case '/': return r === 0 ? Infinity : l / r;
+      }
+    }
     throw new Error('unsupported sync expr');
   }
 
@@ -887,7 +961,10 @@ export class CraftscriptExecutor {
       case 'String':
         return (e as StringLiteral).value;
       case 'Identifier':
-        return (e as IdentifierExpr).name;
+        const n = (e as IdentifierExpr).name;
+        return this.vars.has(n) ? this.vars.get(n) : n;
+      case 'BinaryExpr':
+        return this.evalExprSync(e);
       case 'LogicalExpr': {
         const left = Boolean(await this.evalExpr(e.left));
         if (e.op === '&&') return left && Boolean(await this.evalExpr(e.right));

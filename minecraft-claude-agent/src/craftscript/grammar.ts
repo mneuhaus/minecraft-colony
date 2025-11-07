@@ -13,6 +13,8 @@ Statement
   / IfStmt
   / RepeatStmt
   / WhileStmt
+  / LetStmt
+  / AssignStmt
   / s:AssertStmt ";" { return s; }
   / s:CommandStmt ";" { return s; }
   / ";" { return node("Empty"); }
@@ -28,12 +30,31 @@ Block = "{" _ body:StatementList? _ "}" { return node("Block",{body:body||[]}); 
 
 IfStmt = "if" _ "(" _ c:Expr _ ")" _ t:Block _ ("else" _ e:Block)?
   { return node("IfStmt",{test:c,consequent:t,alternate:e||null}); }
-RepeatStmt = "repeat" _ "(" _ n:Expr _ ")" _ b:Block { return node("RepeatStmt",{count:n,body:b}); }
+// repeat forms:
+//  - repeat(N) { ... }
+//  - repeat(i: N) { ... }            // i = 0..N-1
+//  - repeat(i: A .. B [: S]) { ... } // i from A to B inclusive, optional step S
+RepeatStmt = "repeat" _ "(" _
+  (
+    id:Identifier _ ":" _ s:Expr _ ".." _ e:Expr step:( _ ":" _ Expr )? _ ")" _ b:Block
+      { return node("RepeatStmt",{varName:id, start:s, end:e, step: step? step[3]: null, body:b}); }
+  /
+    id2:Identifier _ ":" _ lim:Expr _ ")" _ b2:Block
+      { return node("RepeatStmt",{varName:id2, count:lim, body:b2}); }
+  /
+    n:Expr _ ")" _ b3:Block
+      { return node("RepeatStmt",{count:n, body:b3}); }
+  )
+
 WhileStmt = "while" _ "(" _ c:Expr _ ")" _ b:Block { return node("WhileStmt",{test:c,body:b}); }
 AssertStmt = "assert" _ "(" _ e:Expr _ msg:("," _ m:StringLiteral)? _ ")" {
   return node("AssertStmt", { test: e, message: msg ? msg[2] : null });
 }
 CommandStmt = name:Identifier _ "(" _ args:ArgList? _ ")" { return node("Command",{name,args:args||[]}); }
+
+// Variables
+LetStmt = "let" __ name:Identifier _ "=" _ value:Expr { return node("LetStmt",{name,value}); }
+AssignStmt = name:Identifier _ "=" _ value:Expr { return node("AssignStmt",{name,value}); }
 
 ArgList = head:Arg tail:(_ "," _ Arg)* { return [head,...tail.map(t=>t[3])]; }
 Arg = NamedArg / Expr
@@ -41,8 +62,10 @@ NamedArg = key:Identifier _ ":" _ val:Expr { return node("NamedArg",{key,value:v
 
 Expr = OrExpr
 OrExpr = left:AndExpr tail:(_ "||" _ AndExpr)* { return tail.reduce((a,t)=>node("LogicalExpr",{op:"||",left:a,right:t[3]}),left); }
-AndExpr = left:NotExpr tail:(_ "&&" _ NotExpr)* { return tail.reduce((a,t)=>node("LogicalExpr",{op:"&&",left:a,right:t[3]}),left); }
-NotExpr = "!" _ e:NotExpr { return node("UnaryExpr",{op:"!",arg:e}); } / Primary
+AndExpr = left:AddExpr tail:(_ "&&" _ AddExpr)* { return tail.reduce((a,t)=>node("LogicalExpr",{op:"&&",left:a,right:t[3]}),left); }
+AddExpr = left:MulExpr tail:(_ op:[+-] _ MulExpr)* { return tail.reduce((a,t)=>node("BinaryExpr",{op:t[1],left:a,right:t[3]}),left); }
+MulExpr = left:Unary tail:(_ op:[*/] _ Unary)* { return tail.reduce((a,t)=>node("BinaryExpr",{op:t[1],left:a,right:t[3]}),left); }
+Unary = "!" _ e:Unary { return node("UnaryExpr",{op:"!",arg:e}); } / Primary
 
 Primary
   = "(" _ e:Expr _ ")" {return e;}
@@ -83,7 +106,7 @@ Char = "\\\"" {return "\""} / "\\n" {return "\n"} / "\\t" {return "\t"} / !("\""
 BooleanLiteral = "true" {return node("Boolean",{value:true});} / "false" {return node("Boolean",{value:false});}
 
 Identifier = !Keyword id:([a-z_][a-z0-9_]*) { return id.flat().join(""); }
-Keyword = "macro" / "if" / "else" / "repeat" / "while" / "assert" / "true" / "false"
+Keyword = "macro" / "if" / "else" / "repeat" / "while" / "assert" / "let" / "true" / "false"
 
 _ = (WhiteSpace / Comment)* ; __ = (WhiteSpace / Comment)+
 WhiteSpace = [ \t\r\n]+

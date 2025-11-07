@@ -16,6 +16,8 @@ export type Statement =
   | RepeatStmt
   | WhileStmt
   | AssertStmt
+  | LetStmt
+  | AssignStmt
   | CommandStmt
   | Block
   | EmptyStmt;
@@ -45,7 +47,11 @@ export interface IfStmt extends BaseNode {
 
 export interface RepeatStmt extends BaseNode {
   type: 'RepeatStmt';
-  count: Expr;
+  count?: Expr; // Legacy: repeat(N)
+  varName?: string; // New: repeat(i: N) or repeat(i: A..B[:S])
+  start?: Expr;
+  end?: Expr;
+  step?: Expr;
   body: Block;
 }
 
@@ -59,6 +65,18 @@ export interface AssertStmt extends BaseNode {
   type: 'AssertStmt';
   test: Expr;
   message: StringLiteral | null;
+}
+
+export interface LetStmt extends BaseNode {
+  type: 'LetStmt';
+  name: string;
+  value: Expr;
+}
+
+export interface AssignStmt extends BaseNode {
+  type: 'AssignStmt';
+  name: string;
+  value: Expr;
 }
 
 export interface CommandStmt extends BaseNode {
@@ -79,6 +97,7 @@ export interface NamedArg extends BaseNode {
 export type Expr =
   | LogicalExpr
   | UnaryExpr
+  | BinaryExpr
   | PredicateCall
   | Selector
   | World
@@ -88,6 +107,13 @@ export type Expr =
   | StringLiteral
   | BooleanLiteral
   | IdentifierExpr;
+
+export interface BinaryExpr extends BaseNode {
+  type: 'BinaryExpr';
+  op: '+' | '-' | '*' | '/';
+  left: Expr;
+  right: Expr;
+}
 
 export interface LogicalExpr extends BaseNode {
   type: 'LogicalExpr';
