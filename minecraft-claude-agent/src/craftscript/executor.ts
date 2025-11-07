@@ -216,11 +216,18 @@ export class CraftscriptExecutor {
         const reference = this.bot.blockAt(worldPos.minus(faceVector));
         if (!reference || reference.name === 'air') return this.fail('blocked', 'no reference to place against', cmd);
         if (this.bot.entity.position.distanceTo(reference.position) > 4.5) return this.fail('out_of_reach', 'reference beyond reach (4.5)', cmd);
+        // Target cell must be empty
+        const occupied = this.bot.blockAt(worldPos);
+        if (occupied && occupied.name !== 'air') {
+          return this.fail('occupied', `target not empty: minecraft:${occupied.name}`, cmd, { target: [worldPos.x, worldPos.y, worldPos.z], id: occupied.name });
+        }
         try {
           await this.bot.placeBlock(reference, faceVector);
           return this.ok('place', t0, { id, world: [worldPos.x, worldPos.y, worldPos.z], face });
         } catch (e: any) {
-          return this.fail('runtime_error', e?.message || 'place_failed', cmd);
+          const msg = String(e?.message || 'place_failed');
+          const code = /timeout/i.test(msg) ? 'place_timeout' : 'runtime_error';
+          return this.fail(code, msg, cmd, { id, world: [worldPos.x, worldPos.y, worldPos.z], face });
         }
       }
       if (name === 'equip') {
@@ -306,7 +313,18 @@ export class CraftscriptExecutor {
           try { (this.bot as any).removeListener('move', placeIfHighEnough); } catch {}
 
           if (!placed) {
-            return this.fail('runtime_error', (lastError?.message || 'build_up_failed'), cmd);
+            // Diagnose state at failure
+            const targetPos = referenceBlock.position.offset(0, 1, 0);
+            const tgt = this.bot.blockAt(targetPos);
+            const reason = tgt && tgt.name !== 'air' ? 'occupied' : (/timeout|timed out/i.test(String(lastError?.message)) ? 'place_timeout' : 'place_failed');
+            return this.fail(reason, String(lastError?.message || `build_up_failed (${reason})`), cmd, {
+              ref_id: referenceBlock.name,
+              target: [targetPos.x, targetPos.y, targetPos.z],
+              target_id: tgt?.name || 'air',
+              held: buildingMaterial.name,
+              try_count: tryCount,
+              jumpY,
+            });
           }
 
           const finalY = this.bot.entity.position.y;
@@ -920,7 +938,7 @@ export class CraftscriptExecutor {
   private ok(op: string, t0: number, notes?: any): CraftscriptResult {
     return { ok: true, op, ms: Date.now() - t0, notes } as any;
   }
-  private fail(error: string, message: string, cmd: CommandStmt): CraftscriptResult {
+  private fail(error: string, message: string, cmd: CommandStmt, details?: any): CraftscriptResult {
     return {
       ok: false,
       error,
@@ -928,6 +946,7 @@ export class CraftscriptExecutor {
       loc: (cmd.loc as any)?.start || undefined,
       op_index: this.ops,
       ts: Date.now(),
+      ...(details ? { notes: details } : {}),
     } as any;
   }
   private bumpOps() {
