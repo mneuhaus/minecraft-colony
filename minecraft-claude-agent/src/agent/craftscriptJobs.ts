@@ -51,7 +51,35 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
     job.startedAt = Date.now();
 
     console.log('[CraftScript] Parsing script:', job.script.substring(0, 100) + (job.script.length > 100 ? '...' : ''));
-    const ast = parseCraft(job.script);
+    let ast: any = null;
+    try {
+      ast = parseCraft(job.script);
+    } catch (e: any) {
+      const msg = e?.message || String(e);
+      console.error('[CraftScript] Parse error:', msg);
+      job.state = 'failed';
+      job.error = msg;
+      job.endedAt = Date.now();
+      // Emit a fail step so the dashboard CraftScript card has something to show
+      try {
+        const step = { ok: false, error: 'compile_error', message: msg, op_index: 0, ts: Date.now() };
+        if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_step', details: { name: 'craftscript_step', tool_name: 'craftscript_step', input: {}, params_summary: {}, output: JSON.stringify({ ...step, job_id: job.id }), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
+        if (job.memoryStore) {
+          const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
+          if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_step', { job_id: job.id, step });
+        }
+      } catch {}
+      // Emit a status row
+      try {
+        const status = { id: job.id, state: 'failed', script: job.script, duration_ms: (job.endedAt - (job.startedAt || job.endedAt)) };
+        if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_status', details: { name: 'craftscript_status', tool_name: 'craftscript_status', input: { job_id: job.id }, params_summary: { job_id: job.id }, output: JSON.stringify(status), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
+        if (job.memoryStore) {
+          const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
+          if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_status', status);
+        }
+      } catch {}
+      return;
+    }
     console.log('[CraftScript] Parsed successfully, executing...');
 
     const exec = new CraftscriptExecutor(bot, {
@@ -128,6 +156,15 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
         job.state = 'failed';
         job.error = r.message || 'craftscript_failed';
         job.endedAt = Date.now();
+        // Also emit status for failed jobs
+        try {
+          const st = { id: job.id, state: 'failed', script: job.script, duration_ms: (job.endedAt - (job.startedAt || job.endedAt)) };
+          if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_status', details: { name: 'craftscript_status', tool_name: 'craftscript_status', input: { job_id: job.id }, params_summary: { job_id: job.id }, output: JSON.stringify(st), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
+          if (job.memoryStore) {
+            const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
+            if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_status', st);
+          }
+        } catch {}
         return;
       }
       if (JOB_CANCELLED(job)) return;
@@ -136,6 +173,15 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
     job.state = 'completed';
     job.endedAt = Date.now();
     console.log('[CraftScript] Job completed successfully');
+    // Emit completed status
+    try {
+      const st = { id: job.id, state: 'completed', script: job.script, duration_ms: (job.endedAt - (job.startedAt || job.endedAt)) };
+      if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_status', details: { name: 'craftscript_status', tool_name: 'craftscript_status', input: { job_id: job.id }, params_summary: { job_id: job.id }, output: JSON.stringify(st), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
+      if (job.memoryStore) {
+        const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
+        if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_status', st);
+      }
+    } catch {}
   } catch (e: any) {
     if (job.state === 'canceled') return;
     console.error('[CraftScript] Job failed with exception:', e);
@@ -145,6 +191,17 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
     try {
       if (activityWriter) {
         activityWriter.addActivity({ type: 'error', message: 'CraftScript error', details: { error: job.error, stack: e?.stack }, role: 'system', speaker: botName || minecraftBot.getBot().username || 'bot' });
+      }
+    } catch {}
+    // Emit fail step + status for visibility
+    try {
+      const step = { ok: false, error: 'runtime_error', message: job.error, op_index: 0, ts: Date.now() };
+      if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_step', details: { name: 'craftscript_step', tool_name: 'craftscript_step', input: {}, params_summary: {}, output: JSON.stringify({ ...step, job_id: job.id }), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
+      if (job.memoryStore) {
+        const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
+        if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_step', { job_id: job.id, step });
+        const st = { id: job.id, state: 'failed', script: job.script, duration_ms: (job.endedAt - (job.startedAt || job.endedAt)) };
+        job.memoryStore.addActivity(sid!, 'tool', 'craftscript_status', st);
       }
     } catch {}
   }

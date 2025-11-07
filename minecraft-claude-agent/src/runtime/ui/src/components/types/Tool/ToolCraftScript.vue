@@ -61,11 +61,12 @@ const latestJobIdForBot = computed(()=> {
   for (const it of items) {
     if (botId.value && it.bot_id && it.bot_id !== botId.value) continue;
     const name = String(it?.payload?.tool_name || it?.tool_name || '').toLowerCase();
-    if (!/craftscript_(trace|step)/.test(name)) continue;
+    if (!/craftscript_(trace|step|status)/.test(name)) continue;
     try {
       const raw = it?.payload?.output;
       const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      if (data?.job_id) ids.push({ id: data.job_id, ts: it.ts || 0 });
+      const jobId = data?.job_id || data?.id;
+      if (jobId) ids.push({ id: jobId, ts: it.ts || 0 });
     } catch {}
   }
   if (!ids.length) return null;
@@ -138,17 +139,24 @@ const logs = computed(() => {
   const out: any[] = [];
   for (const it of items) {
     const name = String(it?.payload?.tool_name || it?.tool_name || '').toLowerCase();
-    if (!/craftscript_(trace|step)/.test(name)) continue;
+    if (!/craftscript_(trace|step|status)/.test(name)) continue;
     let data: any = null;
-    try { const raw = it?.payload?.output; data = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch {}
-    if (!data || data.job_id !== id) continue;
+    try {
+      const raw = it?.payload?.output;
+      data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    } catch {}
+    if (!data) continue;
+    const jid = data.job_id || data.id || it?.payload?.params_summary?.job_id;
+    if (jid !== id) continue;
     if (/trace/.test(name)) {
-      const kind = data.kind || 'trace';
-      const msg = summarizeTrace(data);
+      const t = data.trace || data; // DB shape vs stream shape
+      const kind = t.kind || 'trace';
+      const msg = summarizeTrace(t);
       out.push({ id: it.id || `${name}-${it.ts}`, ts: it.ts || Date.now(), kind, msg });
     } else {
-      const msg = summarizeStep(data);
-      out.push({ id: it.id || `${name}-${it.ts}`, ts: it.ts || Date.now(), kind: data.ok ? 'ok' : 'fail', msg });
+      const s = data.step || data; // DB shape vs stream shape
+      const msg = summarizeStep(s);
+      out.push({ id: it.id || `${name}-${it.ts}`, ts: it.ts || Date.now(), kind: s.ok ? 'ok' : 'fail', msg });
     }
   }
   out.sort((a,b)=> (a.ts||0)-(b.ts||0));

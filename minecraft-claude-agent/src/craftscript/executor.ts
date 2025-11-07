@@ -299,7 +299,7 @@ export class CraftscriptExecutor {
           return this.fail('occupied', `target not empty: minecraft:${occupied.name}`, cmd, { target: [worldPos.x, worldPos.y, worldPos.z], id: occupied.name });
         }
         try {
-          await this.bot.placeBlock(reference, faceVector);
+          await this.safePlaceBlock(reference, faceVector);
           return this.ok('place', t0, { id, world: [worldPos.x, worldPos.y, worldPos.z], face });
         } catch (e: any) {
           const msg = String(e?.message || 'place_failed');
@@ -627,7 +627,7 @@ export class CraftscriptExecutor {
           const referenceBlock = this.bot.blockAt(worldPos.offset(0, -1, 0));
           if (!referenceBlock) return this.fail('no_reference', 'no block beneath', cmd);
 
-          await this.bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
+          await this.safePlaceBlock(referenceBlock, new Vec3(0, 1, 0));
           return this.ok('plant', t0, { sapling: saplingId, pos: [x, y, z] });
         } catch (e: any) {
           return this.fail('runtime_error', e?.message || 'plant_failed', cmd);
@@ -652,11 +652,7 @@ export class CraftscriptExecutor {
         }
 
         try {
-          if (containerBlock.name.includes('furnace') || containerBlock.name === 'smoker') {
-            this.openContainer = await this.bot.openFurnace(containerBlock);
-          } else {
-            this.openContainer = await this.bot.openContainer(containerBlock);
-          }
+          this.openContainer = await this.openContainerWithRetry(containerBlock);
           return this.ok('open_container', t0, { type: containerBlock.name, pos: [x, y, z] });
         } catch (e: any) {
           return this.fail('runtime_error', e?.message || 'open_failed', cmd);
@@ -671,11 +667,7 @@ export class CraftscriptExecutor {
         const containerBlock = this.bot.blockAt(worldPos);
         if (!containerBlock) return this.fail('no_target', 'no block at position', cmd);
         try {
-          if (containerBlock.name.includes('furnace') || containerBlock.name === 'smoker') {
-            this.openContainer = await (this.bot as any).openFurnace(containerBlock);
-          } else {
-            this.openContainer = await (this.bot as any).openContainer(containerBlock);
-          }
+          this.openContainer = await this.openContainerWithRetry(containerBlock);
           return this.ok('open_container', t0, { type: containerBlock.name, pos: [x, y, z] });
         } catch (e: any) {
           return this.fail('runtime_error', e?.message || 'open_failed', cmd);
@@ -741,21 +733,24 @@ export class CraftscriptExecutor {
         // Convenience: deposit([x,y,z,] itemId, count?)
         let argIdx = 0;
         let mustClose = false;
-        if (cmd.args.length >= 4 && (cmd.args[0] as any).type === 'Number' && (cmd.args[1] as any).type === 'Number' && (cmd.args[2] as any).type === 'Number') {
-          const x = Number(this.evalExprSync(cmd.args[0] as Expr));
-          const y = Number(this.evalExprSync(cmd.args[1] as Expr));
-          const z = Number(this.evalExprSync(cmd.args[2] as Expr));
+        if (cmd.args.length >= 4) {
+          const ax = this.asNumber(cmd.args[0] as Expr);
+          const ay = this.asNumber(cmd.args[1] as Expr);
+          const az = this.asNumber(cmd.args[2] as Expr);
+          if (ax !== null && ay !== null && az !== null) {
+            const x = ax, y = ay, z = az;
           // open-at-position
           const worldPos = new Vec3(x, y, z);
           const containerBlock = this.bot.blockAt(worldPos);
           if (!containerBlock) return this.fail('no_target', 'no block at position', cmd);
           try {
-            this.openContainer = await (this.bot as any).openContainer(containerBlock);
+            this.openContainer = await this.openContainerWithRetry(containerBlock);
             mustClose = true;
           } catch (e: any) {
             return this.fail('runtime_error', e?.message || 'open_failed', cmd);
           }
-          argIdx = 3;
+            argIdx = 3;
+          }
         }
 
         if (!this.openContainer) return this.fail('no_container', 'no container currently open', cmd);
@@ -816,21 +811,24 @@ export class CraftscriptExecutor {
         // Convenience: withdraw([x,y,z,] itemId, count?)
         let argIdx = 0;
         let mustClose = false;
-        if (cmd.args.length >= 4 && (cmd.args[0] as any).type === 'Number' && (cmd.args[1] as any).type === 'Number' && (cmd.args[2] as any).type === 'Number') {
-          const x = Number(this.evalExprSync(cmd.args[0] as Expr));
-          const y = Number(this.evalExprSync(cmd.args[1] as Expr));
-          const z = Number(this.evalExprSync(cmd.args[2] as Expr));
+        if (cmd.args.length >= 4) {
+          const ax = this.asNumber(cmd.args[0] as Expr);
+          const ay = this.asNumber(cmd.args[1] as Expr);
+          const az = this.asNumber(cmd.args[2] as Expr);
+          if (ax !== null && ay !== null && az !== null) {
+            const x = ax, y = ay, z = az;
           // open-at-position
           const worldPos = new Vec3(x, y, z);
           const containerBlock = this.bot.blockAt(worldPos);
           if (!containerBlock) return this.fail('no_target', 'no block at position', cmd);
           try {
-            this.openContainer = await (this.bot as any).openContainer(containerBlock);
+            this.openContainer = await this.openContainerWithRetry(containerBlock);
             mustClose = true;
           } catch (e: any) {
             return this.fail('runtime_error', e?.message || 'open_failed', cmd);
           }
-          argIdx = 3;
+            argIdx = 3;
+          }
         }
 
         if (!this.openContainer) return this.fail('no_container', 'no container currently open', cmd);
@@ -1024,16 +1022,20 @@ export class CraftscriptExecutor {
       // block_is(selector|x,y,z, id)
       const idArg = p.args[p.args.length - 1];
       const want = this.requireString(idArg as any).value.replace('minecraft:', '');
-      if ((p.args[0] as any).type === 'Selector') {
-        const pos = this.selectorToWorld(this.requireSelectorArg(p.args[0] as any));
-        const b = this.bot.blockAt(pos);
-        return !!b && b.name === want;
-      } else {
-        const x = Number(this.evalExprSync(p.args[0] as any));
-        const y = Number(this.evalExprSync(p.args[1] as any));
-        const z = Number(this.evalExprSync(p.args[2] as any));
-        const b = this.bot.blockAt(new Vec3(Math.floor(x), Math.floor(y), Math.floor(z)));
-        return !!b && b.name === want;
+      try {
+        if ((p.args[0] as any).type === 'Selector') {
+          const pos = this.selectorToWorld(this.requireSelectorArg(p.args[0] as any));
+          const b = this.bot.blockAt(pos);
+          return !!b && b.name === want;
+        } else {
+          const x = Number(this.evalExprSync(p.args[0] as any));
+          const y = Number(this.evalExprSync(p.args[1] as any));
+          const z = Number(this.evalExprSync(p.args[2] as any));
+          const b = this.bot.blockAt(new Vec3(Math.floor(x), Math.floor(y), Math.floor(z)));
+          return !!b && b.name === want;
+        }
+      } catch (err: any) {
+        throw new Error(`block_is_eval_failed: ${err?.message || String(err)}`);
       }
     }
     throw new Error(`unknown predicate ${n}`);
@@ -1068,6 +1070,45 @@ export class CraftscriptExecutor {
     try { this.options.onStep?.(res); } catch {}
     this.trace('fail', { error, message, details });
     return res;
+  }
+
+  // === Helpers ===
+  private asNumber(expr: Expr): number | null {
+    try { const v = Number(this.evalExprSync(expr)); return Number.isFinite(v) ? v : null; } catch { return null; }
+  }
+  private async safePlaceBlock(reference: any, face: Vec3, retries = 4): Promise<void> {
+    let lastErr: any = null;
+    for (let i = 0; i < retries; i++) {
+      try {
+        await this.bot.placeBlock(reference, face);
+        return;
+      } catch (e: any) {
+        lastErr = e;
+        if (/timeout/i.test(String(e?.message || ''))) {
+          await new Promise(r => setTimeout(r, 400 + i * 200));
+          continue;
+        }
+        throw e;
+      }
+    }
+    throw lastErr || new Error('place_timeout');
+  }
+  private async openContainerWithRetry(block: any, retries = 3): Promise<any> {
+    let lastErr: any = null;
+    for (let i = 0; i < retries; i++) {
+      try {
+        if (block.name?.includes('furnace') || block.name === 'smoker') return await (this.bot as any).openFurnace(block);
+        return await (this.bot as any).openContainer(block);
+      } catch (e: any) {
+        lastErr = e;
+        if (/timeout|windowopen|timed out/i.test(String(e?.message || ''))) {
+          await new Promise(r => setTimeout(r, 500 + i * 300));
+          continue;
+        }
+        throw e;
+      }
+    }
+    throw lastErr || new Error('container_timeout');
   }
   private bumpOps() {
     this.ops++;

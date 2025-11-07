@@ -9,3 +9,4 @@ minecraft-server/server/world_nether/
 minecraft-server/server/world_the_end/
 minecraft-server/server/usercache.json
 minecraft-server/server/world_*.tar.gz
+minecraft-claude-agent/dist/craftscript/

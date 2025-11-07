@@ -1,5 +1,6 @@
 import peggyModule from 'peggy';
-import { CRAFTSCRIPT_GRAMMAR } from './grammar.js';
+// NOTE: Import the TypeScript grammar directly to avoid stale dist/grammar.js
+import { CRAFTSCRIPT_GRAMMAR } from './grammar.ts';
 import type { Program } from './types.js';
 
 // Support both ESM default-exported function and CommonJS object with generate()

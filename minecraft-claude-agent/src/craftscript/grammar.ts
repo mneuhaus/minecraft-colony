@@ -28,8 +28,8 @@ Type = "int" {return "int";} / "bool" {return "bool";} / "string" {return "strin
 
 Block = "{" _ body:StatementList? _ "}" { return node("Block",{body:body||[]}); }
 
-IfStmt = "if" _ "(" _ c:Expr _ ")" _ t:Block _ ("else" _ e:Block)?
-  { return node("IfStmt",{test:c,consequent:t,alternate:e||null}); }
+IfStmt = "if" _ "(" _ cond:Expr _ ")" _ t:Block _ ("else" _ alt:Block)?
+  { return node("IfStmt",{test:cond,consequent:t,alternate:alt||null}); }
 // repeat forms:
 //  - repeat(N) { ... }
 //  - repeat(i: N) { ... }            // i = 0..N-1
@@ -47,8 +47,8 @@ RepeatStmt = "repeat" _ "(" _
   )
 
 WhileStmt = "while" _ "(" _ c:Expr _ ")" _ b:Block { return node("WhileStmt",{test:c,body:b}); }
-AssertStmt = "assert" _ "(" _ e:Expr _ msg:("," _ m:StringLiteral)? _ ")" {
-  return node("AssertStmt", { test: e, message: msg ? msg[2] : null });
+AssertStmt = "assert" _ "(" _ expr:Expr _ msg:("," _ m:StringLiteral)? _ ")" {
+  return node("AssertStmt", { test: expr, message: msg ? msg[2] : null });
 }
 CommandStmt = name:Identifier _ "(" _ args:ArgList? _ ")" { return node("Command",{name,args:args||[]}); }
 

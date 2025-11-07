@@ -140,6 +140,11 @@ deposit(100, 64, 50, "oak_log", 32); // open → deposit → close
 deposit("oak_log");                  // deposit all of that item into currently open container
 withdraw(100, 64, 50, "oak_log", 8); // open → withdraw → close
 withdraw("oak_log", 8);              // withdraw from currently open container
+
+// Variable coordinates are supported (expressions evaluated)
+let cx = 113; let cy = 64; let cz = 114;
+deposit(cx, cy, cz, "oak_log", 16);
+withdraw(cx, cy, cz, "oak_sapling", 8);
 ```
 
 ### inventory / utilities
@@ -161,7 +166,7 @@ eat("minecraft:cooked_beef");
 | `is_air(sel)`                | true if block is air             |
 | `has_item("minecraft:item")` | true if item present             |
 | `is_hazard("lava_near")`     | true if hazard detected          |
-| `block_is(pos, id)`          | true if block at selector or (x,y,z) matches id |
+| `block_is(pos, id)`          | true if the block at a selector or at world `(x,y,z)` matches id (e.g., "grass_block" or "minecraft:grass_block") |
 
 All use the latest voxel cache; executor auto-scans when stale.
 
@@ -201,7 +206,17 @@ Violation ⇒ error `invariant_violation`.
 }
 ```
 
-Executor aborts on first failure.
+Executor aborts on first failure. On slow servers, transient timeouts are retried with backoff for placing/planting (`place_timeout`) and container opens (`container_timeout`).
+
+## 7.1) Debugging & Logs
+
+- Each CraftScript card has a “Show Logs” toggle that consolidates logs for the job:
+  - `repeat_init`, `repeat_iter`, `repeat_end` (loop values)
+  - `if` → true/false
+  - `var_set` (let/assign)
+  - Predicate evaluations (`block_is`)
+  - `ok`/`fail` with notes (occupied, `place_timeout`, `container_timeout`)
+- A status card (`craftscript_status`) is emitted at the end with job id, state, duration, and the submitted script.
 
 ---
 
