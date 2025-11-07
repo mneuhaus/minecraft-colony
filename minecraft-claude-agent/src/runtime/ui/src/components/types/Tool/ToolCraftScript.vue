@@ -199,6 +199,8 @@ const logs = computed(() => {
 
 function summarizeTrace(t:any): string {
   switch (t.kind) {
+    case 'log': return String(t.text || '');
+    case 'block_info': return `block_info ${t.id || ''} @ ${Array.isArray(t.pos)? t.pos.join(',') : ''}`;
     case 'if': return `if → ${t.value ? 'true' : 'false'}`;
     case 'repeat_init': return `repeat init ${t.var ? `${t.var}=`:''}${t.count ?? `${t.start}..${t.end}${t.step?':'+t.step:''}`}`;
     case 'repeat_iter': return `repeat iter ${t.var??'i'}=${t.value}`;

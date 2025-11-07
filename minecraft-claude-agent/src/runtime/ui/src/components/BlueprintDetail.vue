@@ -72,6 +72,72 @@
       </div>
     </div>
   </div>
+  <div v-else class="bp-detail bp-detail--embedded">
+    <div class="bp-detail__section" v-if="data">
+      <div class="bp-kv"><span class="bp-k">Description</span><span class="bp-v">{{ data.blueprint?.description || '—' }}</span></div>
+      <div class="bp-kv"><span class="bp-k">Voxels</span><span class="bp-v">{{ voxelCount }}</span></div>
+      <div class="bp-kv"><span class="bp-k">Updated</span><span class="bp-v">{{ data.blueprint?.meta?.updated_at || '—' }}</span></div>
+      <div class="bp-val" v-if="!data.ok">
+        <div class="bp-issues">
+          <div class="bp-issues__title">Validation Issues</div>
+          <ul>
+            <li v-for="i in data.issues" :key="i">{{ i }}</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="bp-detail__section">
+      <div class="bp-subtitle">Block Summary</div>
+      <div class="bp-table" v-if="Object.keys(blockSummary).length">
+        <div class="bp-row bp-row--hdr"><div>Block</div><div>Count</div></div>
+        <div class="bp-row" v-for="(cnt, id) in blockSummary" :key="id"><div>{{ id }}</div><div>{{ cnt }}</div></div>
+      </div>
+      <div v-else class="bp-empty">No voxels</div>
+    </div>
+
+    <div class="bp-detail__section">
+      <div class="bp-subtitle">Preview</div>
+      <div class="bp-preview-toggles">
+        <button class="bp-btn" :class="show3D ? 'bp-btn--active' : ''" @click="show3D=true">🎮 3D</button>
+        <button class="bp-btn" :class="!show3D ? 'bp-btn--active' : ''" @click="show3D=false">📊 List</button>
+      </div>
+      <div v-if="show3D" class="bp-3d-wrap">
+        <div class="bp-3d-title">Blueprint (origin view)</div>
+        <div ref="canvasBlueprint" class="bp-canvas"></div>
+        <div v-if="instantiated" class="bp-3d-title">Instantiated (world coords)</div>
+        <div v-if="instantiated" ref="canvasInst" class="bp-canvas"></div>
+        <div class="bp-3d-controls"><span class="control-hint">🖱️ Drag to rotate • Scroll to zoom</span></div>
+      </div>
+      <div v-else>
+        <div class="bp-subsubtitle">Blueprint Voxels</div>
+        <div class="bp-kv"><span class="bp-k">Count</span><span class="bp-v">{{ voxelCount }}</span></div>
+        <pre class="bp-pre">{{ listPreview }}</pre>
+      </div>
+    </div>
+
+    <div class="bp-detail__section">
+      <div class="bp-subtitle">Instantiate</div>
+      <div class="bp-form">
+        <label>Origin X <input v-model.number="origin.x" type="number" /></label>
+        <label>Y <input v-model.number="origin.y" type="number" /></label>
+        <label>Z <input v-model.number="origin.z" type="number" /></label>
+        <label>Rotation
+          <select v-model.number="rotation">
+            <option :value="0">0°</option>
+            <option :value="90">90°</option>
+            <option :value="180">180°</option>
+            <option :value="270">270°</option>
+          </select>
+        </label>
+        <button class="bp-btn" @click="instantiate" :disabled="instantiating">{{ instantiating ? 'Instantiating…' : 'Instantiate' }}</button>
+      </div>
+      <div v-if="instantiated" class="bp-preview">
+        <div class="bp-kv"><span class="bp-k">Preview voxels</span><span class="bp-v">{{ instantiated.count }} total</span></div>
+        <pre class="bp-pre">{{ previewText }}</pre>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -79,7 +145,7 @@ import { computed, reactive, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
-const props = defineProps<{ name: string; data: any | null }>();
+const props = defineProps<{ name: string; data: any | null; embedded?: boolean }>();
 const emits = defineEmits(['close']);
 
 const data = computed(()=> props.data);
@@ -197,6 +263,7 @@ async function instantiate(){
 <style scoped>
 .bp-detail__backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index: 200; }
 .bp-detail { width: 800px; max-height: 90vh; overflow: auto; background:#202020; border:1px solid #2e2e2e; border-radius: 10px; padding: 12px; }
+.bp-detail--embedded { width: 100%; max-height: none; border: none; border-radius: 0; padding: 0; background: transparent; }
 .bp-detail__hdr { display:flex; justify-content: space-between; align-items:center; margin-bottom:8px; }
 .bp-detail__title { font-weight:600; }
 .bp-detail__close { background:none; border:none; color:#eaeaea; font-size:22px; cursor:pointer; }

@@ -605,6 +605,50 @@ export class CraftscriptExecutor {
           return this.fail('craft_failed', e?.message || 'missing materials', cmd);
         }
       }
+      if (name === 'log') {
+        // Log arbitrary text to CraftScript logs (for testing/debugging)
+        const t0 = Date.now();
+        try {
+          const parts: string[] = [];
+          for (const a of cmd.args as any[]) {
+            const val = (a && a.type === 'NamedArg') ? await this.evalExpr((a as any).value) : await this.evalExpr(a as any);
+            parts.push(String(val));
+          }
+          const text = parts.join(' ');
+          this.trace('log', { text });
+          return this.ok('log', t0, { text });
+        } catch (e: any) {
+          return this.fail('runtime_error', e?.message || 'log_failed', cmd);
+        }
+      }
+      if (name === 'block_info') {
+        // Inspect a block at selector or world coordinates and log summary
+        const t0 = Date.now();
+        try {
+          let pos: Vec3 | null = null;
+          if ((cmd.args[0] as any)?.type === 'Selector') {
+            pos = this.selectorToWorld(this.requireSelectorArg(cmd.args[0] as any));
+          } else {
+            const x = Number(this.evalExprSync(cmd.args[0] as any));
+            const y = Number(this.evalExprSync(cmd.args[1] as any));
+            const z = Number(this.evalExprSync(cmd.args[2] as any));
+            if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) pos = new Vec3(Math.floor(x), Math.floor(y), Math.floor(z));
+          }
+          if (!pos) return this.fail('invalid_arg', 'block_info expects selector or x,y,z', cmd);
+          const b = this.bot.blockAt(pos);
+          if (!b) return this.fail('no_target', 'no block at position', cmd, { pos: [pos.x, pos.y, pos.z] });
+          const info = {
+            id: b.name,
+            display: (b as any).displayName || b.name,
+            hardness: (b as any).hardness ?? null,
+            diggable: (b as any).diggable ?? null,
+          };
+          this.trace('block_info', { pos: [pos.x, pos.y, pos.z], ...info });
+          return this.ok('block_info', t0, { pos: [pos.x, pos.y, pos.z], ...info });
+        } catch (e: any) {
+          return this.fail('runtime_error', e?.message || 'block_info_failed', cmd);
+        }
+      }
       if (name === 'plant') {
         // Plant sapling/crop at position
         const saplingId = this.requireString(cmd.args[0]).value.replace('minecraft:', '');

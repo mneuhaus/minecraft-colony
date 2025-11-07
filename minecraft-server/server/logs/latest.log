@@ -3895,3 +3895,28 @@
 [20:20:24] [Async Chat Thread - #538/INFO]: [Not Secure] <Kubo> break(126, 68, 120);
 [20:20:26] [Async Chat Thread - #538/INFO]: [Not Secure] <Kubo> … 6 more line(s)
 [20:20:27] [Async Chat Thread - #538/INFO]: [Not Secure] <Kubo> ```
+[20:22:00] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> Will try descending by breaking dirt blocks on the way down
+[20:22:04] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> Start CraftScript (5 lines)
+[20:22:06] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> ```c
+[20:22:07] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> dig(126, 64, 120);
+[20:22:09] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> goto(113, 64, 114, tol:2);
+[20:22:10] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> deposit(113, 64, 114, "oak_log");
+[20:22:12] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> ```
+[20:22:46] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> Start CraftScript (19 lines)
+[20:22:47] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> ```c
+[20:22:49] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> goto(132, 63, 102, tol:1);
+[20:22:50] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> break(132, 63, 102);
+[20:22:52] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> break(132, 64, 102);
+[20:22:53] [Async Chat Thread - #541/INFO]: [Not Secure] <Kubo> break(132, 65, 102);
+[20:22:55] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> break(132, 66, 102);
+[20:22:56] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> goto(132, 63, 102, tol:0);
+[20:22:58] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> build_up();
+[20:22:59] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> break(132, 67, 102);
+[20:23:01] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> … 7 more line(s)
+[20:23:02] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> ```
+[20:23:04] [Async Chat Thread - #539/INFO]: [Not Secure] <Kubo> Testing with manual dirt cleanup for descent!
+[20:24:33] [Server thread/INFO]: Kubo lost connection: Disconnected
+[20:24:33] [Server thread/INFO]: Kubo left the game
+[20:24:37] [User Authenticator #255/INFO]: UUID of player Kubo is e1b21cf6-be9b-3aa9-a17f-4fdd06162202
+[20:24:38] [Server thread/INFO]: Kubo joined the game
+[20:24:38] [Server thread/INFO]: Kubo[/[0:0:0:0:0:0:0:1]:50161] logged in with entity id 174503 at ([world]132.3148982494856, 64.0, 102.4943764145057)
