@@ -53,8 +53,8 @@ AssertStmt = "assert" _ "(" _ e:Expr _ msg:("," _ m:StringLiteral)? _ ")" {
 CommandStmt = name:Identifier _ "(" _ args:ArgList? _ ")" { return node("Command",{name,args:args||[]}); }
 
 // Variables
-LetStmt = "let" __ name:Identifier _ "=" _ value:Expr { return node("LetStmt",{name,value}); }
-AssignStmt = name:Identifier _ "=" _ value:Expr { return node("AssignStmt",{name,value}); }
+LetStmt = "let" __ name:Identifier _ "=" _ value:Expr _ ";" { return node("LetStmt",{name,value}); }
+AssignStmt = name:Identifier _ "=" _ value:Expr _ ";" { return node("AssignStmt",{name,value}); }
 
 ArgList = head:Arg tail:(_ "," _ Arg)* { return [head,...tail.map(t=>t[3])]; }
 Arg = NamedArg / Expr

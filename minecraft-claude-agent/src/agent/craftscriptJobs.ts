@@ -70,6 +70,25 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
             speaker: botName || minecraftBot.getBot().username || 'bot'
           });
         } catch {}
+      },
+      onTrace: (t) => {
+        try {
+          if (!activityWriter) return;
+          activityWriter.addActivity({
+            type: 'tool',
+            message: 'Tool: craftscript_trace',
+            details: {
+              name: 'craftscript_trace',
+              tool_name: 'craftscript_trace',
+              input: {},
+              params_summary: {},
+              output: JSON.stringify(t),
+              duration_ms: 0
+            },
+            role: 'tool',
+            speaker: botName || minecraftBot.getBot().username || 'bot'
+          });
+        } catch {}
       }
     });
     const result = await exec.run(ast as any);

@@ -29,7 +29,7 @@ export class CraftscriptExecutor {
   private bot: Bot;
   private ops = 0;
   private macros = new Map<string, Block>();
-  private options: Required<Omit<ExecutorOptions, 'onStep'>> & { onStep?: (result: CraftscriptResult) => void };
+  private options: Required<Omit<ExecutorOptions, 'onStep' | 'onTrace'>> & { onStep?: (result: CraftscriptResult) => void; onTrace?: (t:any)=>void };
   private vars = new Map<string, any>();
   private openContainer: any = null; // Currently open chest/furnace/etc
 
@@ -40,7 +40,12 @@ export class CraftscriptExecutor {
       defaultScanRadius: options?.defaultScanRadius ?? 2,
       autoScanBeforeOps: options?.autoScanBeforeOps ?? true,
       ...(options?.onStep ? { onStep: options.onStep } : {}),
+      ...(options?.onTrace ? { onTrace: options.onTrace } : {}),
     };
+  }
+
+  private trace(kind: string, data: any) {
+    try { this.options.onTrace?.({ kind, ts: Date.now(), ...data }); } catch {}
   }
 
   async run(program: Program): Promise<{ ok: boolean; results: CraftscriptResult[] }> {
@@ -91,12 +96,19 @@ export class CraftscriptExecutor {
         return { ok: true, op: 'assert', ms: 0 };
       }
       case 'IfStmt': {
-        const test = Boolean(await this.evalExpr(st.test));
+        const raw = await this.evalExpr(st.test);
+        const test = Boolean(raw);
+        this.trace('if', { value: test, exprType: (st.test as any)?.type, loc: (st.loc as any)?.start });
         if (test) return await this.execStatement(st.consequent);
         if (st.alternate) return await this.execStatement(st.alternate);
         return null;
       }
       case 'RepeatStmt': {
+        if ((st as any).varName || (st as any).start || (st as any).end) {
+          this.trace('repeat_init', { var: (st as any).varName, count: (st as any).count ? this.evalExprSync((st as any).count) : undefined, start: (st as any).start ? this.evalExprSync((st as any).start) : undefined, end: (st as any).end ? this.evalExprSync((st as any).end) : undefined, step: (st as any).step ? this.evalExprSync((st as any).step) : undefined, loc: (st.loc as any)?.start });
+        } else {
+          this.trace('repeat_init', { count: this.evalExprSync((st as any).count), loc: (st.loc as any)?.start });
+        }
         // Three forms: legacy count, var with limit (0..N-1), var with range (start..end[:step])
         if ((st as any).varName) {
           const name = (st as any).varName as string;
@@ -111,12 +123,14 @@ export class CraftscriptExecutor {
               if (step > 0) {
                 for (let i = start; i <= end; i += step) {
                   this.vars.set(name, i);
+                  this.trace('repeat_iter', { var: name, value: i });
                   const r = await this.execStatement((st as any).body);
                   if (r && !r.ok) return r;
                 }
               } else {
                 for (let i = start; i >= end; i += step) {
                   this.vars.set(name, i);
+                  this.trace('repeat_iter', { var: name, value: i });
                   const r = await this.execStatement((st as any).body);
                   if (r && !r.ok) return r;
                 }
@@ -125,10 +139,12 @@ export class CraftscriptExecutor {
               const limit = Math.max(0, Number(this.evalExprSync((st as any).count)) | 0);
               for (let i = 0; i < limit; i++) {
                 this.vars.set(name, i);
+                this.trace('repeat_iter', { var: name, value: i });
                 const r = await this.execStatement((st as any).body);
                 if (r && !r.ok) return r;
               }
             }
+            this.trace('repeat_end', { var: name });
             return null;
           } finally {
             if (hasPrev) this.vars.set(name, prev);
@@ -137,9 +153,11 @@ export class CraftscriptExecutor {
         } else {
           const n = Math.max(0, Number(this.evalExprSync((st as any).count)) | 0);
           for (let i = 0; i < n; i++) {
+            this.trace('repeat_iter', { value: i });
             const r = await this.execStatement((st as any).body);
             if (r && !r.ok) return r;
           }
+          this.trace('repeat_end', {});
           return null;
         }
       }
@@ -156,11 +174,13 @@ export class CraftscriptExecutor {
       case 'LetStmt': {
         const value = this.evalExprSync(st.value as any);
         this.vars.set((st as any).name, value);
+        this.trace('var_set', { name: (st as any).name, value });
         return { ok: true, op: 'let', ms: 0 } as any;
       }
       case 'AssignStmt': {
         const value = this.evalExprSync(st.value as any);
         this.vars.set((st as any).name, value);
+        this.trace('var_set', { name: (st as any).name, value });
         return { ok: true, op: 'set', ms: 0 } as any;
       }
       case 'Command':
@@ -1032,6 +1052,7 @@ export class CraftscriptExecutor {
   private ok(op: string, t0: number, notes?: any): CraftscriptResult {
     const res = { ok: true, op, ms: Date.now() - t0, notes } as CraftscriptResult;
     try { this.options.onStep?.(res); } catch {}
+    this.trace('ok', { op, notes });
     return res;
   }
   private fail(error: string, message: string, cmd: CommandStmt, details?: any): CraftscriptResult {
@@ -1045,6 +1066,7 @@ export class CraftscriptExecutor {
       ...(details ? { notes: details } : {}),
     } as CraftscriptResult;
     try { this.options.onStep?.(res); } catch {}
+    this.trace('fail', { error, message, details });
     return res;
   }
   private bumpOps() {

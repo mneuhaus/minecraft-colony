@@ -192,4 +192,6 @@ export interface ExecutorOptions {
   autoScanBeforeOps?: boolean;
   // Optional per-step callback for streaming results to the dashboard
   onStep?: (result: CraftscriptResult) => void;
+  // Verbose trace callback for internal events (ifs, loops, vars, predicates, command start)
+  onTrace?: (trace: any) => void;
 }

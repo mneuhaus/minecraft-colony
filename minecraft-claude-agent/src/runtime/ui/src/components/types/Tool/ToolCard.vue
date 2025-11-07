@@ -12,10 +12,13 @@ import ToolVox from './ToolVox.vue';
 import ToolAffordances from './ToolAffordances.vue';
 import ToolCraftScript from './ToolCraftScript.vue';
 import ToolCraftScriptStep from './ToolCraftScriptStep.vue';
+import ToolCraftScriptTrace from './ToolCraftScriptTrace.vue';
 import ToolTopography from './ToolTopography.vue';
 import ToolBlockInfo from './ToolBlockInfo.vue';
 import ToolBlueprint from './ToolBlueprint.vue';
 import ToolLookAtMap from './ToolLookAtMap.vue';
+import ToolMemory from './ToolMemory.vue';
+import ToolInventory from './ToolInventory.vue';
 import ToolGeneric from './ToolGeneric.vue';
 
 const props = defineProps<{ item: any }>();
@@ -41,6 +44,7 @@ const key = computed(()=> {
   if (n === 'todowrite') return 'todo';
   // Match both prefixed (mcp__minecraft__*) and unprefixed tool names
   if (/craftscript_step/.test(n)) return 'craftscript_step';
+  if (/craftscript_trace/.test(n)) return 'craftscript_trace';
   if (/craftscript/.test(n)) return 'craftscript';
   if (/get_vox$/.test(n)) return 'vox';
   if (/get_topography$/.test(n)) return 'topography';
@@ -50,6 +54,8 @@ const key = computed(()=> {
   if (/affordances$/.test(n)) return 'affordances';
   if (/nearest$/.test(n)) return 'nearest';
   if (/get_position$/.test(n)) return 'get_position';
+  if (/get_inventory$/.test(n)) return 'inventory';
+  if (/(get|update)_memory$/.test(n)) return 'memory';
   if (/\bnav$/.test(n)) return 'nav';
   return 'generic';
 });
@@ -67,6 +73,9 @@ const toolComponent = computed(()=> ({
   affordances: ToolAffordances,
   craftscript: ToolCraftScript,
   craftscript_step: ToolCraftScriptStep,
+  craftscript_trace: ToolCraftScriptTrace,
+  memory: ToolMemory,
+  inventory: ToolInventory,
   generic: ToolGeneric,
 }[key.value] || ToolGeneric));
 </script>
