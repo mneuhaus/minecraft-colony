@@ -70,9 +70,9 @@ watch(activeBot, ()=> load());
 .inv__stats { display:flex; gap:6px; }
 .chip { padding: 2px 6px; border:1px solid #2E2E2E; border-radius:6px; font-size:10px; color:#B3B3B3; }
 .inv-grid { display:grid; grid-template-columns:repeat(9,1fr); gap:2px; background:#0f0f0f; padding:4px; border-radius:6px; }
-.inv-slot { aspect-ratio:1; background:#2b2b2b; border:1px solid #3a3a3a; border-radius:3px; display:flex; align-items:center; justify-content:center; color:#EAEAEA; font-weight:700; font-family:'Monaco','Courier New',monospace; font-size:12px; }
+.inv-slot { aspect-ratio:1; background:#2b2b2b; border:1px solid #3a3a3a; border-radius:3px; display:flex; align-items:center; justify-content:center; position:relative; }
 .inv-slot--filled { background:#3a3a3a; border-color:#4a4a4a; }
 .inv-slot:hover { border-color:#777; box-shadow: inset 0 0 2px rgba(255,255,255,0.1); }
-.inv-icon { width:80%; height:80%; image-rendering: pixelated; object-fit: contain; }
-.inv-count { text-shadow: 0 0 3px rgba(0,0,0,0.9); }
+.inv-icon { width:90%; height:90%; image-rendering: pixelated; object-fit: contain; }
+.inv-badge { position:absolute; top:2px; right:2px; background:#E96D2F; color:#FFF; font-size:9px; font-weight:700; padding:1px 4px; border-radius:4px; line-height:1.2; font-family:'Monaco','Courier New',monospace; box-shadow: 0 1px 2px rgba(0,0,0,0.5); }
 </style>

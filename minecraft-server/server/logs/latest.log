@@ -3702,3 +3702,33 @@
 [19:59:56] [Async Chat Thread - #524/INFO]: [Not Secure] <Kubo> goto(tx + 1, ty + 2, tz, tol:0);
 [19:59:58] [Async Chat Thread - #524/INFO]: [Not Secure] <Kubo> … 27 more line(s)
 [19:59:59] [Async Chat Thread - #524/INFO]: [Not Secure] <Kubo> ```
+[20:00:25] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> Start CraftScript (11 lines)
+[20:00:27] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> ```c
+[20:00:28] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> goto(114, 64, 108, tol:1);
+[20:00:30] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> break(114, 64, 108);
+[20:00:31] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> break(114, 65, 108);
+[20:00:33] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> break(114, 66, 108);
+[20:00:34] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> break(114, 67, 108);
+[20:00:36] [Async Chat Thread - #524/INFO]: [Not Secure] <Kubo> break(114, 68, 108);
+[20:00:37] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> pickup_blocks(16);
+[20:00:39] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> goto(113, 64, 114, tol:1);
+[20:00:40] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> deposit(113, 64, 114, "oak_log");
+[20:00:42] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> ```
+[20:00:43] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> Trying simplest approach - break from bottom up within reach
+[20:01:06] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> Start CraftScript (17 lines)
+[20:01:08] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> ```c
+[20:01:09] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> goto(120, 64, 108, tol:1);
+[20:01:11] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> break(120, 64, 108);
+[20:01:12] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> wait(500);
+[20:01:14] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> pickup_blocks(8);
+[20:01:15] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> break(120, 65, 108);
+[20:01:17] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> break(120, 66, 108);
+[20:01:18] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> break(120, 67, 108);
+[20:01:20] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> … 5 more line(s)
+[20:01:21] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> ```
+[20:01:23] [Async Chat Thread - #525/INFO]: [Not Secure] <Kubo> Testing with wait between break and pickup
+[20:01:39] [Server thread/INFO]: Kubo lost connection: Disconnected
+[20:01:39] [Server thread/INFO]: Kubo left the game
+[20:01:43] [User Authenticator #249/INFO]: UUID of player Kubo is e1b21cf6-be9b-3aa9-a17f-4fdd06162202
+[20:01:43] [Server thread/INFO]: Kubo joined the game
+[20:01:43] [Server thread/INFO]: Kubo[/[0:0:0:0:0:0:0:1]:58057] logged in with entity id 173538 at ([world]113.5, 64.0, 113.5)

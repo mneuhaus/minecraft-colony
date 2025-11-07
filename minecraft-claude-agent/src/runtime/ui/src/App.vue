@@ -150,6 +150,9 @@ const filteredItems = computed(()=> {
 
   return store.items
     .filter((e: any) => store.viewMode==='all' || e.bot_id===activeBotId)
+    // Hide noisy CraftScript internals from the main timeline; view them in the card's Show Logs instead
+    .filter((e: any) => !(e.type==='tool' && /^(craftscript_step|craftscript_trace)$/i.test(String(e?.payload?.tool_name||''))))
+    // Also hide send_chat spam from tools
     .filter((e: any) => !(e.type==='tool' && /send_chat/i.test(String(e?.payload?.tool_name||''))));
 });
 
