@@ -148,6 +148,7 @@ eat("minecraft:cooked_beef");
 | `is_air(sel)`                | true if block is air             |
 | `has_item("minecraft:item")` | true if item present             |
 | `is_hazard("lava_near")`     | true if hazard detected          |
+| `block_is(pos, id)`          | true if block at selector or (x,y,z) matches id |
 
 All use the latest voxel cache; executor auto-scans when stale.
 
@@ -274,6 +275,24 @@ if (has_item("minecraft:torch")) {
 build_pillar(4);
 place("minecraft:oak_planks", f1+u1, face:"up");
 descend_pillar_safely(4);
+```
+
+### D. Plant saplings on a 6-block grid (only on dirt)
+
+```c
+// Choose origin and planting Y level
+let ox = 113; let oy = 64; let oz = 114;
+
+// 5×4 grid, spacing 6 blocks; plant only on dirt ground
+repeat(ix: 0..4) {
+  repeat(iz: 0..3) {
+    let px = ox + ix * 6;
+    let pz = oz + iz * 6;
+    if (block_is(px, oy - 1, pz, "dirt")) {
+      plant("oak_sapling", px, oy, pz);
+    }
+  }
+}
 ```
 
 ---

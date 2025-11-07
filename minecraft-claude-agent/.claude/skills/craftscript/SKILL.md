@@ -19,6 +19,12 @@ Use these tools to gather information and plan your CraftScript actions:
 - block_info({ x,y,z }) → block metadata at position
 - affordances({ x,y,z }) → standability, placeable faces, safety hints
 
+## Predicates
+
+- safe_step_up(sel), safe_step_down(sel), can_stand(sel), is_air(sel)
+- has_item("minecraft:item"), is_hazard("lava_near")
+- block_is(pos, id) → true if the block at a selector or world (x,y,z) equals the given id
+
 ## Execution
 
 ALL movement and block interaction must be done through CraftScript:
@@ -158,6 +164,21 @@ place("oak_planks", 102, 64, 51);
 place("oak_planks", 100, 64, 52);
 place("oak_planks", 101, 64, 52);
 place("oak_planks", 102, 64, 52);
+```
+
+### Plant in a 6‑block spacing grid (only on dirt)
+
+```
+let ox = 113; let oy = 64; let oz = 114;
+repeat(ix: 0..4) {
+  repeat(iz: 0..3) {
+    let px = ox + ix * 6;
+    let pz = oz + iz * 6;
+    if (block_is(px, oy - 1, pz, "dirt")) {
+      plant("oak_sapling", px, oy, pz);
+    }
+  }
+}
 ```
 
 ### Short Navigation Script with Check

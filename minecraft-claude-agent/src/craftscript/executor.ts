@@ -1000,6 +1000,22 @@ export class CraftscriptExecutor {
       const tag = this.requireString(p.args[0] as any).value;
       return detect_hazards(this.bot, 2).includes(tag);
     }
+    if (n === 'block_is') {
+      // block_is(selector|x,y,z, id)
+      const idArg = p.args[p.args.length - 1];
+      const want = this.requireString(idArg as any).value.replace('minecraft:', '');
+      if ((p.args[0] as any).type === 'Selector') {
+        const pos = this.selectorToWorld(this.requireSelectorArg(p.args[0] as any));
+        const b = this.bot.blockAt(pos);
+        return !!b && b.name === want;
+      } else {
+        const x = Number(this.evalExprSync(p.args[0] as any));
+        const y = Number(this.evalExprSync(p.args[1] as any));
+        const z = Number(this.evalExprSync(p.args[2] as any));
+        const b = this.bot.blockAt(new Vec3(Math.floor(x), Math.floor(y), Math.floor(z)));
+        return !!b && b.name === want;
+      }
+    }
     throw new Error(`unknown predicate ${n}`);
   }
 
