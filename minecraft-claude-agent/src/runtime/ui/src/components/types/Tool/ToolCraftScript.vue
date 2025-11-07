@@ -232,6 +232,7 @@ function fmtTs(ts:number){
 .tl-status[data-state="failed"] { color:#F87171; border-color: rgba(248,113,113,.5); }
 .tl-status[data-state="completed"] { color:#34D399; border-color: rgba(52,211,153,.5); }
 .tl-status[data-state="running"] { color:#4A9EFF; border-color: rgba(74,158,255,.5); }
+.tl-status[data-state="canceled"] { color:#9CA3AF; border-color:#444; }
 .tl-btn { background: rgba(74, 158, 255, 0.1); border:1px solid rgba(74,158,255,0.3); color:#4A9EFF; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; }
 .tl-btn:disabled { opacity: 0.6; cursor: default; }
 .tool-output {

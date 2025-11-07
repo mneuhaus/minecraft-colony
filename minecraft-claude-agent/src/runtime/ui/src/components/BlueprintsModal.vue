@@ -6,21 +6,122 @@
         <button class="modal-close" @click="$emit('close')">×</button>
       </div>
       <div class="modal-body">
-        <BlueprintsPanel :items="items" @refresh="$emit('refresh')" @view="$emit('view', $event)" @remove="$emit('remove', $event)" @create="$emit('create', $event)" />
+        <aside class="modal-sidebar">
+          <div class="sidebar-header">
+            <button class="btn btn-refresh" @click="$emit('refresh')">Refresh</button>
+          </div>
+          <div class="sidebar-create">
+            <input class="input" v-model="name" placeholder="name" @keyup.enter="create" />
+            <input class="input" v-model="description" placeholder="description (optional)" @keyup.enter="create" />
+            <button class="btn btn-create" @click="create" :disabled="!name.trim()">Create</button>
+          </div>
+          <div class="sidebar-list">
+            <div
+              v-for="bp in items"
+              :key="bp.name"
+              class="bp-item"
+              :class="{ 'bp-item--active': selectedBlueprint?.name === bp.name }"
+              @click="selectBlueprint(bp)"
+            >
+              <div class="bp-item__name">{{ bp.name }}</div>
+              <div class="bp-item__vox">{{ bp.count }} vox</div>
+            </div>
+            <div v-if="!items.length" class="sidebar-empty">No blueprints yet.</div>
+          </div>
+        </aside>
+        <main class="modal-main">
+          <div v-if="selectedBlueprint" class="detail">
+            <div class="detail-header">
+              <div>
+                <h3 class="detail-title">{{ selectedBlueprint.name }}</h3>
+                <p class="detail-desc">{{ selectedBlueprint.description || 'No description' }}</p>
+              </div>
+              <div class="detail-actions">
+                <button class="btn btn-danger" @click="handleRemove(selectedBlueprint.name)">Remove</button>
+              </div>
+            </div>
+            <div class="detail-body">
+              <div class="detail-meta">
+                <div class="meta-item">
+                  <span class="meta-label">Voxels:</span>
+                  <span class="meta-value">{{ selectedBlueprint.count }}</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Updated:</span>
+                  <span class="meta-value">{{ formatDate(selectedBlueprint.updated) }}</span>
+                </div>
+              </div>
+              <BlueprintDetail :name="selectedBlueprint.name" :data="blueprintData" :embedded="true" />
+            </div>
+          </div>
+          <div v-else class="detail-empty">
+            <div class="empty-icon">📦</div>
+            <div class="empty-text">Select a blueprint to view details</div>
+          </div>
+        </main>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import BlueprintsPanel from './BlueprintsPanel.vue';
+import { ref, watch } from 'vue';
+import BlueprintDetail from './BlueprintDetail.vue';
 
-defineProps<{
+const props = defineProps<{
   open: boolean;
   items: any[];
 }>();
 
-defineEmits(['close', 'refresh', 'view', 'remove', 'create']);
+const emits = defineEmits(['close', 'refresh', 'view', 'remove', 'create']);
+
+const name = ref('');
+const description = ref('');
+const selectedBlueprint = ref<any>(null);
+const blueprintData = ref<any>(null);
+
+async function create() {
+  if (!name.value.trim()) return;
+  emits('create', { name: name.value.trim(), description: description.value.trim() || undefined });
+  name.value = '';
+  description.value = '';
+}
+
+async function selectBlueprint(bp: any) {
+  selectedBlueprint.value = bp;
+  // Fetch blueprint data
+  try {
+    const res = await fetch(`/api/blueprints/${encodeURIComponent(bp.name)}`);
+    blueprintData.value = await res.json();
+  } catch {
+    blueprintData.value = null;
+  }
+}
+
+async function handleRemove(bpName: string) {
+  if (!confirm(`Remove blueprint "${bpName}"?`)) return;
+  emits('remove', bpName);
+  if (selectedBlueprint.value?.name === bpName) {
+    selectedBlueprint.value = null;
+    blueprintData.value = null;
+  }
+}
+
+function formatDate(dateStr: string) {
+  if (!dateStr) return '—';
+  try {
+    return new Date(dateStr).toLocaleString();
+  } catch {
+    return dateStr;
+  }
+}
+
+// Auto-select first blueprint when modal opens
+watch(() => props.open, (isOpen) => {
+  if (isOpen && props.items.length > 0 && !selectedBlueprint.value) {
+    selectBlueprint(props.items[0]);
+  }
+});
 </script>
 
 <style scoped>

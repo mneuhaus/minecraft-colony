@@ -16,6 +16,8 @@ interface Job {
   error?: string;
   memoryStore?: SqlMemoryStore | null;
   getSessionId?: () => string | null;
+  activityWriter?: ActivityWriter;
+  botName?: string;
 }
 
 const JOBS = new Map<string, Job>();
@@ -26,7 +28,7 @@ function uid(): string {
 
 export function createCraftscriptJob(minecraftBot: MinecraftBot, script: string, activityWriter?: ActivityWriter, botName?: string, memoryStore?: SqlMemoryStore | null, getSessionId?: () => string | null): string {
   const id = uid();
-  const job: Job = { id, state: 'queued', script, memoryStore: memoryStore || null, getSessionId };
+  const job: Job = { id, state: 'queued', script, memoryStore: memoryStore || null, getSessionId, activityWriter, botName };
   JOBS.set(id, job);
   runJob(minecraftBot, job, activityWriter, botName).catch(() => {});
   return id;
@@ -42,6 +44,23 @@ export function cancelCraftscriptJob(id: string): void {
   if (job.state === 'completed' || job.state === 'failed' || job.state === 'canceled') return;
   job.state = 'canceled';
   job.endedAt = Date.now();
+  // Emit a canceled status so UI can update the originating card
+  try {
+    const st: any = { id: job.id, state: 'canceled', script: job.script, duration_ms: (job.endedAt - (job.startedAt || job.endedAt)) };
+    if (job.activityWriter) {
+      job.activityWriter.addActivity({
+        type: 'tool',
+        message: 'Tool: craftscript_status',
+        details: { name: 'craftscript_status', tool_name: 'craftscript_status', input: { job_id: job.id }, params_summary: { job_id: job.id }, output: JSON.stringify(st), duration_ms: 0 },
+        role: 'tool',
+        speaker: job.botName || 'bot'
+      });
+    }
+    if (job.memoryStore) {
+      const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
+      if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_status', st);
+    }
+  } catch {}
 }
 
 async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: ActivityWriter, botName?: string): Promise<void> {
