@@ -184,7 +184,17 @@ export interface IdentifierExpr extends BaseNode {
 
 export type CraftscriptResult =
   | { ok: true; op: string; ms: number; notes?: any }
-  | { ok: false; error: string; message: string; loc?: Location; op_index: number; at?: any; ts: number };
+  | {
+      ok: false;
+      error: string;
+      message: string;
+      loc?: Location;
+      op_index: number;
+      op?: string; // command that failed (e.g., "break", "deposit")
+      notes?: any; // structured context about the failure
+      at?: any;
+      ts: number;
+    };
 
 export interface ExecutorOptions {
   opLimit?: number;

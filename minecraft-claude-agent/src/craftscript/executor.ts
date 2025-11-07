@@ -1086,6 +1086,7 @@ export class CraftscriptExecutor {
       message,
       loc: (cmd.loc as any)?.start || undefined,
       op_index: this.ops,
+      op: (cmd as any)?.name || undefined,
       ts: Date.now(),
       ...(details ? { notes: details } : {}),
     } as CraftscriptResult;

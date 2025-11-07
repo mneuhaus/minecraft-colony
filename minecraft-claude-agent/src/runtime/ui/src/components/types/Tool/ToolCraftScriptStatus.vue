@@ -7,6 +7,11 @@
     <div class="grid">
       <div class="k">job</div><div class="v mono">{{ status.id }}</div>
       <div class="k">duration</div><div class="v mono">{{ status.duration_ms }} ms</div>
+      <template v-if="status.error">
+        <div class="k">error</div><div class="v mono">{{ status.error.type }} — {{ status.error.message }}</div>
+        <div class="k" v-if="status.error.op">command</div><div class="v mono" v-if="status.error.op">{{ status.error.op }}</div>
+        <div class="k" v-if="status.error.line">line</div><div class="v mono" v-if="status.error.line">{{ status.error.line }}:{{ status.error.column || 1 }}</div>
+      </template>
     </div>
     <pre class="script" v-if="status.script"><code>{{ status.script }}</code></pre>
   </div>
@@ -29,7 +34,8 @@ const status = computed(()=> {
   const state = o.state || 'unknown';
   const duration_ms = o.duration_ms ?? 0;
   const script = o.script || '';
-  return { id, state, duration_ms, script };
+  const error = o.error || null;
+  return { id, state, duration_ms, script, error };
 });
 </script>
 
@@ -46,4 +52,3 @@ const status = computed(()=> {
 .mono { font-family:'Monaco','Menlo','Courier New',monospace; }
 .script { margin-top:6px; background:#111; border:1px solid #2E2E2E; border-radius:6px; padding:8px; color:#C9D1D9; max-height:200px; overflow:auto; }
 </style>
-

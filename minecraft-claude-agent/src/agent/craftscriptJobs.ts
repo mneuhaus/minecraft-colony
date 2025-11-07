@@ -71,7 +71,18 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
       } catch {}
       // Emit a status row
       try {
-        const status = { id: job.id, state: 'failed', script: job.script, duration_ms: (job.endedAt - (job.startedAt || job.endedAt)) };
+        const status = {
+          id: job.id,
+          state: 'failed',
+          script: job.script,
+          duration_ms: (job.endedAt - (job.startedAt || job.endedAt)),
+          error: {
+            type: 'compile_error',
+            message: msg,
+            line: (e?.location?.start?.line ?? e?.location?.line ?? undefined),
+            column: (e?.location?.start?.column ?? e?.location?.column ?? undefined),
+          }
+        } as any;
         if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_status', details: { name: 'craftscript_status', tool_name: 'craftscript_status', input: { job_id: job.id }, params_summary: { job_id: job.id }, output: JSON.stringify(status), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
         if (job.memoryStore) {
           const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
@@ -158,7 +169,21 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
         job.endedAt = Date.now();
         // Also emit status for failed jobs
         try {
-          const st = { id: job.id, state: 'failed', script: job.script, duration_ms: (job.endedAt - (job.startedAt || job.endedAt)) };
+          const st = {
+            id: job.id,
+            state: 'failed',
+            script: job.script,
+            duration_ms: (job.endedAt - (job.startedAt || job.endedAt)),
+            error: {
+              type: r.error,
+              message: r.message,
+              op: (r as any).op,
+              op_index: r.op_index,
+              line: (r as any).loc?.line,
+              column: (r as any).loc?.column,
+              notes: (r as any).notes
+            }
+          } as any;
           if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_status', details: { name: 'craftscript_status', tool_name: 'craftscript_status', input: { job_id: job.id }, params_summary: { job_id: job.id }, output: JSON.stringify(st), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
           if (job.memoryStore) {
             const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
@@ -175,7 +200,7 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
     console.log('[CraftScript] Job completed successfully');
     // Emit completed status
     try {
-      const st = { id: job.id, state: 'completed', script: job.script, duration_ms: (job.endedAt - (job.startedAt || job.endedAt)) };
+      const st = { id: job.id, state: 'completed', script: job.script, duration_ms: (job.endedAt - (job.startedAt || job.endedAt)) } as any;
       if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_status', details: { name: 'craftscript_status', tool_name: 'craftscript_status', input: { job_id: job.id }, params_summary: { job_id: job.id }, output: JSON.stringify(st), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
       if (job.memoryStore) {
         const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
@@ -200,7 +225,7 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
       if (job.memoryStore) {
         const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
         if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_step', { job_id: job.id, step });
-        const st = { id: job.id, state: 'failed', script: job.script, duration_ms: (job.endedAt - (job.startedAt || job.endedAt)) };
+        const st = { id: job.id, state: 'failed', script: job.script, duration_ms: (job.endedAt - (job.startedAt || job.endedAt)), error: { type: 'runtime_error', message: job.error } } as any;
         job.memoryStore.addActivity(sid!, 'tool', 'craftscript_status', st);
       }
     } catch {}

@@ -3765,3 +3765,45 @@
 [20:04:45] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> … 14 more line(s)
 [20:04:47] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> ```
 [20:04:48] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> Harvesting 3 more trees within reach distance
+[20:05:01] [Server thread/INFO]: Kubo lost connection: Disconnected
+[20:05:01] [Server thread/INFO]: Kubo left the game
+[20:05:06] [User Authenticator #251/INFO]: UUID of player Kubo is e1b21cf6-be9b-3aa9-a17f-4fdd06162202
+[20:05:06] [Server thread/INFO]: Kubo joined the game
+[20:05:06] [Server thread/INFO]: Kubo[/[0:0:0:0:0:0:0:1]:59318] logged in with entity id 173676 at ([world]103.5, 64.0, 108.5)
+[20:05:08] [Async Chat Thread - #527/INFO]: [Not Secure] <mneuhaus> felling the lowest 4-5 trunk blocks, then going directly beneath the tree where the trunk was, using build_up to go up 2 blocks, break 2 now reachable blocks above you and go up 2 again until you managed to fell all logs
+[20:05:17] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> Start CraftScript (21 lines)
+[20:05:18] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> ```c
+[20:05:20] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> goto(102, 64, 108, tol:1);
+[20:05:21] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> break(102, 64, 108);
+[20:05:23] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> break(102, 65, 108);
+[20:05:24] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> break(102, 66, 108);
+[20:05:26] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> break(102, 67, 108);
+[20:05:27] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> goto(102, 64, 108, tol:0);
+[20:05:29] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> build_up();
+[20:05:30] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> … 9 more line(s)
+[20:05:32] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> ```
+[20:05:33] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> Testing new strategy: break bottom logs, stand in trunk, build up to reach top
+[20:05:58] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> Start CraftScript (26 lines)
+[20:06:00] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> ```c
+[20:06:01] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> goto(108, 64, 108, tol:1);
+[20:06:03] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> break(108, 65, 108);
+[20:06:04] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> break(108, 66, 108);
+[20:06:06] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> break(108, 67, 108);
+[20:06:07] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> break(108, 68, 108);
+[20:06:09] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> goto(108, 65, 108, tol:0);
+[20:06:10] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> build_up();
+[20:06:12] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> … 14 more line(s)
+[20:06:13] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> ```
+[20:06:15] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> Using build_up method to climb and reach high logs!
+[20:08:15] [Server thread/INFO]: Kubo lost connection: Disconnected
+[20:08:15] [Server thread/INFO]: Kubo left the game
+[20:08:20] [User Authenticator #252/INFO]: UUID of player Kubo is e1b21cf6-be9b-3aa9-a17f-4fdd06162202
+[20:08:20] [Server thread/INFO]: Kubo joined the game
+[20:08:20] [Server thread/INFO]: Kubo[/[0:0:0:0:0:0:0:1]:60529] logged in with entity id 173811 at ([world]108.49991661682725, 63.0, 78.3)
+[20:08:31] [Async Chat Thread - #529/INFO]: [Not Secure] <mneuhaus> continue :)
+[20:09:09] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> Start CraftScript (5 lines)
+[20:09:11] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> ```c
+[20:09:12] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> goto(113, 64, 114, tol:1);
+[20:09:14] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> deposit(113, 64, 114, "oak_log");
+[20:09:15] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> deposit(113, 64, 114, "oak_sapling");
+[20:09:17] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> ```

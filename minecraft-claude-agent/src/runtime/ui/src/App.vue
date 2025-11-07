@@ -2,10 +2,6 @@
   <div class="app">
     <aside class="sidebar">
       <header class="sidebar__hdr">Agents</header>
-      <div class="sidebar__view">
-        <button :class="['chip', viewMode==='single' && 'chip--active']" @click="setViewMode('single')">This Bot</button>
-        <button :class="['chip', viewMode==='all' && 'chip--active']" @click="setViewMode('all')">All Bots</button>
-      </div>
       <div class="sidebar__list">
         <div v-for="b in bots" :key="b.name" class="agent" :aria-selected="activeBot===b.name">
           <div class="agent__row" @click="selectBot(b.name)">
@@ -20,7 +16,7 @@
 
             <!-- Info Row: Blueprints + Reset -->
             <div class="agent__info-row">
-              <button class="chip chip--link" @click.stop="bpDetailOpen = true">
+              <button class="chip chip--link" @click.stop="bpModalOpen = true">
                 {{ blueprints.length }} Blueprint{{ blueprints.length !== 1 ? 's' : '' }}
               </button>
               <button class="chip chip--danger" @click.stop="resetActiveBot" :disabled="resetting">
@@ -39,15 +35,12 @@
           </div>
         </div>
       </div>
-
-      <div class="sidebar__bp">
-        <BlueprintsPanel :items="blueprints" @refresh="loadBlueprints" @view="viewBlueprint" @remove="removeBlueprint" @create="createBlueprint" />
-      </div>
     </aside>
     <main class="main">
       <Timeline :items="filteredItems" @openInspector="openInspector" />
     </main>
     <Inspector :open="inspectorOpen" :item="inspectorItem" @close="inspectorOpen=false" />
+    <BlueprintsModal :open="bpModalOpen" :items="blueprints" @close="bpModalOpen=false" @refresh="loadBlueprints" @view="viewBlueprint" @remove="handleRemoveBlueprint" @create="handleCreateBlueprint" />
     <BlueprintDetail v-if="bpDetailOpen" :name="bpDetailName" :data="bpDetail" @close="bpDetailOpen=false" />
   </div>
 </template>
@@ -57,7 +50,7 @@ import { computed, inject, onMounted, ref } from 'vue';
 import type { store as Store } from './main';
 import Timeline from './components/Timeline.vue';
 import Inspector from './components/Inspector.vue';
-import BlueprintsPanel from './components/BlueprintsPanel.vue';
+import BlueprintsModal from './components/BlueprintsModal.vue';
 import BlueprintDetail from './components/BlueprintDetail.vue';
 import SidebarInventory from './components/SidebarInventory.vue';
 
