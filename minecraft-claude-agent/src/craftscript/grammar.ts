@@ -3,16 +3,19 @@ export const CRAFTSCRIPT_GRAMMAR = String.raw`
   function node(type, props){ return Object.assign({type,loc:location()}, props||{}); }
 }
 Start = _ body:StatementList _ { return node("Program",{body}); }
-StatementList = s:Statement tail:(_ Statement)* { return s ? [s,...tail.map(t=>t[1])] : []; }
+StatementList = head:Statement? tail:(_ Statement)* {
+  if (!head) return [];
+  return [head, ...tail.map(t => t[1])];
+}
 
 Statement
   = MacroDecl
   / IfStmt
   / RepeatStmt
   / WhileStmt
-  / AssertStmt ";"
-  / CommandStmt ";"
-  / ";" {return node("Empty");}
+  / s:AssertStmt ";" { return s; }
+  / s:CommandStmt ";" { return s; }
+  / ";" { return node("Empty"); }
 
 MacroDecl = "macro" __ name:Identifier _ "(" _ params:ParamList? _ ")" _ blk:Block
   { return node("MacroDecl",{name,params:params||[],body:blk}); }
@@ -45,7 +48,6 @@ Primary
   = "(" _ e:Expr _ ")" {return e;}
   / PredicateCall
   / SelectorWithSuffix
-  / WorldCoord
   / Waypoint
   / BlockQuery
   / NumberLiteral
@@ -66,7 +68,6 @@ SelectorWithSuffix = sel:Selector suf:("^" / "_")? {
 Selector = head:SelectorTerm tail:(_ "+" _ SelectorTerm)* { return node("Selector",{terms:[head,...tail.map(t=>t[3])]}); }
 SelectorTerm = axis:[FfBbRrLlUuDd] n:SignedInt? { return node("SelTerm",{axis:text().charAt(0).toLowerCase(),n:n!==null?n:1}); }
 
-WorldCoord = "world" _ "(" _ x:SignedInt _ "," _ y:SignedInt _ "," _ z:SignedInt _ ")" { return node("World",{x,y,z}); }
 Waypoint = "waypoint" _ "(" _ n:StringLiteral _ ")" { return node("Waypoint",{name:n}); }
 BlockQuery = "block" _ "(" _ kv:NamedArg tail:(_ "," _ NamedArg)* _ ")" {
   const pairs = [kv].concat((tail||[]).map(t=>t[3]));
@@ -81,7 +82,7 @@ StringLiteral = "\"" chars:Char* "\"" { return node("String",{value:chars.join("
 Char = "\\\"" {return "\""} / "\\n" {return "\n"} / "\\t" {return "\t"} / !("\"") . {return text();}
 BooleanLiteral = "true" {return node("Boolean",{value:true});} / "false" {return node("Boolean",{value:false});}
 
-Identifier = !Keyword id:([a-z_][a-z0-9_]*) { return id.join(""); }
+Identifier = !Keyword id:([a-z_][a-z0-9_]*) { return id.flat().join(""); }
 Keyword = "macro" / "if" / "else" / "repeat" / "while" / "assert" / "true" / "false"
 
 _ = (WhiteSpace / Comment)* ; __ = (WhiteSpace / Comment)+

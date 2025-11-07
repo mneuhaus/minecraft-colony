@@ -290,6 +290,82 @@ export function createDashboardApp(botManager: BotManager) {
   // Minecraft Assets (block textures, etc.)
   // ============================================================================
 
+  // ============================================================================
+  // Blueprints API
+  // ============================================================================
+
+  app.get('/api/blueprints', async (c) => {
+    try {
+      const mod = await import('../tools/blueprints/storage.js');
+      return c.json(mod.listBlueprints());
+    } catch (e: any) {
+      return c.json({ error: e?.message || String(e) }, 500);
+    }
+  });
+
+  app.get('/api/blueprints/:name', async (c) => {
+    try {
+      const mod = await import('../tools/blueprints/storage.js');
+      const name = c.req.param('name');
+      const bp = mod.getBlueprint(name);
+      if (!bp) return c.json({ error: 'not_found' }, 404);
+      const v = mod.validateBlueprint(bp);
+      return c.json({ ok: v.ok, issues: v.issues, blueprint: bp });
+    } catch (e: any) {
+      return c.json({ error: e?.message || String(e) }, 500);
+    }
+  });
+
+  app.post('/api/blueprints', async (c) => {
+    try {
+      const body = await c.req.json();
+      const mod = await import('../tools/blueprints/storage.js');
+      const bp = mod.createBlueprint(body);
+      return c.json(bp);
+    } catch (e: any) {
+      return c.json({ error: e?.message || String(e) }, 400);
+    }
+  });
+
+  app.put('/api/blueprints/:name', async (c) => {
+    try {
+      const name = c.req.param('name');
+      const body = await c.req.json();
+      const mod = await import('../tools/blueprints/storage.js');
+      const bp = mod.updateBlueprint(name, body);
+      return c.json(bp);
+    } catch (e: any) {
+      return c.json({ error: e?.message || String(e) }, 400);
+    }
+  });
+
+  app.delete('/api/blueprints/:name', async (c) => {
+    try {
+      const name = c.req.param('name');
+      const mod = await import('../tools/blueprints/storage.js');
+      const ok = mod.removeBlueprint(name);
+      return c.json({ ok });
+    } catch (e: any) {
+      return c.json({ error: e?.message || String(e) }, 500);
+    }
+  });
+
+  app.post('/api/blueprints/:name/instantiate', async (c) => {
+    try {
+      const name = c.req.param('name');
+      const body = await c.req.json();
+      const mod = await import('../tools/blueprints/storage.js');
+      const bp = mod.getBlueprint(name);
+      if (!bp) return c.json({ error: 'not_found' }, 404);
+      const origin = body?.origin || { x: 0, y: 0, z: 0 };
+      const rotation = body?.rotation ?? 0;
+      const vox = mod.instantiateBlueprint(bp, origin, rotation);
+      return c.json({ ok: true, count: vox.length, voxels: vox });
+    } catch (e: any) {
+      return c.json({ error: e?.message || String(e) }, 400);
+    }
+  });
+
   app.get('/api/minecraft/blocks', (c) => {
     try {
       const blocks: any[] = [];
@@ -399,12 +475,67 @@ export function startDashboardServer(botManager: BotManager, port: number = 4242
   // No more /ingest WebSocket - just use EventEmitter!
 
   botManager.on('bot:activity', (data) => {
+    const ts = Date.now();
+    const t = String(data.type || '').toLowerCase();
+    // Normalize into timeline-friendly shapes used by UI and history
+    if (t === 'thinking') {
+      broadcast({
+        id: `think-${ts}-${Math.random().toString(36).slice(2,7)}`,
+        type: 'chat',
+        bot_id: data.botId,
+        ts,
+        payload: {
+          from: 'Planner',
+          text: String(data.description || ''),
+          channel: 'system',
+          direction: 'out',
+          kind: 'thinking'
+        }
+      });
+      return;
+    }
+
+    if (t === 'tool' || t === 'tool_use') {
+      const d: any = data.data || {};
+      broadcast({
+        id: `tool-${ts}-${Math.random().toString(36).slice(2,7)}`,
+        type: 'tool',
+        bot_id: data.botId,
+        ts,
+        payload: {
+          tool_name: d?.tool_name || d?.name || 'tool',
+          params_summary: d?.params_summary || d?.input || {},
+          output: d?.output,
+          input: d?.input,
+          duration_ms: d?.duration_ms,
+          ok: !d?.error
+        }
+      });
+      return;
+    }
+
+    if (t === 'error' || t === 'warn' || t === 'info' || t === 'system') {
+      broadcast({
+        id: `sys-${ts}-${Math.random().toString(36).slice(2,7)}`,
+        type: 'system',
+        bot_id: data.botId,
+        ts,
+        payload: {
+          level: t === 'warn' ? 'warn' : t,
+          message: String(data.description || '')
+        }
+      });
+      return;
+    }
+
+    // Fallback generic activity (not expected by UI but kept for completeness)
     broadcast({
       type: 'activity',
       bot_id: data.botId,
-      ts: Date.now(),
+      ts,
       activity_type: data.type,
-      description: data.description
+      description: data.description,
+      data: data.data || null
     });
   });
 

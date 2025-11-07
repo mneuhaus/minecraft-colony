@@ -95,6 +95,7 @@ const radius = computed(() => props.item.payload?.params_summary?.radius ?? prop
 const zoom = computed(() => raw.value?.zoom ?? props.item.payload?.params_summary?.zoom ?? props.item.payload?.input?.zoom ?? 1);
 const botHeight = computed(() => raw.value?.bot_height ?? null);
 const gridSize = computed(() => raw.value?.grid?.size ?? null);
+const matchesOnly = computed(() => Boolean(raw.value?.matches_only));
 
 const gridInfo = computed(() => {
   if (!gridSize.value) return '';
@@ -236,6 +237,10 @@ function blockToColor(blocks: string[]): string {
 
 const gridWidth = computed(() => {
   if (!cellsData.value.length) return 0;
+  if (matchesOnly.value) {
+    // Compact square-ish layout for sparse matches
+    return Math.max(1, Math.ceil(Math.sqrt(cellsData.value.length)));
+  }
   const { zs } = worldToGrid(cellsData.value);
   return zs.length;
 });
@@ -252,16 +257,37 @@ const gridCells = computed(() => {
 
   if (cellMap.size === 0) return [];
 
-  // Parse all keys to find actual F and R ranges and detect the step size
-  if (cellMap.size === 0) return [];
+  // In matches-only mode, show just the provided cells (no synthetic placeholders)
+  if (matchesOnly.value) {
+    let idx = 0;
+    for (const cell of cellsData.value as any[]) {
+      const key = `${cell.x},${cell.z}`;
+      const avgHeight = (cell.height_min + cell.height_max) / 2;
+      const blocks = cell.blocks || [];
+      const uniqueBlocks = Array.from(new Set(blocks));
+      const colors = uniqueBlocks.map(b => blockToColor([b]));
+      const dominantColor = blockToColor(blocks);
+      const blocksList = blocks.join(', ') || 'unknown';
+      const heightDiff = Math.round(avgHeight);
+      let heightSymbol = '•';
+      if (heightDiff > 1) heightSymbol = '▲';
+      else if (heightDiff < -1) heightSymbol = '▼';
+      cells.push({
+        key: `${key}#${idx++}`,
+        color: dominantColor,
+        colors: colors.length > 1 ? colors : undefined,
+        heightLabel: heightSymbol,
+        heightValue: heightDiff,
+        isBotPosition: false,
+        isMatch: true,
+        tooltip: `${key}\nRelative height: ${heightDiff}\nRange: ${cell.height_min} to ${cell.height_max}\nBlocks: ${blocksList}`,
+      });
+    }
+    return cells;
+  }
 
-  // Derive extents and step using world coordinates
-  const { minX, maxX, minZ, maxZ, xs, zs, stepX, stepZ } = worldToGrid(cellsData.value as any[]);
-
-  // Generate all cells in proper order using the detected step
-  // Default: Top row = far forward (maxF), bottom row = behind (minF)
-  // Left = left (minR), right = right (maxR)
-  // If flipVertical is enabled, invert the F sweep so users can switch perspective.
+  // Default full-grid visualization with placeholders to keep layout consistent
+  const { xs, zs } = worldToGrid(cellsData.value as any[]);
   const xList = flipVertical.value ? xs : [...xs].reverse();
   const originX = raw.value?.grid?.origin?.x ?? null;
   const originZ = raw.value?.grid?.origin?.z ?? null;
@@ -274,18 +300,13 @@ const gridCells = computed(() => {
         const avgHeight = (cell.height_min + cell.height_max) / 2;
         const blocks = cell.blocks || [];
         const uniqueBlocks = Array.from(new Set(blocks));
-
-        // Generate color for each unique block type
         const colors = uniqueBlocks.map(b => blockToColor([b]));
         const dominantColor = blockToColor(blocks);
         const blocksList = blocks.join(', ') || 'unknown';
-
-        // Show relative height from bot's feet
         const heightDiff = Math.round(avgHeight);
         let heightSymbol = '•';
         if (heightDiff > 1) heightSymbol = '▲';
         else if (heightDiff < -1) heightSymbol = '▼';
-
         cells.push({
           key,
           color: dominantColor,
@@ -297,7 +318,6 @@ const gridCells = computed(() => {
           tooltip: `${key}\nRelative height: ${heightDiff}\nRange: ${cell.height_min} to ${cell.height_max}\nBlocks: ${blocksList}${(cell as any).matched?.length ? `\nMatched: ${(cell as any).matched.join(', ')}` : ''}`,
         });
       } else {
-        // Cell exists in backend data but has no blocks - show as unknown
         cells.push({
           key,
           color: '#2a2a2a',

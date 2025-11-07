@@ -1,10 +1,10 @@
 <template>
   <div class="tl-item__body tool-vox">
+    <button class="view-toggle-inline" @click="show3D = !show3D">
+      {{ show3D ? '📊 List' : '🎮 3D' }}
+    </button>
     <div class="tool-header">
       <span class="tool-name">Get Vox</span>
-      <button class="view-toggle" @click="show3D = !show3D">
-        {{ show3D ? '📊 List' : '🎮 3D' }}
-      </button>
     </div>
     <div class="tool-hint">3D‑Voxelansicht der nahen Umgebung zur präzisen Analyse. Zeigt einzelne Blöcke in Weltkoordinaten (x/y/z) rund um den Bot.</div>
     <div class="vox-row">
@@ -244,16 +244,13 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.tool-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: 600;
-  color: #EAEAEA;
-  margin-bottom: 8px;
-  font-size: 13px;
+.tool-vox {
+  position: relative;
 }
-.view-toggle {
+.view-toggle-inline {
+  position: absolute;
+  top: -6px;
+  right: 50px;
   background: rgba(74, 158, 255, 0.1);
   border: 1px solid rgba(74, 158, 255, 0.3);
   color: #4A9EFF;
@@ -262,10 +259,17 @@ onBeforeUnmount(() => {
   font-size: 11px;
   cursor: pointer;
   transition: all 0.2s;
+  z-index: 10;
 }
-.view-toggle:hover {
+.view-toggle-inline:hover {
   background: rgba(74, 158, 255, 0.2);
   border-color: rgba(74, 158, 255, 0.5);
+}
+.tool-header {
+  font-weight: 600;
+  color: #EAEAEA;
+  margin-bottom: 8px;
+  font-size: 13px;
 }
 .tool-hint {
   color: #9A9A9A;

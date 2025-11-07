@@ -46,9 +46,20 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
     const bot = minecraftBot.getBot();
     job.state = 'running';
     job.startedAt = Date.now();
+
+    console.log('[CraftScript] Parsing script:', job.script.substring(0, 100) + (job.script.length > 100 ? '...' : ''));
     const ast = parseCraft(job.script);
+    console.log('[CraftScript] Parsed successfully, executing...');
+
     const exec = new CraftscriptExecutor(bot);
     const result = await exec.run(ast as any);
+
+    console.log('[CraftScript] Execution completed:', {
+      ok: result.ok,
+      totalResults: result.results.length,
+      failed: result.results.filter(r => !r.ok).length
+    });
+
     // Emit steps once finished (simple implementation). For true streaming, executor would need a callback.
     try {
       if (activityWriter) {
@@ -63,9 +74,15 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
         }
       }
     } catch {}
+
     for (const r of result.results) {
       job.lastStep = r;
       if (!r.ok) {
+        console.error('[CraftScript] Step failed:', {
+          error: r.error,
+          message: r.message,
+          op_index: r.op_index
+        });
         job.state = 'failed';
         job.error = r.message || 'craftscript_failed';
         job.endedAt = Date.now();
@@ -76,14 +93,16 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
     if (JOB_CANCELLED(job)) return;
     job.state = 'completed';
     job.endedAt = Date.now();
+    console.log('[CraftScript] Job completed successfully');
   } catch (e: any) {
     if (job.state === 'canceled') return;
+    console.error('[CraftScript] Job failed with exception:', e);
     job.state = 'failed';
     job.error = e?.message || String(e);
     job.endedAt = Date.now();
     try {
       if (activityWriter) {
-        activityWriter.addActivity({ type: 'error', message: 'CraftScript error', details: { error: job.error }, role: 'system', speaker: botName || minecraftBot.getBot().username || 'bot' });
+        activityWriter.addActivity({ type: 'error', message: 'CraftScript error', details: { error: job.error, stack: e?.stack }, role: 'system', speaker: botName || minecraftBot.getBot().username || 'bot' });
       }
     } catch {}
   }

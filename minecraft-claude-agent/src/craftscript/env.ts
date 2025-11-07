@@ -50,14 +50,21 @@ export async function get_vox(
 
   // Optional filtering (grep)
   const patterns = Array.isArray(grep) ? grep.map(s => String(s).toLowerCase()).filter(Boolean) : [];
-  const matches = patterns.length
-    ? voxels.filter(v => patterns.some(p => v.id.toLowerCase().includes(p)))
-    : [];
+  if (patterns.length) {
+    const matched = voxels.filter(v => patterns.some(p => v.id.toLowerCase().includes(p)));
+    return {
+      window: { radius: r, shape: [xMax - xMin + 1, yMax - yMin + 1, zMax - zMin + 1], origin: { x: center.x, y: center.y, z: center.z } },
+      voxels: matched,
+      grep: patterns,
+      matches_only: true,
+      matches_count: matched.length,
+      predicates: pred,
+    } as any;
+  }
 
   return {
     window: { radius: r, shape: [xMax - xMin + 1, yMax - yMin + 1, zMax - zMin + 1], origin: { x: center.x, y: center.y, z: center.z } },
     voxels,
-    ...(patterns.length ? { grep: patterns, matches } : {}),
     predicates: pred,
   } as any;
 }
@@ -116,15 +123,41 @@ export function look_at_map(bot: Bot, radius = 10, zoom = 1, grep?: string[]) {
   }
 
   const patterns = Array.isArray(grep) ? grep.map(s => String(s).toLowerCase()).filter(Boolean) : [];
-  const matches = patterns.length ? cells.filter((c: any) => Array.isArray(c.matched) && c.matched.length) : [];
-
-  return {
+  const full = {
     grid: { size: [Math.ceil((radius * 2 + 1) / step), Math.ceil((radius * 2 + 1) / step)], origin: { x: center.x, z: center.z } },
     bot_height: botY,
     zoom: step,
     cells,
-    ...(patterns.length ? { grep: patterns, matches } : {}),
   } as any;
+
+  // If a grep filter is provided, return a minimized payload for the LLM:
+  // - keep only cells that matched
+  // - trim each cell's blocks to the matched subset
+  // This drastically reduces token footprint while preserving a compact view.
+  if (patterns.length) {
+    const matchedCells = cells
+      .filter((c: any) => Array.isArray(c.matched) && c.matched.length)
+      .map((c: any) => ({
+        x: c.x,
+        z: c.z,
+        blocks: c.matched, // only matched block ids
+        height_min: c.height_min,
+        height_max: c.height_max,
+        matched: c.matched,
+      }));
+
+    return {
+      grid: full.grid, // grid origin/step retained for reference
+      bot_height: botY,
+      zoom: step,
+      grep: patterns,
+      matches_only: true,
+      matches_count: matchedCells.length,
+      cells: matchedCells,
+    } as any;
+  }
+
+  return full as any;
 }
 
 export function affordances(bot: Bot, target: { x: number; y: number; z: number }) {

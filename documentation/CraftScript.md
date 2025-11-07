@@ -13,7 +13,7 @@ It’s readable for humans, simple for LLMs, and maps directly onto Mineflayer &
 | **Readable** | familiar C/JavaScript syntax |
 | **Deterministic** | no randomness, no hidden state |
 | **Minecraft-native** | real registry IDs (`"minecraft:stone"`) and faces (`"up"`, `"north"`) |
-| **Coordinates** | use `world(x,y,z)` for absolute positions; selectors `f/r/u/b/l/d` also supported |
+| **Coordinates** | direct coordinates `(x,y,z)` for absolute positions; selectors `f/r/u/b/l/d` for relative |
 | **Safe** | executor enforces invariants; never damages itself |
 | **LLM-friendly** | few keywords, small grammar, clear errors |
 
@@ -85,21 +85,45 @@ turn_face("north");   // absolute
 ### world interaction
 
 ```c
-dig(f1+u2);
-place("minecraft:cobblestone", f1+u1, face:"up");
+dig(f1+u2);                        // dig using selector
+dig(106, 67, 82);                  // dig using absolute coordinates
+break(f1+u2);                      // alias for dig (better for breaking logs)
+place("minecraft:cobblestone", f1+u1, face:"up");  // place using selector
+place("minecraft:stone", 106, 67, 82);             // place using coordinates
 equip("minecraft:iron_pickaxe");
-scan(r:2);        // refresh local voxel snapshot
+build_up();                        // jump and place block beneath (auto-selects material)
+build_up("dirt");                  // jump and place specific block beneath
+pickup_blocks();                   // collect dropped items within 8 blocks
+pickup_blocks(16);                 // collect dropped items within 16 blocks
+scan(r:2);                         // refresh local voxel snapshot
 ```
 
 ### navigation (mineflayer-pathfinder)
 
 ```c
-goto(world(140,64,92), tol:1);
-goto(waypoint("home"), tol:1);
-goto(f6, tol:1);
+goto(140, 64, 92, tol:1);          // goto using absolute coordinates
+goto(waypoint("home"), tol:1);     // goto using waypoint
+goto(f6, tol:1);                   // goto using selector
 ```
 
-### inventory / utilities (optional)
+### crafting & containers
+
+```c
+craft("stick", 4);                 // craft 4 sticks
+craft("crafting_table");           // craft 1 crafting table
+plant("oak_sapling", 100, 64, 50); // plant sapling at coordinates
+wait(10000);                       // wait 10 seconds
+
+// Container interaction (chests, furnaces, etc.)
+open_container(100, 64, 50);       // open chest/furnace at position
+container_put("input", "iron_ore", 8);   // put 8 iron ore in furnace input
+container_put("fuel", "coal", 2);        // put 2 coal in fuel slot
+container_items();                 // list what's in container
+container_take("output", 8);       // take 8 items from output
+close_container();                 // close container
+```
+
+### inventory / utilities
 
 ```c
 drop("minecraft:cobblestone", count:4);
@@ -290,7 +314,7 @@ NotExpr = "!" _ e:NotExpr { return node("UnaryExpr",{op:"!",arg:e}); } / Primary
 
 Primary
   = "(" _ e:Expr _ ")" {return e;}
-  / PredicateCall / Selector / WorldCoord / Waypoint / BlockQuery
+  / PredicateCall / Selector / Waypoint / BlockQuery
   / NumberLiteral / StringLiteral / BooleanLiteral / IdentifierExpr
 
 PredicateCall = name:Identifier _ "(" _ args:ArgList? _ ")" { return node("PredicateCall",{name,args:args||[]}); }
@@ -299,7 +323,6 @@ IdentifierExpr = id:Identifier { return node("Identifier",{name:id}); }
 Selector = head:SelectorTerm tail:(_ "+" _ SelectorTerm)* { return node("Selector",{terms:[head,...tail.map(t=>t[3])]}); }
 SelectorTerm = axis:[FfBbRrLlUuDd] n:SignedInt? { return node("SelTerm",{axis:text().toLowerCase(),n:n!==null?n:1}); }
 
-WorldCoord = "world" _ "(" _ x:SignedInt _ "," _ y:SignedInt _ "," _ z:SignedInt _ ")" { return node("World",{x,y,z}); }
 Waypoint = "waypoint" _ "(" _ n:StringLiteral _ ")" { return node("Waypoint",{name:n}); }
 BlockQuery = "block" _ "(" _ kv:NamedArg tail:(_ "," _ NamedArg)* _ ")"
   { const pairs=[kv].concat((tail||[]).map(t=>t[3])); const o={}; for(const p of pairs) o[p.key]=p.value;

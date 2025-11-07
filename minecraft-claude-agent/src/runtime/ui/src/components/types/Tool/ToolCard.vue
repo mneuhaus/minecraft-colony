@@ -11,6 +11,7 @@ import ToolNearest from './ToolNearest.vue';
 import ToolVox from './ToolVox.vue';
 import ToolAffordances from './ToolAffordances.vue';
 import ToolCraftScript from './ToolCraftScript.vue';
+import ToolCraftScriptStep from './ToolCraftScriptStep.vue';
 import ToolTopography from './ToolTopography.vue';
 import ToolBlockInfo from './ToolBlockInfo.vue';
 import ToolBlueprint from './ToolBlueprint.vue';
@@ -39,6 +40,7 @@ const key = computed(()=> {
   const n = toolName.value.toLowerCase();
   if (n === 'todowrite') return 'todo';
   // Match both prefixed (mcp__minecraft__*) and unprefixed tool names
+  if (/craftscript_step/.test(n)) return 'craftscript_step';
   if (/craftscript/.test(n)) return 'craftscript';
   if (/get_vox$/.test(n)) return 'vox';
   if (/get_topography$/.test(n)) return 'topography';
@@ -64,6 +66,7 @@ const toolComponent = computed(()=> ({
   blueprint: ToolBlueprint,
   affordances: ToolAffordances,
   craftscript: ToolCraftScript,
+  craftscript_step: ToolCraftScriptStep,
   generic: ToolGeneric,
 }[key.value] || ToolGeneric));
 </script>

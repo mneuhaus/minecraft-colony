@@ -126,6 +126,11 @@ export function createUnifiedMcpServer(
         const p = bot.entity?.position; if (!p) return { content: [{ type: 'text', text: 'Not spawned' }], isError: true };
         return { content: [{ type: 'text', text: JSON.stringify({ x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) }) }] };
       }, context),
+      loggingTool('get_inventory', 'Get current bot inventory contents', {}, async () => {
+        const { get_inventory } = await import('../tools/inventory/get_inventory.js');
+        const result = await get_inventory(bot);
+        return { content: [{ type: 'text', text: result }] };
+      }, context),
       loggingTool('get_vox', '3D voxel snapshot of the local area around the bot (x/y/z world coordinates). Use for precise short-range understanding; combine with look_at_map for 2D overview.', {
         radius: z.number().optional(),
         include_air: z.boolean().optional(),
@@ -164,11 +169,6 @@ export function createUnifiedMcpServer(
         const { look_at_map } = await import('../craftscript/env.js');
         return { content: [{ type: 'text', text: JSON.stringify(look_at_map(bot, radius ?? 25, 5)) }] };
       }, context),
-      loggingTool('nav', 'Navigation wrapper (start/status/cancel)', { action: z.enum(['start','status','cancel']), nav_id: z.string().optional(), target: z.object({ type: z.literal('WORLD'), x: z.number(), y: z.number(), z: z.number() }).optional(), tol: z.number().optional(), timeout_ms: z.number().optional(), policy: z.object({ allow_dig: z.boolean().optional(), max_drop: z.number().optional(), max_step: z.number().optional() }).optional() }, async (params) => {
-        const { nav } = await import('../craftscript/env.js');
-        const req: any = { ...params };
-        return { content: [{ type: 'text', text: JSON.stringify(nav(bot, req)) }] };
-      }, context),
       loggingTool('craftscript_start', 'Start CraftScript in background; returns job_id', { script: z.string() }, async ({ script }) => {
         const { createCraftscriptJob } = await import('./craftscriptJobs.js');
         try { const enable = (process.env.CRAFTSCRIPT_CHAT_ENABLED ?? 'true').toLowerCase() !== 'false'; if (enable) { const max = Math.max(0, parseInt(process.env.CRAFTSCRIPT_CHAT_PREVIEW_LINES ?? '12', 10)); const lines = String(script||'').split(/\r?\n/); const preview = max>0?lines.slice(0,max).join('\n'):''; const suffix=max>0&&lines.length>max?`\n… ${lines.length-max} more line(s)`:''; minecraftBot.chat(`Start CraftScript (${lines.length} lines)\n\`\`\`c\n${preview}${suffix}\n\`\`\``);} } catch {}
@@ -184,6 +184,18 @@ export function createUnifiedMcpServer(
         const { cancelCraftscriptJob } = await import('./craftscriptJobs.js');
         cancelCraftscriptJob(job_id);
         return { content: [{ type: 'text', text: JSON.stringify({ job_id, state: 'canceled' }) }] };
+      }, context),
+
+      // Memory tools
+      loggingTool('get_memory', 'Get bot memory as markdown text. Returns what the bot remembers.', {}, async () => {
+        const { getMemoryText } = await import('../tools/memory/memory.js');
+        const text = await getMemoryText(context.botName);
+        return { content: [{ type: 'text', text }] };
+      }, context),
+      loggingTool('update_memory', 'Update bot memory with markdown text. Replaces entire memory content.', { content: z.string() }, async ({ content: memoryContent }) => {
+        const { updateMemoryText } = await import('../tools/memory/memory.js');
+        await updateMemoryText(context.botName, memoryContent);
+        return { content: [{ type: 'text', text: 'Memory updated successfully' }] };
       }, context),
 
       // Blueprint tools
@@ -232,9 +244,10 @@ export function createUnifiedMcpServer(
     ],
   });
   if (!server.manifest) server.manifest = { name: 'minecraft', tools: [
-    { name: 'send_chat' }, { name: 'get_position' }, { name: 'get_vox' }, { name: 'affordances' },
+    { name: 'send_chat' }, { name: 'get_position' }, { name: 'get_inventory' }, { name: 'get_vox' }, { name: 'affordances' },
     { name: 'nearest' }, { name: 'block_info' }, { name: 'look_at_map' }, { name: 'look_at_map_4' }, { name: 'look_at_map_5' },
-    { name: 'nav' }, { name: 'craftscript_start' }, { name: 'craftscript_status' }, { name: 'craftscript_cancel' },
+    { name: 'craftscript_start' }, { name: 'craftscript_status' }, { name: 'craftscript_cancel' },
+    { name: 'get_memory' }, { name: 'update_memory' },
     { name: 'list_blueprints' }, { name: 'create_blueprint' }, { name: 'update_blueprint' }, { name: 'remove_blueprint' }, { name: 'get_blueprint' }, { name: 'instantiate_blueprint' }
   ] };
   return server;

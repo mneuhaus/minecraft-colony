@@ -30,6 +30,7 @@ export class CraftscriptExecutor {
   private ops = 0;
   private macros = new Map<string, Block>();
   private options: Required<ExecutorOptions>;
+  private openContainer: any = null; // Currently open chest/furnace/etc
 
   constructor(bot: Bot, options?: ExecutorOptions) {
     this.bot = bot;
@@ -151,11 +152,22 @@ export class CraftscriptExecutor {
         await this.turnFace(dir.value);
         return this.ok('turn_face', t0, { face: dir.value });
       }
-      if (name === 'dig') {
+      if (name === 'dig' || name === 'break') {
         const arg0 = cmd.args[0];
-        const worldPos = ((arg0 as any)?.type === 'World')
-          ? new Vec3((arg0 as World).x, (arg0 as World).y, (arg0 as World).z)
-          : this.selectorToWorld(this.requireSelectorArg(arg0));
+        let worldPos: Vec3;
+
+        // Support two forms:
+        // 1. dig(x, y, z) - direct coordinates
+        // 2. dig(^f1) - selector
+        if ((arg0 as any)?.type === 'Number' && cmd.args.length >= 3) {
+          // Direct coordinates: dig(x, y, z)
+          const x = Number(this.evalExprSync(cmd.args[0] as Expr));
+          const y = Number(this.evalExprSync(cmd.args[1] as Expr));
+          const z = Number(this.evalExprSync(cmd.args[2] as Expr));
+          worldPos = new Vec3(x, y, z);
+        } else {
+          worldPos = this.selectorToWorld(this.requireSelectorArg(arg0));
+        }
         // Prevent digging upwards if gravity blocks overhead
         const above1 = this.bot.blockAt(worldPos.offset(0, 1, 0));
         const above2 = this.bot.blockAt(worldPos.offset(0, 2, 0));
@@ -166,19 +178,33 @@ export class CraftscriptExecutor {
         if (this.bot.entity.position.distanceTo(worldPos) > 4.5) return this.fail('out_of_reach', 'target beyond reach (4.5)', cmd);
         try {
           await this.bot.dig(target);
-          return this.ok('dig', t0, { world: [worldPos.x, worldPos.y, worldPos.z], id: target.name });
+          return this.ok(name, t0, { world: [worldPos.x, worldPos.y, worldPos.z], id: target.name });
         } catch (e: any) {
-          return this.fail('runtime_error', e?.message || 'dig_failed', cmd);
+          return this.fail('runtime_error', e?.message || `${name}_failed`, cmd);
         }
       }
       if (name === 'place') {
         const id = this.requireString(cmd.args[0]).value;
         const arg1 = cmd.args[1];
-        const named = this.namedArgs(cmd.args.slice(2));
+        let worldPos: Vec3;
+        let namedStartIdx = 2;
+
+        // Support two forms:
+        // 1. place("stone", x, y, z) - direct coordinates
+        // 2. place("stone", ^f1) - selector
+        if ((arg1 as any)?.type === 'Number' && cmd.args.length >= 4) {
+          // Direct coordinates: place("stone", x, y, z)
+          const x = Number(this.evalExprSync(cmd.args[1] as Expr));
+          const y = Number(this.evalExprSync(cmd.args[2] as Expr));
+          const z = Number(this.evalExprSync(cmd.args[3] as Expr));
+          worldPos = new Vec3(x, y, z);
+          namedStartIdx = 4;
+        } else {
+          worldPos = this.selectorToWorld(this.requireSelectorArg(arg1));
+        }
+
+        const named = this.namedArgs(cmd.args.slice(namedStartIdx));
         const face = (named.face && this.exprToString(named.face)) || 'up';
-        const worldPos = ((arg1 as any)?.type === 'World')
-          ? new Vec3((arg1 as World).x, (arg1 as World).y, (arg1 as World).z)
-          : this.selectorToWorld(this.requireSelectorArg(arg1));
         // Equip
         const itemName = id.replace('minecraft:', '');
         const item = this.bot.inventory.items().find((i) => i.name === itemName);
@@ -204,6 +230,135 @@ export class CraftscriptExecutor {
         await this.bot.equip(item, 'hand');
         return this.ok('equip', t0, { id });
       }
+      if (name === 'build_up') {
+        // Build one block upward by jumping and placing beneath
+        // Optional block ID argument, otherwise uses any available building material
+        const blockId = cmd.args[0] ? this.requireString(cmd.args[0]).value.replace('minecraft:', '') : null;
+
+        // Find suitable building material
+        let buildingMaterial;
+        if (blockId) {
+          buildingMaterial = this.bot.inventory.items().find((i) => i.name === blockId);
+          if (!buildingMaterial) return this.fail('unavailable', `no ${blockId} in inventory`, cmd);
+        } else {
+          buildingMaterial = this.bot.inventory.items().find(item =>
+            item.name.includes('dirt') ||
+            item.name.includes('cobblestone') ||
+            item.name.includes('stone') ||
+            item.name.includes('planks') ||
+            item.name.includes('log')
+          );
+          if (!buildingMaterial) return this.fail('unavailable', 'no building blocks (dirt/cobblestone/stone/planks/log)', cmd);
+        }
+
+        const startY = this.bot.entity.position.y;
+
+        try {
+          // Equip building material
+          await this.bot.equip(buildingMaterial, 'hand');
+
+          // Look straight down
+          await this.bot.look(0, Math.PI / 2);
+
+          // Jump
+          this.bot.setControlState('jump', true);
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          // Place block beneath while in air
+          const referenceBlock = this.bot.blockAt(this.bot.entity.position.offset(0, -2, 0));
+          if (!referenceBlock) {
+            this.bot.setControlState('jump', false);
+            return this.fail('blocked', 'no reference block beneath', cmd);
+          }
+
+          await this.bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
+
+          this.bot.setControlState('jump', false);
+          await new Promise(resolve => setTimeout(resolve, 300));
+
+          const finalY = this.bot.entity.position.y;
+          const heightGained = Math.floor(finalY - startY);
+
+          return this.ok('build_up', t0, { block: buildingMaterial.name, height_gained: heightGained, y: Math.floor(finalY) });
+        } catch (e: any) {
+          this.bot.setControlState('jump', false);
+          return this.fail('runtime_error', e?.message || 'build_up_failed', cmd);
+        }
+      }
+      if (name === 'pickup_blocks') {
+        // Pickup dropped items within radius
+        const radius = cmd.args[0] ? Number(this.evalExprSync(cmd.args[0] as Expr)) : 8;
+
+        if (radius < 1 || radius > 32) {
+          return this.fail('invalid_arg', 'radius must be between 1 and 32', cmd);
+        }
+
+        // Find all dropped item entities within radius
+        const itemEntities = Object.values(this.bot.entities).filter((entity: any) => {
+          if (!entity || !entity.position) return false;
+          if (entity.type !== 'object' || entity.objectType !== 'Item') return false;
+          const distance = this.bot.entity.position.distanceTo(entity.position);
+          return distance <= radius;
+        });
+
+        if (itemEntities.length === 0) {
+          return this.ok('pickup_blocks', t0, { collected: 0, radius });
+        }
+
+        // Count inventory before
+        const invBefore: { [key: string]: number } = {};
+        this.bot.inventory.items().forEach(item => {
+          invBefore[item.name] = (invBefore[item.name] || 0) + item.count;
+        });
+
+        // Move toward items to collect them
+        const timeout = 5000; // 5 second timeout
+        const startTime = Date.now();
+
+        for (const itemEntity of itemEntities) {
+          if (Date.now() - startTime > timeout) break;
+
+          try {
+            // Move close to item (items auto-pickup at ~1 block range)
+            const goal = new goals.GoalNear(itemEntity.position.x, itemEntity.position.y, itemEntity.position.z, 1);
+            await this.bot.pathfinder.goto(goal);
+
+            // Wait briefly for pickup
+            await new Promise(resolve => setTimeout(resolve, 200));
+          } catch {
+            // Couldn't reach this item, continue to next
+            continue;
+          }
+        }
+
+        // Stop pathfinding
+        this.bot.pathfinder.setGoal(null as any);
+
+        // Count inventory after
+        const invAfter: { [key: string]: number } = {};
+        this.bot.inventory.items().forEach(item => {
+          invAfter[item.name] = (invAfter[item.name] || 0) + item.count;
+        });
+
+        // Calculate what was collected
+        const collected: { [key: string]: number } = {};
+        for (const itemName in invAfter) {
+          const before = invBefore[itemName] || 0;
+          const after = invAfter[itemName];
+          if (after > before) {
+            collected[itemName] = after - before;
+          }
+        }
+
+        const totalCollected = Object.values(collected).reduce((sum, count) => sum + count, 0);
+
+        return this.ok('pickup_blocks', t0, {
+          collected: totalCollected,
+          items: collected,
+          found: itemEntities.length,
+          radius
+        });
+      }
       if (name === 'scan') {
         const named = this.namedArgs(cmd.args);
         const r = (named.r && Number(this.evalExprSync(named.r))) || this.options.defaultScanRadius;
@@ -211,8 +366,25 @@ export class CraftscriptExecutor {
         return this.ok('scan', t0, { size: snap.window });
       }
       if (name === 'goto') {
-        // Accept world(), waypoint(), or selector
+        // Accept direct coordinates (x,y,z), world(), waypoint(), or selector
         const arg = cmd.args[0];
+
+        // Check if we have three coordinate arguments (x, y, z)
+        if (cmd.args.length >= 3 &&
+            (arg as any).type !== 'World' &&
+            (arg as any).type !== 'Waypoint' &&
+            (arg as any).type !== 'Selector') {
+          // Direct coordinates: goto(x, y, z, tol:1)
+          const x = Number(this.evalExprSync(cmd.args[0] as Expr));
+          const y = Number(this.evalExprSync(cmd.args[1] as Expr));
+          const z = Number(this.evalExprSync(cmd.args[2] as Expr));
+          const named = this.namedArgs(cmd.args.slice(3));
+          const tol = named.tol ? Number(this.evalExprSync(named.tol)) : 1;
+          await this.bot.pathfinder.goto(new goals.GoalNear(x, y, z, tol));
+          return this.ok('goto', t0, { world: [x, y, z] });
+        }
+
+        // Single argument cases
         const named = this.namedArgs(cmd.args.slice(1));
         const tol = named.tol ? Number(this.evalExprSync(named.tol)) : 1;
         if ((arg as any).type === 'World') {
@@ -249,6 +421,232 @@ export class CraftscriptExecutor {
         await this.bot.equip(item, 'hand');
         await this.bot.consume();
         return this.ok('eat', t0, { id });
+      }
+      if (name === 'wait') {
+        // Simple delay/wait command
+        const ms = Number(this.evalExprSync(cmd.args[0] as Expr));
+        if (ms < 0 || ms > 300000) {
+          return this.fail('invalid_arg', 'wait time must be between 0 and 300000ms (5 min)', cmd);
+        }
+        await new Promise(resolve => setTimeout(resolve, ms));
+        return this.ok('wait', t0, { ms });
+      }
+      if (name === 'craft') {
+        // Craft items
+        const itemId = this.requireString(cmd.args[0]).value.replace('minecraft:', '');
+        const count = cmd.args[1] ? Number(this.evalExprSync(cmd.args[1] as Expr)) : 1;
+
+        if (count < 1 || count > 64) {
+          return this.fail('invalid_arg', 'count must be between 1 and 64', cmd);
+        }
+
+        const mcData = (this.bot as any).registry;
+        const item = mcData.itemsByName[itemId];
+        if (!item) return this.fail('invalid_arg', `unknown item: ${itemId}`, cmd);
+
+        const recipes = this.bot.recipesFor(item.id, null, 1, null);
+        if (!recipes || recipes.length === 0) {
+          return this.fail('no_recipe', `no recipe for ${itemId}`, cmd);
+        }
+
+        const recipe = recipes[0];
+        let craftingTable = null;
+
+        // Check if crafting table needed
+        if (recipe.inShape) {
+          const shapeHeight = recipe.inShape.length;
+          const shapeWidth = recipe.inShape[0]?.length || 0;
+          if (shapeHeight > 2 || shapeWidth > 2) {
+            craftingTable = this.bot.findBlock({
+              matching: mcData.blocksByName.crafting_table.id,
+              maxDistance: 32,
+            });
+            if (!craftingTable) {
+              return this.fail('no_crafting_table', 'recipe requires crafting table', cmd);
+            }
+          }
+        }
+
+        try {
+          let crafted = 0;
+          for (let i = 0; i < count; i++) {
+            await this.bot.craft(recipe, 1, craftingTable || undefined);
+            crafted++;
+          }
+          return this.ok('craft', t0, { item: itemId, count: crafted, used_table: !!craftingTable });
+        } catch (e: any) {
+          return this.fail('craft_failed', e?.message || 'missing materials', cmd);
+        }
+      }
+      if (name === 'plant') {
+        // Plant sapling/crop at position
+        const saplingId = this.requireString(cmd.args[0]).value.replace('minecraft:', '');
+        const x = Number(this.evalExprSync(cmd.args[1] as Expr));
+        const y = Number(this.evalExprSync(cmd.args[2] as Expr));
+        const z = Number(this.evalExprSync(cmd.args[3] as Expr));
+
+        const worldPos = new Vec3(x, y, z);
+        const targetBlock = this.bot.blockAt(worldPos);
+
+        if (!targetBlock || targetBlock.name !== 'air') {
+          return this.fail('blocked', 'target position not air', cmd);
+        }
+
+        const item = this.bot.inventory.items().find((i) => i.name === saplingId);
+        if (!item) return this.fail('unavailable', `no ${saplingId} in inventory`, cmd);
+
+        try {
+          await this.bot.equip(item, 'hand');
+          const referenceBlock = this.bot.blockAt(worldPos.offset(0, -1, 0));
+          if (!referenceBlock) return this.fail('no_reference', 'no block beneath', cmd);
+
+          await this.bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
+          return this.ok('plant', t0, { sapling: saplingId, pos: [x, y, z] });
+        } catch (e: any) {
+          return this.fail('runtime_error', e?.message || 'plant_failed', cmd);
+        }
+      }
+      if (name === 'open_container') {
+        // Open chest/furnace/etc at position
+        const x = Number(this.evalExprSync(cmd.args[0] as Expr));
+        const y = Number(this.evalExprSync(cmd.args[1] as Expr));
+        const z = Number(this.evalExprSync(cmd.args[2] as Expr));
+
+        const worldPos = new Vec3(x, y, z);
+        const containerBlock = this.bot.blockAt(worldPos);
+
+        if (!containerBlock) {
+          return this.fail('no_target', 'no block at position', cmd);
+        }
+
+        const containerTypes = ['chest', 'furnace', 'blast_furnace', 'smoker', 'barrel', 'dispenser', 'dropper', 'hopper'];
+        if (!containerTypes.includes(containerBlock.name)) {
+          return this.fail('invalid_target', `block is not a container: ${containerBlock.name}`, cmd);
+        }
+
+        try {
+          if (containerBlock.name.includes('furnace') || containerBlock.name === 'smoker') {
+            this.openContainer = await this.bot.openFurnace(containerBlock);
+          } else {
+            this.openContainer = await this.bot.openContainer(containerBlock);
+          }
+          return this.ok('open_container', t0, { type: containerBlock.name, pos: [x, y, z] });
+        } catch (e: any) {
+          return this.fail('runtime_error', e?.message || 'open_failed', cmd);
+        }
+      }
+      if (name === 'close_container') {
+        // Close currently open container
+        if (!this.openContainer) {
+          return this.fail('no_container', 'no container currently open', cmd);
+        }
+        this.openContainer.close();
+        this.openContainer = null;
+        return this.ok('close_container', t0, {});
+      }
+      if (name === 'container_put') {
+        // Put items into open container
+        if (!this.openContainer) {
+          return this.fail('no_container', 'no container currently open', cmd);
+        }
+
+        const slotName = this.requireString(cmd.args[0]).value.toLowerCase();
+        const itemId = this.requireString(cmd.args[1]).value.replace('minecraft:', '');
+        const count = cmd.args[2] ? Number(this.evalExprSync(cmd.args[2] as Expr)) : 1;
+
+        const item = this.bot.inventory.items().find((i) => i.name === itemId);
+        if (!item) return this.fail('unavailable', `no ${itemId} in inventory`, cmd);
+
+        const mcData = (this.bot as any).registry;
+        const itemData = mcData.itemsByName[itemId];
+        if (!itemData) return this.fail('invalid_arg', `unknown item: ${itemId}`, cmd);
+
+        try {
+          // Handle furnace slots
+          if (this.openContainer.putInput) {
+            if (slotName === 'input' || slotName === 'raw') {
+              await this.openContainer.putInput(itemData.id, null, count);
+              return this.ok('container_put', t0, { slot: slotName, item: itemId, count });
+            } else if (slotName === 'fuel') {
+              await this.openContainer.putFuel(itemData.id, null, count);
+              return this.ok('container_put', t0, { slot: slotName, item: itemId, count });
+            }
+          }
+
+          // Handle regular chest slots by slot number
+          const slotNum = parseInt(slotName);
+          if (!isNaN(slotNum)) {
+            await this.openContainer.deposit(itemData.id, null, count);
+            return this.ok('container_put', t0, { slot: slotNum, item: itemId, count });
+          }
+
+          return this.fail('invalid_slot', `unknown slot: ${slotName}`, cmd);
+        } catch (e: any) {
+          return this.fail('runtime_error', e?.message || 'put_failed', cmd);
+        }
+      }
+      if (name === 'container_take') {
+        // Take items from open container
+        if (!this.openContainer) {
+          return this.fail('no_container', 'no container currently open', cmd);
+        }
+
+        const slotName = this.requireString(cmd.args[0]).value.toLowerCase();
+        const count = cmd.args[1] ? Number(this.evalExprSync(cmd.args[1] as Expr)) : 1;
+
+        try {
+          // Handle furnace output
+          if (this.openContainer.takeOutput && slotName === 'output') {
+            const outputItem = this.openContainer.outputItem();
+            if (!outputItem || outputItem.count === 0) {
+              return this.fail('no_item', 'no items in output slot', cmd);
+            }
+            await this.openContainer.takeOutput();
+            return this.ok('container_take', t0, { slot: slotName, item: outputItem.name, count: outputItem.count });
+          }
+
+          // Handle regular chest slots
+          const slotNum = parseInt(slotName);
+          if (!isNaN(slotNum) && this.openContainer.slots && this.openContainer.slots[slotNum]) {
+            const slotItem = this.openContainer.slots[slotNum];
+            await this.openContainer.withdraw(slotItem.type, null, Math.min(count, slotItem.count));
+            return this.ok('container_take', t0, { slot: slotNum, item: slotItem.name, count: Math.min(count, slotItem.count) });
+          }
+
+          return this.fail('invalid_slot', `unknown or empty slot: ${slotName}`, cmd);
+        } catch (e: any) {
+          return this.fail('runtime_error', e?.message || 'take_failed', cmd);
+        }
+      }
+      if (name === 'container_items') {
+        // List items in open container
+        if (!this.openContainer) {
+          return this.fail('no_container', 'no container currently open', cmd);
+        }
+
+        const items: any = {};
+
+        // Handle furnace
+        if (this.openContainer.inputItem) {
+          const input = this.openContainer.inputItem();
+          const fuel = this.openContainer.fuelItem();
+          const output = this.openContainer.outputItem();
+          if (input) items.input = { name: input.name, count: input.count };
+          if (fuel) items.fuel = { name: fuel.name, count: fuel.count };
+          if (output) items.output = { name: output.name, count: output.count };
+        }
+
+        // Handle regular containers
+        if (this.openContainer.slots) {
+          items.slots = {};
+          this.openContainer.slots.forEach((slot: any, index: number) => {
+            if (slot) {
+              items.slots[index] = { name: slot.name, count: slot.count };
+            }
+          });
+        }
+
+        return this.ok('container_items', t0, { items });
       }
 
       // Macro invocation: treat unknown commands matching macro names as body exec
