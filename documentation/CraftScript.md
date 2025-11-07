@@ -114,13 +114,19 @@ craft("crafting_table");           // craft 1 crafting table
 plant("oak_sapling", 100, 64, 50); // plant sapling at coordinates
 wait(10000);                       // wait 10 seconds
 
-// Container interaction (chests, furnaces, etc.)
-open_container(100, 64, 50);       // open chest/furnace at position
-container_put("input", "iron_ore", 8);   // put 8 iron ore in furnace input
-container_put("fuel", "coal", 2);        // put 2 coal in fuel slot
-container_items();                 // list what's in container
-container_take("output", 8);       // take 8 items from output
-close_container();                 // close container
+// Container interaction (chests, barrels, shulkers, furnaces, etc.)
+open_container(100, 64, 50);       // open at position (alias: open)
+container_put("input", "iron_ore", 8);   // furnace input
+container_put("fuel", "coal", 2);        // furnace fuel
+container_items();                 // list contents
+container_take("output", 8);       // furnace output
+close_container();                 // close (alias: close)
+
+// Convenience shorthands (no slot numbers needed)
+deposit(100, 64, 50, "oak_log", 32); // open → deposit → close
+deposit("oak_log");                  // deposit all of that item into currently open container
+withdraw(100, 64, 50, "oak_log", 8); // open → withdraw → close
+withdraw("oak_log", 8);              // withdraw from currently open container
 ```
 
 ### inventory / utilities

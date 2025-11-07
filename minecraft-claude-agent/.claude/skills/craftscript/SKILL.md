@@ -50,11 +50,16 @@ ALL movement and block interaction must be done through CraftScript:
 **Crafting & Containers:**
 - craft(item_id, count) → craft items (auto-finds crafting table if needed)
 - wait(ms) → wait/delay for milliseconds (max 300000 = 5 minutes)
-- open_container(x, y, z) → open chest/furnace/barrel/etc at position
-- container_put(slot, item_id, count) → put items in container (slots: "input", "fuel" for furnace, or number for chest)
-- container_take(slot, count) → take items from container (slots: "output" for furnace, or number for chest)
-- container_items() → list all items currently in container
-- close_container() → close currently open container
+// Low-level (slots)
+- open_container(x, y, z) → open at position (alias: open)
+- container_put(slot, item_id, count) → put items (slots: "input"/"fuel" for furnace or number for chest)
+- container_take(slot, count) → take items (slots: "output" for furnace or number for chest)
+- container_items() → list all items in the open container
+- close_container() → close (alias: close)
+
+// High-level (slotless shorthands)
+- deposit([x,y,z,] item_id, count?) → deposit into container (opens/closes automatically when x,y,z provided). Omitting count deposits all of that item in inventory.
+- withdraw([x,y,z,] item_id, count?) → withdraw from container (opens/closes automatically when x,y,z provided). Omitting count withdraws all available.
 
 ## Guardrails (Error Codes)
 
@@ -249,10 +254,8 @@ plant("oak_sapling", 100, 64, 50);  // Replant sapling
 ```
 // Transfer items to storage chest
 goto(120, 64, 80, tol:1);
-open_container(120, 64, 80);
-container_put("0", "cobblestone", 64);  // Put in slot 0
-container_put("1", "iron_ore", 32);      // Put in slot 1
-close_container();
+deposit(120, 64, 80, "cobblestone", 64);
+deposit(120, 64, 80, "iron_ore", 32);
 ```
 
 ## Strategy
@@ -276,4 +279,3 @@ Keep scripts short (≤20 lines) and focused. Write multiple small scripts rathe
 4. craftscript_start({ script: "goto(100,64,50,tol:1); dig(100,65,50);" })
 5. craftscript_status() → check if succeeded
 ```
-

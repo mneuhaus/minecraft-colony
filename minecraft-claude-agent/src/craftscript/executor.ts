@@ -535,11 +535,36 @@ export class CraftscriptExecutor {
           return this.fail('runtime_error', e?.message || 'open_failed', cmd);
         }
       }
+      if (name === 'open') {
+        // Alias for open_container(x,y,z)
+        const x = Number(this.evalExprSync(cmd.args[0] as Expr));
+        const y = Number(this.evalExprSync(cmd.args[1] as Expr));
+        const z = Number(this.evalExprSync(cmd.args[2] as Expr));
+        const worldPos = new Vec3(x, y, z);
+        const containerBlock = this.bot.blockAt(worldPos);
+        if (!containerBlock) return this.fail('no_target', 'no block at position', cmd);
+        try {
+          if (containerBlock.name.includes('furnace') || containerBlock.name === 'smoker') {
+            this.openContainer = await (this.bot as any).openFurnace(containerBlock);
+          } else {
+            this.openContainer = await (this.bot as any).openContainer(containerBlock);
+          }
+          return this.ok('open_container', t0, { type: containerBlock.name, pos: [x, y, z] });
+        } catch (e: any) {
+          return this.fail('runtime_error', e?.message || 'open_failed', cmd);
+        }
+      }
       if (name === 'close_container') {
         // Close currently open container
         if (!this.openContainer) {
           return this.fail('no_container', 'no container currently open', cmd);
         }
+        this.openContainer.close();
+        this.openContainer = null;
+        return this.ok('close_container', t0, {});
+      }
+      if (name === 'close') {
+        if (!this.openContainer) return this.fail('no_container', 'no container currently open', cmd);
         this.openContainer.close();
         this.openContainer = null;
         return this.ok('close_container', t0, {});
@@ -585,6 +610,48 @@ export class CraftscriptExecutor {
           return this.fail('runtime_error', e?.message || 'put_failed', cmd);
         }
       }
+      if (name === 'deposit') {
+        // Convenience: deposit([x,y,z,] itemId, count?)
+        let argIdx = 0;
+        let mustClose = false;
+        if (cmd.args.length >= 4 && (cmd.args[0] as any).type === 'Number' && (cmd.args[1] as any).type === 'Number' && (cmd.args[2] as any).type === 'Number') {
+          const x = Number(this.evalExprSync(cmd.args[0] as Expr));
+          const y = Number(this.evalExprSync(cmd.args[1] as Expr));
+          const z = Number(this.evalExprSync(cmd.args[2] as Expr));
+          // open-at-position
+          const worldPos = new Vec3(x, y, z);
+          const containerBlock = this.bot.blockAt(worldPos);
+          if (!containerBlock) return this.fail('no_target', 'no block at position', cmd);
+          try {
+            this.openContainer = await (this.bot as any).openContainer(containerBlock);
+            mustClose = true;
+          } catch (e: any) {
+            return this.fail('runtime_error', e?.message || 'open_failed', cmd);
+          }
+          argIdx = 3;
+        }
+
+        if (!this.openContainer) return this.fail('no_container', 'no container currently open', cmd);
+        const itemId = this.requireString(cmd.args[argIdx++] as any).value.replace('minecraft:', '');
+        const mc = (this.bot as any).registry;
+        const itemData = mc.itemsByName[itemId];
+        if (!itemData) return this.fail('invalid_arg', `unknown item: ${itemId}`, cmd);
+
+        // Determine count: default to all in inventory
+        let count = 0;
+        const invItem = this.bot.inventory.items().find((i) => i.name === itemId);
+        if (!invItem) return this.fail('unavailable', `no ${itemId} in inventory`, cmd);
+        if (cmd.args[argIdx]) count = Math.max(1, Number(this.evalExprSync(cmd.args[argIdx] as Expr)) | 0);
+        else count = invItem.count;
+
+        try {
+          await this.openContainer.deposit(itemData.id, null, count);
+          if (mustClose) { this.openContainer.close(); this.openContainer = null; }
+          return this.ok('container_put', t0, { item: itemId, count });
+        } catch (e: any) {
+          return this.fail('runtime_error', e?.message || 'deposit_failed', cmd);
+        }
+      }
       if (name === 'container_take') {
         // Take items from open container
         if (!this.openContainer) {
@@ -616,6 +683,49 @@ export class CraftscriptExecutor {
           return this.fail('invalid_slot', `unknown or empty slot: ${slotName}`, cmd);
         } catch (e: any) {
           return this.fail('runtime_error', e?.message || 'take_failed', cmd);
+        }
+      }
+      if (name === 'withdraw') {
+        // Convenience: withdraw([x,y,z,] itemId, count?)
+        let argIdx = 0;
+        let mustClose = false;
+        if (cmd.args.length >= 4 && (cmd.args[0] as any).type === 'Number' && (cmd.args[1] as any).type === 'Number' && (cmd.args[2] as any).type === 'Number') {
+          const x = Number(this.evalExprSync(cmd.args[0] as Expr));
+          const y = Number(this.evalExprSync(cmd.args[1] as Expr));
+          const z = Number(this.evalExprSync(cmd.args[2] as Expr));
+          // open-at-position
+          const worldPos = new Vec3(x, y, z);
+          const containerBlock = this.bot.blockAt(worldPos);
+          if (!containerBlock) return this.fail('no_target', 'no block at position', cmd);
+          try {
+            this.openContainer = await (this.bot as any).openContainer(containerBlock);
+            mustClose = true;
+          } catch (e: any) {
+            return this.fail('runtime_error', e?.message || 'open_failed', cmd);
+          }
+          argIdx = 3;
+        }
+
+        if (!this.openContainer) return this.fail('no_container', 'no container currently open', cmd);
+        const itemId = this.requireString(cmd.args[argIdx++] as any).value.replace('minecraft:', '');
+        const mc = (this.bot as any).registry;
+        const itemData = mc.itemsByName[itemId];
+        if (!itemData) return this.fail('invalid_arg', `unknown item: ${itemId}`, cmd);
+        // Determine available in container
+        let available = 0;
+        if (this.openContainer.slots) {
+          for (const slot of this.openContainer.slots) if (slot && slot.name === itemId) available += slot.count;
+        }
+        let count = 0;
+        if (cmd.args[argIdx]) count = Math.max(1, Number(this.evalExprSync(cmd.args[argIdx] as Expr)) | 0);
+        else count = available || 1;
+
+        try {
+          await this.openContainer.withdraw(itemData.id, null, count);
+          if (mustClose) { this.openContainer.close(); this.openContainer = null; }
+          return this.ok('container_take', t0, { item: itemId, count });
+        } catch (e: any) {
+          return this.fail('runtime_error', e?.message || 'withdraw_failed', cmd);
         }
       }
       if (name === 'container_items') {
