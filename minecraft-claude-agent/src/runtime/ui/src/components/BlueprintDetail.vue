@@ -1,5 +1,5 @@
 <template>
-  <div class="bp-detail__backdrop" @click.self="$emit('close')">
+  <div v-if="!embedded" class="bp-detail__backdrop" @click.self="$emit('close')">
     <div class="bp-detail">
       <div class="bp-detail__hdr">
         <div class="bp-detail__title">Blueprint: {{ data?.blueprint?.name || '—' }}</div>

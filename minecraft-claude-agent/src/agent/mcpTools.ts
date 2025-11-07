@@ -182,6 +182,53 @@ export function createUnifiedMcpServer(
         const status = getCraftscriptStatus(job_id);
         return { content: [{ type: 'text', text: JSON.stringify(status || { ok: false, error: 'not_found' }) }] };
       }, context),
+      loggingTool('craftscript_logs', 'Fetch consolidated CraftScript logs for a job (status + steps + traces)', { job_id: z.string(), limit: z.number().optional() }, async ({ job_id, limit = 300 }) => {
+        const { ColonyDatabase } = await import('../database/ColonyDatabase.js');
+        const colonyDb = ColonyDatabase.getInstance();
+        const db = colonyDb.getDb();
+        // Resolve bot_id from bot name
+        const botId = colonyDb.getBotId(context.botName);
+        if (!botId) return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'bot_not_found' }) }], isError: true } as any;
+
+        const rows = db.prepare(
+          `SELECT type, description, timestamp, data
+           FROM activities
+           WHERE bot_id = ? AND data LIKE ?
+           ORDER BY timestamp ASC
+           LIMIT ?`
+        ).all(botId, `%${job_id}%`, Math.max(1, Math.min(1000, Number(limit))));
+
+        const out: any = { job_id, status: null, error: null, logs: [] as any[] };
+        for (const r of rows as any[]) {
+          let data: any = {};
+          try { data = r.data ? JSON.parse(String(r.data)) : {}; } catch {}
+          const tool = String(data?.name || '').toLowerCase();
+          const ts = (Number(r.timestamp) || 0) * 1000;
+          if (tool === 'craftscript_status') {
+            let payload: any = {};
+            try { payload = data?.output ? JSON.parse(String(data.output)) : {}; } catch {}
+            out.status = payload?.state || out.status || null;
+            if (payload?.error) out.error = payload.error;
+            out.logs.push({ kind: 'status', ts, data: payload });
+            continue;
+          }
+          if (tool === 'craftscript_step') {
+            let payload: any = {};
+            try { payload = data?.output ? JSON.parse(String(data.output)) : {}; } catch {}
+            const step = payload?.step || payload;
+            out.logs.push({ kind: step?.ok ? 'ok' : 'fail', ts, data: step });
+            continue;
+          }
+          if (tool === 'craftscript_trace') {
+            let payload: any = {};
+            try { payload = data?.output ? JSON.parse(String(data.output)) : {}; } catch {}
+            const trace = payload?.trace || payload;
+            out.logs.push({ kind: 'trace', ts, data: trace });
+            continue;
+          }
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(out) }] };
+      }, context),
       loggingTool('craftscript_cancel', 'Cancel CraftScript job', { job_id: z.string() }, async ({ job_id }) => {
         const { cancelCraftscriptJob } = await import('./craftscriptJobs.js');
         cancelCraftscriptJob(job_id);

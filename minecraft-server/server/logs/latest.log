@@ -3869,3 +3869,29 @@
 [20:17:51] [Async Chat Thread - #535/INFO]: [Not Secure] <Kubo> drop("dirt", 29);
 [20:17:53] [Async Chat Thread - #535/INFO]: [Not Secure] <Kubo> goto(126, 64, 108, tol:1);
 [20:17:54] [Async Chat Thread - #535/INFO]: [Not Secure] <Kubo> break(126, 64, 108);
+[20:17:56] [Async Chat Thread - #535/INFO]: [Not Secure] <Kubo> break(126, 65, 108);
+[20:17:57] [Async Chat Thread - #535/INFO]: [Not Secure] <Kubo> break(126, 66, 108);
+[20:17:59] [Async Chat Thread - #535/INFO]: [Not Secure] <Kubo> break(126, 67, 108);
+[20:18:00] [Async Chat Thread - #535/INFO]: [Not Secure] <Kubo> goto(126, 64, 108, tol:0);
+[20:18:02] [Async Chat Thread - #535/INFO]: [Not Secure] <Kubo> build_up();
+[20:18:03] [Async Chat Thread - #535/INFO]: [Not Secure] <Kubo> … 12 more line(s)
+[20:18:05] [Async Chat Thread - #535/INFO]: [Not Secure] <Kubo> ```
+[20:18:06] [Async Chat Thread - #535/INFO]: [Not Secure] <Kubo> Testing fresh tree with correct build_up timing!
+[20:19:28] [Async Chat Thread - #536/INFO]: [Not Secure] <Kubo> Start CraftScript (4 lines)
+[20:19:29] [Async Chat Thread - #536/INFO]: [Not Secure] <Kubo> ```c
+[20:19:31] [Async Chat Thread - #537/INFO]: [Not Secure] <Kubo> goto(113, 64, 114, tol:2);
+[20:19:32] [Async Chat Thread - #537/INFO]: [Not Secure] <Kubo> deposit(113, 64, 114, "oak_log");
+[20:19:34] [Async Chat Thread - #537/INFO]: [Not Secure] <Kubo> ```
+[20:20:09] [Async Chat Thread - #537/INFO]: [Not Secure] <Kubo> New strategy: skip goto back to ground, just wait and navigate directly to chest
+[20:20:11] [Async Chat Thread - #537/INFO]: [Not Secure] <Kubo> Start CraftScript (18 lines)
+[20:20:12] [Async Chat Thread - #537/INFO]: [Not Secure] <Kubo> ```c
+[20:20:14] [Async Chat Thread - #537/INFO]: [Not Secure] <Kubo> goto(126, 64, 120, tol:1);
+[20:20:15] [Async Chat Thread - #537/INFO]: [Not Secure] <Kubo> break(126, 64, 120);
+[20:20:17] [Async Chat Thread - #537/INFO]: [Not Secure] <Kubo> break(126, 65, 120);
+[20:20:18] [Async Chat Thread - #537/INFO]: [Not Secure] <Kubo> break(126, 66, 120);
+[20:20:20] [Async Chat Thread - #538/INFO]: [Not Secure] <Kubo> break(126, 67, 120);
+[20:20:21] [Async Chat Thread - #538/INFO]: [Not Secure] <Kubo> goto(126, 64, 120, tol:0);
+[20:20:23] [Async Chat Thread - #538/INFO]: [Not Secure] <Kubo> build_up();
+[20:20:24] [Async Chat Thread - #538/INFO]: [Not Secure] <Kubo> break(126, 68, 120);
+[20:20:26] [Async Chat Thread - #538/INFO]: [Not Secure] <Kubo> … 6 more line(s)
+[20:20:27] [Async Chat Thread - #538/INFO]: [Not Secure] <Kubo> ```
