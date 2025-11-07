@@ -3732,3 +3732,36 @@
 [20:01:43] [User Authenticator #249/INFO]: UUID of player Kubo is e1b21cf6-be9b-3aa9-a17f-4fdd06162202
 [20:01:43] [Server thread/INFO]: Kubo joined the game
 [20:01:43] [Server thread/INFO]: Kubo[/[0:0:0:0:0:0:0:1]:58057] logged in with entity id 173538 at ([world]113.5, 64.0, 113.5)
+[20:03:31] [Server thread/INFO]: Kubo lost connection: Disconnected
+[20:03:31] [Server thread/INFO]: Kubo left the game
+[20:03:37] [User Authenticator #250/INFO]: UUID of player Kubo is e1b21cf6-be9b-3aa9-a17f-4fdd06162202
+[20:03:37] [Server thread/INFO]: Kubo joined the game
+[20:03:37] [Server thread/INFO]: Kubo[/[0:0:0:0:0:0:0:1]:58740] logged in with entity id 173609 at ([world]113.5, 64.0, 113.5)
+[20:03:39] [Async Chat Thread - #526/INFO]: [Not Secure] <mneuhaus> continue
+[20:03:55] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> Start CraftScript (5 lines)
+[20:03:56] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> ```c
+[20:03:58] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> drop("oak_planks", 1);
+[20:03:59] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> wait(1000);
+[20:04:01] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> pickup_blocks(8);
+[20:04:02] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> ```
+[20:04:16] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> Found 6 oak logs in inventory! Trees are being harvested successfully!
+[20:04:18] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> Start CraftScript (4 lines)
+[20:04:19] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> ```c
+[20:04:21] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> goto(113, 64, 114, tol:1);
+[20:04:22] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> deposit(113, 64, 114, "oak_log");
+[20:04:24] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> ```
+[20:04:27] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> Start CraftScript (26 lines)
+[20:04:29] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> ```c
+[20:04:30] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> goto(102, 64, 108, tol:1);
+[20:04:32] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> break(102, 64, 108);
+[20:04:33] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> break(102, 65, 108);
+[20:04:35] [Async Chat Thread - #528/INFO]: [Not Secure] <Kubo> break(102, 66, 108);
+[20:04:36] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> break(102, 67, 108);
+[20:04:38] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> break(102, 68, 108);
+[20:04:39] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> break(102, 69, 108);
+[20:04:41] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> goto(102, 64, 114, tol:1);
+[20:04:42] [Async Chat Thread - #526/INFO]: [Not Secure] <Kubo> break(102, 64, 114);
+[20:04:44] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> break(102, 65, 114);
+[20:04:45] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> … 14 more line(s)
+[20:04:47] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> ```
+[20:04:48] [Async Chat Thread - #527/INFO]: [Not Secure] <Kubo> Harvesting 3 more trees within reach distance

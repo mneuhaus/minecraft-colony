@@ -148,12 +148,34 @@ const filteredItems = computed(()=> {
   const activeBot = store.bots.find((b: any) => b.name === active);
   const activeBotId = activeBot?.id;
 
-  return store.items
+  const prelim = store.items
     .filter((e: any) => store.viewMode==='all' || e.bot_id===activeBotId)
     // Hide noisy CraftScript internals from the main timeline; view them in the card's Show Logs instead
     .filter((e: any) => !(e.type==='tool' && /^(craftscript_step|craftscript_trace)$/i.test(String(e?.payload?.tool_name||''))))
     // Also hide send_chat spam from tools
     .filter((e: any) => !(e.type==='tool' && /send_chat/i.test(String(e?.payload?.tool_name||''))));
+
+  // De-duplicate CraftScript Status by job id: keep only the latest event per job
+  const seenJobs = new Set<string>();
+  const result: any[] = [];
+  for (let i = prelim.length - 1; i >= 0; i--) {
+    const e: any = prelim[i];
+    const tool = String(e?.payload?.tool_name || '').toLowerCase();
+    if (e.type === 'tool' && tool === 'craftscript_status') {
+      let id = '';
+      try {
+        const raw = e?.payload?.output;
+        const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        id = data?.id || data?.job_id || '';
+      } catch {}
+      if (id) {
+        if (seenJobs.has(id)) continue; // skip older duplicates
+        seenJobs.add(id);
+      }
+    }
+    result.push(e);
+  }
+  return result.reverse();
 });
 
 function connectWebSocket(){
