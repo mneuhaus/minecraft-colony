@@ -3807,3 +3807,22 @@
 [20:09:14] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> deposit(113, 64, 114, "oak_log");
 [20:09:15] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> deposit(113, 64, 114, "oak_sapling");
 [20:09:17] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> ```
+[20:09:44] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> Start CraftScript (43 lines)
+[20:09:45] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> ```c
+[20:09:47] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> goto(102, 64, 114, tol:1);
+[20:09:48] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> break(102, 64, 114);
+[20:09:50] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> break(102, 65, 114);
+[20:09:51] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> break(102, 66, 114);
+[20:09:53] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> break(102, 67, 114);
+[20:09:54] [Async Chat Thread - #529/INFO]: [Not Secure] <Kubo> goto(102, 64, 114, tol:0);
+[20:09:56] [Async Chat Thread - #531/INFO]: [Not Secure] <Kubo> build_up();
+[20:09:57] [Async Chat Thread - #531/INFO]: [Not Secure] <Kubo> break(102, 68, 114);
+[20:09:59] [Async Chat Thread - #531/INFO]: [Not Secure] <Kubo> break(102, 69, 114);
+[20:10:00] [Async Chat Thread - #531/INFO]: [Not Secure] <Kubo> … 31 more line(s)
+[20:10:02] [Async Chat Thread - #531/INFO]: [Not Secure] <Kubo> ```
+[20:10:03] [Async Chat Thread - #531/INFO]: [Not Secure] <Kubo> Harvesting 4 more trees with the build_up technique!
+[20:12:05] [Server thread/INFO]: Kubo lost connection: Disconnected
+[20:12:06] [Server thread/INFO]: Kubo left the game
+[20:12:10] [User Authenticator #253/INFO]: UUID of player Kubo is e1b21cf6-be9b-3aa9-a17f-4fdd06162202
+[20:12:10] [Server thread/INFO]: Kubo joined the game
+[20:12:10] [Server thread/INFO]: Kubo[/[0:0:0:0:0:0:0:1]:61947] logged in with entity id 173954 at ([world]102.60547452069615, 65.0, 114.50568338146107)

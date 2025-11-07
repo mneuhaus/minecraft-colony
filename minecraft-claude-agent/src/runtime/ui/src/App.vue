@@ -84,6 +84,7 @@ const viewMode = computed(()=> store.viewMode);
 
 const resetting = ref(false);
 const blueprints = ref<any[]>([]);
+const bpModalOpen = ref(false);
 const bpDetailOpen = ref(false);
 const bpDetailName = ref('');
 const bpDetail = ref<any>(null);
@@ -144,7 +145,7 @@ const filteredItems = computed(()=> {
   const prelim = store.items
     .filter((e: any) => store.viewMode==='all' || e.bot_id===activeBotId)
     // Hide noisy CraftScript internals from the main timeline; view them in the card's Show Logs instead
-    .filter((e: any) => !(e.type==='tool' && /^(craftscript_step|craftscript_trace)$/i.test(String(e?.payload?.tool_name||''))))
+    .filter((e: any) => !(e.type==='tool' && /^(craftscript_step|craftscript_trace|craftscript_status)$/i.test(String(e?.payload?.tool_name||''))))
     // Also hide send_chat spam from tools
     .filter((e: any) => !(e.type==='tool' && /send_chat/i.test(String(e?.payload?.tool_name||''))));
 
@@ -207,12 +208,12 @@ async function viewBlueprint(name: string){
     bpDetail.value = data; bpDetailName.value = name; bpDetailOpen.value = true;
   } catch {}
 }
-async function removeBlueprint(name: string){
+async function handleRemoveBlueprint(name: string){
   if (!confirm(`Remove blueprint "${name}"?`)) return;
   const res = await fetch(`/api/blueprints/${encodeURIComponent(name)}`, { method:'DELETE' });
   if (res.ok) loadBlueprints();
 }
-async function createBlueprint(payload: any){
+async function handleCreateBlueprint(payload: any){
   try {
     const res = await fetch('/api/blueprints', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
     if (!res.ok) throw new Error('create_failed');
@@ -227,9 +228,7 @@ async function createBlueprint(payload: any){
 .sidebar__hdr { font-weight: 600; margin-bottom: 8px; }
 .chip { padding: 6px 10px; border-radius: 8px; background: #2A2A2A; border: 1px solid #2E2E2E; color: #EAEAEA; cursor: pointer; }
 .chip--active { background: #2f2f2f; border-color: #E96D2F; }
-.sidebar__view { display: flex; gap: 6px; margin-bottom: 10px; }
 .sidebar__list { display: flex; flex-direction: column; gap: 6px; }
-.sidebar__bp { margin-top: 12px; }
 .agent { border: 1px solid #2E2E2E; border-radius: 10px; padding: 8px; background: #202020; cursor: pointer; }
 .agent[aria-selected="true"] { outline: 1px solid #E96D2F; }
 .agent__row { display: flex; justify-content: space-between; align-items: center; }

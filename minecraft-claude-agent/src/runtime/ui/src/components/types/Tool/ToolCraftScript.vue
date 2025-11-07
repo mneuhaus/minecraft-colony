@@ -6,6 +6,7 @@
         <span class="tl-kv__val">{{ lineCount }} line(s)</span>
       </div>
       <div class="tl-actions">
+        <span class="tl-status" :data-state="status.state">{{ status.state.toUpperCase() }}</span>
         <button class="tl-btn" :disabled="running" @click="runAgain">{{ running ? 'Running…' : 'Run Again' }}</button>
         <button class="tl-btn" @click="showLogs = !showLogs">{{ showLogs ? 'Hide Logs' : 'Show Logs' }}</button>
       </div>
@@ -17,7 +18,7 @@
         <span class="cs-logs__title">Logs</span>
         <span class="cs-logs__meta" v-if="activeJobId">job {{ activeJobId }}</span>
       </div>
-      <div v-if="logs.length === 0" class="cs-logs__empty">No logs yet for this script.</div>
+      <div v-if="logs.length === 0" class="cs-logs__empty">No logs yet for this script (status: {{ status.state }}).</div>
       <div v-else class="cs-logs__list">
         <div v-for="log in logs" :key="log.id" class="cs-log">
           <span class="cs-log__time">{{ fmtTs(log.ts) }}</span>
@@ -74,6 +75,26 @@ const latestJobIdForBot = computed(()=> {
   return ids[0].id;
 });
 const activeJobId = computed(()=> jobIdFromCard.value || latestJobIdForBot.value);
+
+// Track latest status for this job (running/completed/failed)
+const status = computed(() => {
+  const id = activeJobId.value;
+  const items = store.items || [];
+  let latest: any = null;
+  for (const it of items) {
+    const name = String(it?.payload?.tool_name || it?.tool_name || '').toLowerCase();
+    if (name !== 'craftscript_status') continue;
+    try {
+      const raw = it?.payload?.output;
+      const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      const jid = data?.id || data?.job_id;
+      if (jid && (!id || jid === id)) {
+        if (!latest || (it.ts || 0) > (latest.ts || 0)) latest = { ts: it.ts || 0, state: data?.state || 'unknown', duration_ms: data?.duration_ms ?? 0, error: data?.error || null };
+      }
+    } catch {}
+  }
+  return latest || { state: (jobIdFromCard.value ? 'queued' : 'unknown'), duration_ms: 0, error: null };
+});
 
 // Extract script from various possible locations
 const script = computed(() => {
@@ -207,6 +228,10 @@ function fmtTs(ts:number){
 <style scoped>
 .tl-hdr { display:flex; justify-content: space-between; align-items:center; }
 .tl-actions { display:flex; gap:6px; }
+.tl-status { padding: 2px 6px; border:1px solid #2E2E2E; border-radius:6px; font-size:10px; color:#B3B3B3; }
+.tl-status[data-state="failed"] { color:#F87171; border-color: rgba(248,113,113,.5); }
+.tl-status[data-state="completed"] { color:#34D399; border-color: rgba(52,211,153,.5); }
+.tl-status[data-state="running"] { color:#4A9EFF; border-color: rgba(74,158,255,.5); }
 .tl-btn { background: rgba(74, 158, 255, 0.1); border:1px solid rgba(74,158,255,0.3); color:#4A9EFF; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; }
 .tl-btn:disabled { opacity: 0.6; cursor: default; }
 .tool-output {
