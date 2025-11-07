@@ -25,6 +25,7 @@
         <button class="chip" @click="runSample" :disabled="runningSample">{{ runningSample ? 'Running…' : 'Run Sample CraftScript' }}</button>
         <button class="chip" @click="resetActiveBot" :disabled="resetting">{{ resetting? 'Resetting…' : 'Reset Selected Bot' }}</button>
       </div>
+      <SidebarInventory />
       <div class="sidebar__bp">
         <BlueprintsPanel :items="blueprints" @refresh="loadBlueprints" @view="viewBlueprint" @remove="removeBlueprint" @create="createBlueprint" />
       </div>
@@ -44,6 +45,7 @@ import Timeline from './components/Timeline.vue';
 import Inspector from './components/Inspector.vue';
 import BlueprintsPanel from './components/BlueprintsPanel.vue';
 import BlueprintDetail from './components/BlueprintDetail.vue';
+import SidebarInventory from './components/SidebarInventory.vue';
 
 const store = inject<any>('store');
 const bots = computed(()=> store.bots);

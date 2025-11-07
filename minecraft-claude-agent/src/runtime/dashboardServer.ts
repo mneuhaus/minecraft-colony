@@ -177,6 +177,23 @@ export function createDashboardApp(botManager: BotManager) {
     }
   });
 
+  // Lightweight runtime inventory snapshot for sidebar/overview
+  app.get('/api/bots/:name/inventory', (c) => {
+    try {
+      const name = c.req.param('name');
+      const instance = botManager.getBot(name);
+      if (!instance) return c.json({ ok: false, error: 'not_running' }, 404);
+
+      const bot = instance.minecraftBot.getBot();
+      const items = bot.inventory.items().map((i: any) => ({ name: i.name, count: i.count }));
+      const totalTypes = Array.from(new Set(items.map((i: any) => i.name))).length;
+      const slotsUsed = Math.min(items.length, 36);
+      return c.json({ ok: true, totalTypes, slotsUsed, totalSlots: 36, items });
+    } catch (error: any) {
+      return c.json({ ok: false, error: error.message }, 500);
+    }
+  });
+
   app.post('/api/bots/:name/start', async (c) => {
     try {
       const name = c.req.param('name');
@@ -398,6 +415,38 @@ export function createDashboardApp(botManager: BotManager) {
       }
 
       return c.json({ texture: null });
+    } catch (error: any) {
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
+  // Item texture endpoint - serves actual PNG files
+  app.get('/api/minecraft/item/:name/texture', (c) => {
+    try {
+      const itemName = c.req.param('name');
+      const cleanName = itemName.replace(/^minecraft:/, '');
+
+      // Try to find the item texture file
+      const assetsPath = path.join(__dirname, '..', '..', 'node_modules', 'minecraft-assets', 'minecraft-assets', 'data', MINECRAFT_VERSION);
+      const itemPath = path.join(assetsPath, 'items', `${cleanName}.png`);
+
+      if (fs.existsSync(itemPath)) {
+        const imageBuffer = fs.readFileSync(itemPath);
+        c.header('Content-Type', 'image/png');
+        c.header('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+        return c.body(imageBuffer);
+      }
+
+      // Fall back to checking blocks if item not found
+      const blockPath = path.join(assetsPath, 'blocks', `${cleanName}.png`);
+      if (fs.existsSync(blockPath)) {
+        const imageBuffer = fs.readFileSync(blockPath);
+        c.header('Content-Type', 'image/png');
+        c.header('Cache-Control', 'public, max-age=86400');
+        return c.body(imageBuffer);
+      }
+
+      return c.text('Item texture not found', 404);
     } catch (error: any) {
       return c.json({ error: error.message }, 500);
     }
