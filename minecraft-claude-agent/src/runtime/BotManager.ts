@@ -289,7 +289,9 @@ export class BotManager extends EventEmitter {
       instance.minecraftBot,
       script,
       instance.claudeAgent.getActivityWriter() as any,
-      instance.config.username
+      instance.config.username,
+      (instance.claudeAgent as any).getMemoryStore?.() || undefined,
+      () => (instance.claudeAgent as any).getSessionId?.() || null
     );
 
     logger.info(`[${name}] Created CraftScript job: ${jobId}`);

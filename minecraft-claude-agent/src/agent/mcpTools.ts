@@ -174,7 +174,7 @@ export function createUnifiedMcpServer(
       loggingTool('craftscript_start', 'Start CraftScript in background; returns job_id', { script: z.string() }, async ({ script }) => {
         const { createCraftscriptJob } = await import('./craftscriptJobs.js');
         try { const enable = (process.env.CRAFTSCRIPT_CHAT_ENABLED ?? 'true').toLowerCase() !== 'false'; if (enable) { const max = Math.max(0, parseInt(process.env.CRAFTSCRIPT_CHAT_PREVIEW_LINES ?? '12', 10)); const lines = String(script||'').split(/\r?\n/); const preview = max>0?lines.slice(0,max).join('\n'):''; const suffix=max>0&&lines.length>max?`\n… ${lines.length-max} more line(s)`:''; minecraftBot.chat(`Start CraftScript (${lines.length} lines)\n\`\`\`c\n${preview}${suffix}\n\`\`\``);} } catch {}
-        const id = createCraftscriptJob(minecraftBot, script, context.activityWriter as any, context.botName);
+        const id = createCraftscriptJob(minecraftBot, script, context.activityWriter as any, context.botName, context.memoryStore as any, context.getSessionId);
         return { content: [{ type: 'text', text: JSON.stringify({ job_id: id, state: 'queued' }) }] };
       }, context),
       loggingTool('craftscript_status', 'Poll CraftScript job status', { job_id: z.string() }, async ({ job_id }) => {

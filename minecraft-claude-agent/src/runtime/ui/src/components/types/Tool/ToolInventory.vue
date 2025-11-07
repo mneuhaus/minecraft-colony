@@ -146,16 +146,65 @@ function formatItemName(name: string): string {
   gap: 8px;
 }
 
-.inventory-grid { display:grid; grid-template-columns:repeat(9,1fr); grid-template-rows:repeat(4,1fr); gap:2px; background:#0f0f0f; padding:4px; border-radius:6px; margin-bottom:12px; }
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: 3px;
+  background: linear-gradient(145deg, #1a1a1a, #0d0d0d);
+  padding: 6px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
 
-.inventory-slot { aspect-ratio:1; background:#2b2b2b; border:1px solid #3a3a3a; border-radius:3px; position:relative; display:flex; align-items:center; justify-content:center; transition: all .15s; }
+.inventory-slot {
+  aspect-ratio: 1;
+  background: linear-gradient(135deg, #3a3a3a 0%, #2a2a2a 100%);
+  border: 2px solid #1a1a1a;
+  border-radius: 4px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+}
 
-.inventory-slot.filled { background:#3a3a3a; border-color:#4a4a4a; }
+.inventory-slot.filled {
+  background: linear-gradient(135deg, #4a4a4a 0%, #3a3a3a 100%);
+  border-color: #2a2a2a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -1px 0 rgba(0, 0, 0, 0.4);
+}
 
-.inventory-slot:hover { border-color:#777; box-shadow: inset 0 0 2px rgba(255,255,255,0.1); }
+.inventory-slot:hover {
+  border-color: #555;
+  box-shadow: inset 0 0 8px rgba(255, 255, 255, 0.15), 0 0 6px rgba(230, 126, 34, 0.3);
+  transform: scale(1.05);
+}
 
-.item-icon { width:80%; height:80%; image-rendering: pixelated; object-fit:contain; }
-.item-count { position:absolute; bottom:2px; right:3px; font-size:11px; color:#EAEAEA; font-family:'Monaco','Menlo','Courier New',monospace; font-weight:700; text-shadow:0 0 3px rgba(0,0,0,0.9); }
+.item-icon {
+  width: 85%;
+  height: 85%;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+.item-count {
+  position: absolute;
+  bottom: 3px;
+  right: 4px;
+  font-size: 12px;
+  color: #FFFFFF;
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-weight: 700;
+  text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+  line-height: 1;
+  pointer-events: none;
+}
 
 .item-tooltip {
   display: none;

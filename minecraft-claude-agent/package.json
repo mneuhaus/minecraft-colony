@@ -35,6 +35,7 @@
     "dotenv": "^17.2.3",
     "highlight.js": "^11.11.1",
     "hono": "^4.10.4",
+    "marked": "^17.0.0",
     "minecraft-assets": "^1.17.0",
     "minecraft-assets#update-assets": "github:mc-zuri/minecraft-assets#update-assets",
     "minecraft-data": "^3.100.0",

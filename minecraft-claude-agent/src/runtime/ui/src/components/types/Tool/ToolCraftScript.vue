@@ -15,7 +15,7 @@
     <div v-if="showLogs" class="cs-logs">
       <div class="cs-logs__hdr">
         <span class="cs-logs__title">Logs</span>
-        <span class="cs-logs__meta" v-if="jobId">job {{ jobId }}</span>
+        <span class="cs-logs__meta" v-if="activeJobId">job {{ activeJobId }}</span>
       </div>
       <div v-if="logs.length === 0" class="cs-logs__empty">No logs yet for this script.</div>
       <div v-else class="cs-logs__list">
@@ -47,30 +47,50 @@ const showLogs = ref(false);
 const payload = computed(() => props.item.payload || {});
 
 // Find job id from tool output (craftscript_start returns { job_id })
-const jobId = computed(() => {
+const jobIdFromCard = computed(() => {
   try {
     const out = payload.value?.output;
     const o = typeof out === 'string' ? JSON.parse(out) : out;
     return o?.job_id || null;
   } catch { return null; }
 });
+const botId = computed(()=> props.item?.bot_id || null);
+const latestJobIdForBot = computed(()=> {
+  const items = store.items || [];
+  const ids: Array<{id:string, ts:number}> = [];
+  for (const it of items) {
+    if (botId.value && it.bot_id && it.bot_id !== botId.value) continue;
+    const name = String(it?.payload?.tool_name || it?.tool_name || '').toLowerCase();
+    if (!/craftscript_(trace|step)/.test(name)) continue;
+    try {
+      const raw = it?.payload?.output;
+      const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (data?.job_id) ids.push({ id: data.job_id, ts: it.ts || 0 });
+    } catch {}
+  }
+  if (!ids.length) return null;
+  ids.sort((a,b)=> (b.ts||0)-(a.ts||0));
+  return ids[0].id;
+});
+const activeJobId = computed(()=> jobIdFromCard.value || latestJobIdForBot.value);
 
 // Extract script from various possible locations
 const script = computed(() => {
   const data = payload.value;
-  if (typeof data?.input?.script === 'string') return data.input.script;
-  if (typeof data?.params_summary?.input?.script === 'string') return data.params_summary.input.script;
-  if (typeof data?.output?.script === 'string') return data.output.script;
+  if (typeof data?.input?.script === 'string' && data.input.script.trim()) return data.input.script;
+  if (typeof data?.params_summary?.script === 'string' && data.params_summary.script.trim()) return data.params_summary.script;
+  if (typeof data?.params_summary?.input?.script === 'string' && data.params_summary.input.script.trim()) return data.params_summary.input.script;
+  if (typeof data?.output?.script === 'string' && data.output.script.trim()) return data.output.script;
   return '';
 });
 
-const lines = computed(() => script.value.split(/\r?\n/));
-const lineCount = computed(() => lines.value.length);
+const lines = computed(() => script.value ? script.value.split(/\r?\n/) : []);
+const lineCount = computed(() => lines.value.filter(l => l.length > 0).length);
 
 // Generate highlighted HTML
 const highlightedCode = computed(() => {
   try {
-    const full = script.value;
+    const full = script.value || '';
     console.log('[ToolCraftScript] Highlighting code, length:', full.length);
     const result = hljs.highlight(full, { language: 'javascript' });
     console.log('[ToolCraftScript] Highlight result:', result.value.substring(0, 100));
@@ -85,8 +105,15 @@ async function runAgain(){
   if (!script.value.trim()) return;
   running.value = true;
   try {
-    // Prefer the event's bot_id if present; fallback to active bot
-    const botName = props.item?.bot_id || store?.activeBot;
+    // Resolve bot name from event's bot_id when available, else use active bot name
+    let botName: any = store?.activeBot;
+    const bid = props.item?.bot_id;
+    try {
+      if (bid && Array.isArray(store?.bots)) {
+        const b = store.bots.find((x:any)=> x.id === bid);
+        if (b?.name) botName = b.name;
+      }
+    } catch {}
     if (!botName) throw new Error('no_bot_selected');
     const res = await fetch(`/api/bots/${encodeURIComponent(botName)}/craftscript`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ script: script.value })
@@ -106,7 +133,7 @@ async function runAgain(){
 
 // Consolidated logs under the CraftScript card
 const logs = computed(() => {
-  const id = jobId.value; if (!id) return [] as any[];
+  const id = activeJobId.value; if (!id) return [] as any[];
   const items = store.items || [];
   const out: any[] = [];
   for (const it of items) {

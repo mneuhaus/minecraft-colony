@@ -103,9 +103,9 @@ function buildHistoryFromDatabase(botId: number, limit: number, beforeTs: number
           bot_id: botId,
           ts,
           payload: {
-            tool_name: data?.name || 'tool',
+            tool_name: data?.name || (activity.description || 'tool'),
             params_summary: data || {},
-            output: data?.output,
+            output: (data && (data.output !== undefined)) ? data.output : JSON.stringify(data || {}),
             input: data?.input,
             duration_ms: data?.duration_ms,
             ok: true
@@ -588,9 +588,9 @@ export function startDashboardServer(botManager: BotManager, port: number = 4242
         bot_id: data.botId,
         ts,
         payload: {
-          tool_name: d?.tool_name || d?.name || 'tool',
+          tool_name: d?.tool_name || d?.name || (data.description || 'tool'),
           params_summary: d?.params_summary || d?.input || {},
-          output: d?.output,
+          output: (d && (d.output !== undefined)) ? d.output : JSON.stringify(d || {}),
           input: d?.input,
           duration_ms: d?.duration_ms,
           ok: !d?.error

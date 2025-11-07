@@ -33,6 +33,8 @@ export class ClaudeAgentSDK {
   private activityWriter: ActivityWriter;
   private memoryStore: SqlMemoryStore;
   public getActivityWriter(){ return this.activityWriter; }
+  public getMemoryStore(){ return this.memoryStore; }
+  public getSessionId(){ return this.currentSessionId; }
 
   constructor(
     private config: Config,
@@ -132,7 +134,7 @@ export class ClaudeAgentSDK {
         const script = String(body?.script || '').trim();
         if (!script) return c.json({ error: 'script_required' }, 400);
         const { createCraftscriptJob, getCraftscriptStatus } = await import('./craftscriptJobs.js');
-        const id = createCraftscriptJob(this.minecraftBot, script, this.activityWriter, this.botName);
+        const id = createCraftscriptJob(this.minecraftBot, script, this.activityWriter, this.botName, this.memoryStore, () => this.currentSessionId);
         // Log to timeline as a tool-like event for observability
         try {
           const details = { name: 'craftscript_start', tool_name: 'craftscript_start', input: { script }, params_summary: { lines: script.split(/\r?\n/).length }, output: JSON.stringify({ job_id: id }), duration_ms: 0 };

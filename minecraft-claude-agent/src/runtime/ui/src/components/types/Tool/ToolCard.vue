@@ -43,9 +43,9 @@ const key = computed(()=> {
   const n = toolName.value.toLowerCase();
   if (n === 'todowrite') return 'todo';
   // Match both prefixed (mcp__minecraft__*) and unprefixed tool names
-  if (/craftscript_step/.test(n)) return 'craftscript_step';
-  if (/craftscript_trace/.test(n)) return 'craftscript_trace';
-  if (/craftscript/.test(n)) return 'craftscript';
+  if (/^craftscript_step$/.test(n)) return 'craftscript_step';
+  if (/^craftscript_trace$/.test(n)) return 'craftscript_trace';
+  if (/^craftscript_start$/.test(n)) return 'craftscript';
   if (/get_vox$/.test(n)) return 'vox';
   if (/get_topography$/.test(n)) return 'topography';
   if (/look_at_map/.test(n)) return 'look_at_map';

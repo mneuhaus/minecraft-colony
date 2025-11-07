@@ -16,6 +16,21 @@ import path from 'path';
 
 const DASHBOARD_PORT = Number(process.env.DASHBOARD_PORT || 4242);
 
+// Global safety net: keep the colony alive on known non-fatal Mineflayer plugin errors
+process.on('uncaughtException', (err: any) => {
+  const msg = String(err?.message || err);
+  const stack = String(err?.stack || '');
+  const isMineflayerDiggingBug = /mineflayer\/lib\/plugins\/digging\.js/.test(stack) && /removeAllListeners/.test(msg);
+  if (isMineflayerDiggingBug) {
+    console.warn('[Colony] Suppressed Mineflayer digging plugin crash on death:', msg);
+    return; // swallow and keep process alive
+  }
+  console.error('[Colony] Uncaught exception:', err);
+});
+process.on('unhandledRejection', (reason: any) => {
+  console.error('[Colony] Unhandled rejection:', reason);
+});
+
 async function main() {
   console.log('=== Minecraft Colony Runtime (Unified Architecture) ===');
 

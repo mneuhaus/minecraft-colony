@@ -2,6 +2,7 @@ import { MinecraftBot } from '../bot/MinecraftBot.js';
 import { CraftscriptExecutor } from '../craftscript/executor.js';
 import { parse as parseCraft } from '../craftscript/parser.js';
 import { ActivityWriter } from '../utils/activityWriter.js';
+import { SqlMemoryStore } from '../utils/sqlMemoryStore.js';
 
 type JobState = 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
 
@@ -13,6 +14,8 @@ interface Job {
   endedAt?: number;
   lastStep?: any;
   error?: string;
+  memoryStore?: SqlMemoryStore | null;
+  getSessionId?: () => string | null;
 }
 
 const JOBS = new Map<string, Job>();
@@ -21,9 +24,9 @@ function uid(): string {
   return 'cs_' + Math.random().toString(36).slice(2, 10);
 }
 
-export function createCraftscriptJob(minecraftBot: MinecraftBot, script: string, activityWriter?: ActivityWriter, botName?: string): string {
+export function createCraftscriptJob(minecraftBot: MinecraftBot, script: string, activityWriter?: ActivityWriter, botName?: string, memoryStore?: SqlMemoryStore | null, getSessionId?: () => string | null): string {
   const id = uid();
-  const job: Job = { id, state: 'queued', script };
+  const job: Job = { id, state: 'queued', script, memoryStore: memoryStore || null, getSessionId };
   JOBS.set(id, job);
   runJob(minecraftBot, job, activityWriter, botName).catch(() => {});
   return id;
@@ -69,6 +72,13 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
             role: 'tool',
             speaker: botName || minecraftBot.getBot().username || 'bot'
           });
+          // Persist in memory store for dashboard broadcasting via DB
+          try {
+            if (job.memoryStore) {
+              const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
+              if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_step', { job_id: job.id, step: r });
+            }
+          } catch {}
         } catch {}
       },
       onTrace: (t) => {
@@ -88,6 +98,12 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
             role: 'tool',
             speaker: botName || minecraftBot.getBot().username || 'bot'
           });
+          try {
+            if (job.memoryStore) {
+              const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
+              if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_trace', { job_id: job.id, trace: t });
+            }
+          } catch {}
         } catch {}
       }
     });

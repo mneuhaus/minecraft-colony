@@ -59,6 +59,19 @@ export class MinecraftBot extends EventEmitter {
       version: false as any, // Auto-detect server version
     });
 
+    // Guard against a Mineflayer edge-case where removeAllListeners can throw
+    // in certain plugin callbacks (observed in digging.js on death). Keep the
+    // process stable by binding the method and swallowing bad invocations.
+    try {
+      const bound = (this.bot as any).removeAllListeners?.bind(this.bot);
+      if (bound) {
+        (this.bot as any).removeAllListeners = (...args: any[]) => {
+          try { return bound(...args); }
+          catch (e: any) { logger.warn('removeAllListeners guard', { error: e?.message || String(e) }); return this.bot; }
+        };
+      }
+    } catch {}
+
     // Ensure pathfinder plugin is loaded
     try {
       (this.bot as any).loadPlugin(pathfinder as any);
