@@ -60,11 +60,24 @@ Selectors are always **relative to current heading**.
 |-------|---------|
 | **command** | `dig(f1+u2);` |
 | **assert** | `assert(can_stand(f1), "no floor");` |
-| **repeat** | `repeat(6) { dig(f1+u2); move(f1^); }` |
+| **repeat (count)** | `repeat(6) { dig(f1+u2); move(f1^); }` |
+| **repeat (var: limit)** | `repeat(i: 5) { place("dirt", 100+i, 64, 80); }` |
+| **repeat (var: range)** | `repeat(x: 0..10:2) { /* even x */ }` |
+| **let** | `let ox = 113;` |
+| **assign** | `ox = ox + 6;` |
 | **while** | `while (!is_air(f1)) { dig(f1); }` |
 | **if/else** | `if (safe_step_up(f1)) { move(f1^); } else { dig(f1); }` |
 | **block** | `{ ... }` |
 | **empty** | `;` |
+
+### Variables & arithmetic
+- `let name = expr;` declares a variable (block‑scoped).
+- `name = expr;` assigns a new value.
+- Arithmetic supported: `+ - * /` with normal precedence and parentheses.
+- Repeat variants:
+  - `repeat(N) { ... }` legacy count
+  - `repeat(i: N) { ... }` i ⇒ 0..N‑1
+  - `repeat(i: A..B[:S]) { ... }` i from A to B inclusive with optional step S
 
 ---
 
@@ -293,6 +306,18 @@ repeat(ix: 0..4) {
     }
   }
 }
+```
+
+### E. Build up a 6‑block radio tower (range loop)
+
+```c
+// Start near the target, then build up 6 blocks
+goto(140, 64, 92, tol:1);
+repeat(h: 1..6) {
+  build_up(); // jumps and places beneath using reliable move-listener logic
+}
+// Mark the top
+if (has_item("minecraft:torch")) { place("minecraft:torch", 140, 64+6, 92, face: up); }
 ```
 
 ---

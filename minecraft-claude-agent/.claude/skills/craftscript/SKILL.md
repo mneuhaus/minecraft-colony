@@ -133,6 +133,15 @@ repeat(10) {
 }
 ```
 
+### Build Up (range loop and top marker)
+
+```
+// Build 6 blocks up at a target and place a torch on top
+goto(140, 64, 92, tol:1);
+repeat(h: 1..6) { build_up(); }
+if (has_item("minecraft:torch")) { place("minecraft:torch", 140, 64+6, 92, face: up); }
+```
+
 ### Direct Coordinates vs Selectors
 
 ```
@@ -166,6 +175,20 @@ place("oak_planks", 101, 64, 52);
 place("oak_planks", 102, 64, 52);
 ```
 
+### Plant in a 6‑block spacing grid (only on dirt)
+
+```
+let ox = 113; let oy = 64; let oz = 114;
+repeat(ix: 0..4) {
+  repeat(iz: 0..3) {
+    let px = ox + ix * 6;
+    let pz = oz + iz * 6;
+    if (block_is(px, oy - 1, pz, "dirt")) {
+      plant("oak_sapling", px, oy, pz);
+    }
+  }
+}
+```
 ### Plant in a 6‑block spacing grid (only on dirt)
 
 ```
