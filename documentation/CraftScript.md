@@ -109,6 +109,8 @@ build_up("dirt");                  // jump and place specific block beneath
 pickup_blocks();                   // collect dropped items within 8 blocks
 pickup_blocks(16);                 // collect dropped items within 16 blocks
 scan(r:2);                         // refresh local voxel snapshot
+block_info(f1);                    // (new) log compact info for block at selector
+block_info(113, 64, 114);          // (new) log compact info for block at world coords
 ```
 
 ### navigation (mineflayer-pathfinder)
@@ -146,6 +148,17 @@ let cx = 113; let cy = 64; let cz = 114;
 deposit(cx, cy, cz, "oak_log", 16);
 withdraw(cx, cy, cz, "oak_sapling", 8);
 ```
+
+### debugging & logging
+
+```c
+log("start planting at", px, pz);  // (new) append a log line to the CraftScript Logs panel
+block_info(f1);                     // (new) logs block summary (id/display/hardness/diggable) at target
+```
+
+Notes:
+- Both `log(...)` and `block_info(...)` produce `craftscript_trace` entries that appear in the CraftScript card’s Show Logs pane. They also return `ok` steps with notes.
+- Use these to make test scripts self-describing and to capture ground truth inline without separate tools.
 
 ### inventory / utilities
 
@@ -208,15 +221,33 @@ Violation ⇒ error `invariant_violation`.
 
 Executor aborts on first failure. On slow servers, transient timeouts are retried with backoff for placing/planting (`place_timeout`) and container opens (`container_timeout`).
 
+Every failure includes precise metadata:
+
+```json
+{
+  "ok": false,
+  "error": "no_target",
+  "message": "no block to dig",
+  "op": "break",
+  "op_index": 2,
+  "loc": { "line": 4, "column": 1 },
+  "notes": { "pos": [102,64,108] },
+  "ts": 1762542317046
+}
+```
+
 ## 7.1) Debugging & Logs
 
-- Each CraftScript card has a “Show Logs” toggle that consolidates logs for the job:
-  - `repeat_init`, `repeat_iter`, `repeat_end` (loop values)
-  - `if` → true/false
-  - `var_set` (let/assign)
-  - Predicate evaluations (`block_is`)
-  - `ok`/`fail` with notes (occupied, `place_timeout`, `container_timeout`)
-- A status card (`craftscript_status`) is emitted at the end with job id, state, duration, and the submitted script.
+- CraftScript card bundles everything for the job; the main timeline hides internal noise.
+  - Use “Show Logs” on the CraftScript card to see:
+    - `repeat_init`, `repeat_iter`, `repeat_end` (loop values)
+    - `if` → true/false
+    - `var_set` (let/assign)
+    - `predicate` evaluations (e.g., `block_is`)
+    - `log` lines (from `log(...)`), `block_info` summaries
+    - `ok`/`fail` with notes (e.g., `place_timeout`, `container_timeout` with context)
+- Status (running/completed/failed/canceled) is displayed on the originating CraftScript card; separate status cards are suppressed in the feed.
+- Programmatic access: use the MCP tool `craftscript_logs { job_id }` to fetch a consolidated JSON with `status`, `error`, and full ordered log list (status + steps + traces) for a job.
 
 ---
 
@@ -257,6 +288,75 @@ macro build_stairs(int steps) {
 * No concurrency; planner handles parallel jobs.
 
 ---
+
+## 10) Examples — Logging & Inspection
+
+### A) Log progress in a planting grid
+
+```c
+// Plant oak saplings on a 6‑block grid with logging
+let ox = 113; let oy = 64; let oz = 114;
+
+repeat(ix: 0..4) {
+  repeat(iz: 0..3) {
+    let px = ox + ix * 6; let pz = oz + iz * 6;
+    log("check spot", px, oy, pz);
+
+    // Inspect ground; log what’s underfoot
+    block_info(px, oy - 1, pz);
+
+    if (block_is(px, oy - 1, pz, "dirt") || block_is(px, oy - 1, pz, "grass_block")) {
+      log("planting at", px, pz);
+      goto(px, oy, pz, tol:1);
+      plant("oak_sapling", px, oy, pz);
+    } else {
+      log("skip — not dirt/grass", px, pz);
+    }
+  }
+}
+```
+
+What you’ll see in Logs:
+- `log` lines for each cell (“check spot …”, “planting …”, “skip …”)
+- `block_info` summaries (e.g. `grass_block @ 119,63,120`)
+- `ok`/`fail` steps if actions succeed/fail
+
+### B) Tree pillar with stepwise logs
+
+```c
+// Approach, climb, break top‑down with verbose logs
+let tx=102; let ty=64; let tz=108;
+
+log("goto base", tx, ty, tz);
+goto(tx, ty, tz, tol:1);
+
+// Confirm there’s wood nearby (logs each level)
+repeat(py: ty..(ty+10)) {
+  if (block_is(tx, py, tz, "oak_log")) {
+    log("found log at y=", py);
+    break(tx, py, tz);
+  }
+}
+
+// Build up twice and log
+log("build_up #1"); build_up();
+log("build_up #2"); build_up();
+
+// Inspect the block above before breaking
+block_info(tx, ty+2, tz);
+```
+
+### C) Minimal logging smoke‑test
+
+```c
+log("hello", 1, 2, 3);
+block_info(f1);
+```
+
+Use cases:
+- Write self‑describing test scripts.
+- Capture ground truth inline without separate tools.
+- Pair with `craftscript_logs { job_id }` (MCP) to fetch consolidated JSON for assertions.
 
 ## 10) Integration mapping (mineflayer / MCP)
 
