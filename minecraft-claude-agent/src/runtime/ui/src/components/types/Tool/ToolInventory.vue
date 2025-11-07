@@ -16,6 +16,8 @@
         :class="{ filled: getSlotItem(slot - 1) }"
       >
         <template v-if="getSlotItem(slot - 1)">
+          <img :src="getItemTexture(getSlotItem(slot - 1).name)" :alt="getSlotItem(slot - 1).name" class="item-icon"
+               @error="(e)=>((e.target as HTMLImageElement).style.display='none')" />
           <div class="item-count">{{ getSlotItem(slot - 1).count }}</div>
           <div class="item-tooltip">{{ formatItemName(getSlotItem(slot - 1).name) }}</div>
         </template>
@@ -152,7 +154,8 @@ function formatItemName(name: string): string {
 
 .inventory-slot:hover { border-color:#777; box-shadow: inset 0 0 2px rgba(255,255,255,0.1); }
 
-.item-count { font-size:12px; color:#EAEAEA; font-family:'Monaco','Menlo','Courier New',monospace; font-weight:700; text-shadow:0 0 3px rgba(0,0,0,0.9); }
+.item-icon { width:80%; height:80%; image-rendering: pixelated; object-fit:contain; }
+.item-count { position:absolute; bottom:2px; right:3px; font-size:11px; color:#EAEAEA; font-family:'Monaco','Menlo','Courier New',monospace; font-weight:700; text-shadow:0 0 3px rgba(0,0,0,0.9); }
 
 .item-tooltip {
   display: none;

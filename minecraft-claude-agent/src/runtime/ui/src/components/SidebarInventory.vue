@@ -15,7 +15,11 @@
         :class="{ 'inv-slot--filled': !!slotItem(slot-1) }"
         :title="slotItem(slot-1)?.name || 'empty'"
       >
-        <span v-if="slotItem(slot-1)" class="inv-count">{{ slotItem(slot-1)!.count }}</span>
+        <template v-if="slotItem(slot-1)">
+          <img :src="getItemTexture(slotItem(slot-1)!.name)" class="inv-icon" :alt="slotItem(slot-1)!.name"
+               @error="(e)=>((e.target as HTMLImageElement).style.display='none')" />
+          <span class="inv-count">{{ slotItem(slot-1)!.count }}</span>
+        </template>
       </div>
     </div>
   </div>
@@ -35,13 +39,18 @@ async function load(){
     const res = await fetch(`/api/bots/${encodeURIComponent(activeBot.value)}/inventory`);
     if (!res.ok) throw new Error('fetch_failed');
     const data = await res.json();
-    inv.value = data?.ok ? data : null;
+  inv.value = data?.ok ? data : null;
   } catch {}
 }
 
 function slotItem(idx: number){
   if (!inv.value) return null;
   return inv.value.items[idx] || null;
+}
+
+function getItemTexture(name: string){
+  const clean = name.replace(/^minecraft:/,'');
+  return `/api/minecraft/item/${encodeURIComponent(clean)}/texture`;
 }
 
 onMounted(()=> {
@@ -64,6 +73,6 @@ watch(activeBot, ()=> load());
 .inv-slot { aspect-ratio:1; background:#2b2b2b; border:1px solid #3a3a3a; border-radius:3px; display:flex; align-items:center; justify-content:center; color:#EAEAEA; font-weight:700; font-family:'Monaco','Courier New',monospace; font-size:12px; }
 .inv-slot--filled { background:#3a3a3a; border-color:#4a4a4a; }
 .inv-slot:hover { border-color:#777; box-shadow: inset 0 0 2px rgba(255,255,255,0.1); }
+.inv-icon { width:80%; height:80%; image-rendering: pixelated; object-fit: contain; }
 .inv-count { text-shadow: 0 0 3px rgba(0,0,0,0.9); }
 </style>
-

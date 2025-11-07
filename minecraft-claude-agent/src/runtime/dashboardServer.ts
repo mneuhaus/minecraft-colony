@@ -420,31 +420,67 @@ export function createDashboardApp(botManager: BotManager) {
     }
   });
 
-  // Item texture endpoint - serves actual PNG files
+  // Item texture endpoint - serves actual PNG files (with base64 fallback from minecraft-assets)
   app.get('/api/minecraft/item/:name/texture', (c) => {
     try {
       const itemName = c.req.param('name');
       const cleanName = itemName.replace(/^minecraft:/, '');
 
-      // Try to find the item texture file
-      const assetsPath = path.join(__dirname, '..', '..', 'node_modules', 'minecraft-assets', 'minecraft-assets', 'data', MINECRAFT_VERSION);
-      const itemPath = path.join(assetsPath, 'items', `${cleanName}.png`);
+      // Prefer the minecraft-assets API when available
+      try {
+        const key = (assets as any).getTexture?.(cleanName) || null;
+        if (key) {
+          // 1) Try physical file under assets.directory
+          const filePath = path.resolve((assets as any).directory || '', `${key}.png`);
+          if (filePath && fs.existsSync(filePath)) {
+            const buf = fs.readFileSync(filePath);
+            c.header('Content-Type', 'image/png');
+            c.header('Cache-Control', 'public, max-age=86400');
+            return c.body(buf);
+          }
+          // 2) Fallback to base64 embedded content
+          const base = path.basename(String(key));
+          const dataUrl = (assets as any).textureContent?.[base]?.texture || (assets as any).textureContent?.[cleanName]?.texture;
+          if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
+            const b64 = dataUrl.split(',')[1];
+            const buf = Buffer.from(b64, 'base64');
+            c.header('Content-Type', 'image/png');
+            c.header('Cache-Control', 'public, max-age=86400');
+            return c.body(buf);
+          }
+        }
+      } catch {}
 
-      if (fs.existsSync(itemPath)) {
-        const imageBuffer = fs.readFileSync(itemPath);
-        c.header('Content-Type', 'image/png');
-        c.header('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
-        return c.body(imageBuffer);
-      }
+      // Legacy static path fallback (older minecraft-assets layout)
+      try {
+        const assetsPath = path.join(__dirname, '..', '..', 'node_modules', 'minecraft-assets', 'minecraft-assets', 'data', MINECRAFT_VERSION);
+        const itemPath = path.join(assetsPath, 'items', `${cleanName}.png`);
+        if (fs.existsSync(itemPath)) {
+          const imageBuffer = fs.readFileSync(itemPath);
+          c.header('Content-Type', 'image/png');
+          c.header('Cache-Control', 'public, max-age=86400');
+          return c.body(imageBuffer);
+        }
+        const blockPath = path.join(assetsPath, 'blocks', `${cleanName}.png`);
+        if (fs.existsSync(blockPath)) {
+          const imageBuffer = fs.readFileSync(blockPath);
+          c.header('Content-Type', 'image/png');
+          c.header('Cache-Control', 'public, max-age=86400');
+          return c.body(imageBuffer);
+        }
+      } catch {}
 
-      // Fall back to checking blocks if item not found
-      const blockPath = path.join(assetsPath, 'blocks', `${cleanName}.png`);
-      if (fs.existsSync(blockPath)) {
-        const imageBuffer = fs.readFileSync(blockPath);
-        c.header('Content-Type', 'image/png');
-        c.header('Cache-Control', 'public, max-age=86400');
-        return c.body(imageBuffer);
-      }
+      // Final base64 fallback by name
+      try {
+        const dataUrl = (assets as any).getImageContent?.(cleanName);
+        if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
+          const b64 = dataUrl.split(',')[1];
+          const buf = Buffer.from(b64, 'base64');
+          c.header('Content-Type', 'image/png');
+          c.header('Cache-Control', 'public, max-age=86400');
+          return c.body(buf);
+        }
+      } catch {}
 
       return c.text('Item texture not found', 404);
     } catch (error: any) {
