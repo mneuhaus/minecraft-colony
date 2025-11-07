@@ -7,9 +7,25 @@
       </div>
       <div class="tl-actions">
         <button class="tl-btn" :disabled="running" @click="runAgain">{{ running ? 'Running…' : 'Run Again' }}</button>
+        <button class="tl-btn" @click="showLogs = !showLogs">{{ showLogs ? 'Hide Logs' : 'Show Logs' }}</button>
       </div>
     </div>
     <pre class="tool-output"><code class="language-javascript hljs" v-html="highlightedCode"></code></pre>
+
+    <div v-if="showLogs" class="cs-logs">
+      <div class="cs-logs__hdr">
+        <span class="cs-logs__title">Logs</span>
+        <span class="cs-logs__meta" v-if="jobId">job {{ jobId }}</span>
+      </div>
+      <div v-if="logs.length === 0" class="cs-logs__empty">No logs yet for this script.</div>
+      <div v-else class="cs-logs__list">
+        <div v-for="log in logs" :key="log.id" class="cs-log">
+          <span class="cs-log__time">{{ fmtTs(log.ts) }}</span>
+          <span class="cs-log__kind" :data-kind="log.kind">{{ log.kind }}</span>
+          <span class="cs-log__msg">{{ log.msg }}</span>
+        </div>
+      </div>
+    </div>
   </div>
   
 </template>
@@ -26,8 +42,18 @@ hljs.registerLanguage('javascript', javascript);
 const props = defineProps<{ item: any }>();
 const store = inject<any>('store');
 const running = ref(false);
+const showLogs = ref(false);
 
 const payload = computed(() => props.item.payload || {});
+
+// Find job id from tool output (craftscript_start returns { job_id })
+const jobId = computed(() => {
+  try {
+    const out = payload.value?.output;
+    const o = typeof out === 'string' ? JSON.parse(out) : out;
+    return o?.job_id || null;
+  } catch { return null; }
+});
 
 // Extract script from various possible locations
 const script = computed(() => {
@@ -77,6 +103,52 @@ async function runAgain(){
     running.value = false;
   }
 }
+
+// Consolidated logs under the CraftScript card
+const logs = computed(() => {
+  const id = jobId.value; if (!id) return [] as any[];
+  const items = store.items || [];
+  const out: any[] = [];
+  for (const it of items) {
+    const name = String(it?.payload?.tool_name || it?.tool_name || '').toLowerCase();
+    if (!/craftscript_(trace|step)/.test(name)) continue;
+    let data: any = null;
+    try { const raw = it?.payload?.output; data = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch {}
+    if (!data || data.job_id !== id) continue;
+    if (/trace/.test(name)) {
+      const kind = data.kind || 'trace';
+      const msg = summarizeTrace(data);
+      out.push({ id: it.id || `${name}-${it.ts}`, ts: it.ts || Date.now(), kind, msg });
+    } else {
+      const msg = summarizeStep(data);
+      out.push({ id: it.id || `${name}-${it.ts}`, ts: it.ts || Date.now(), kind: data.ok ? 'ok' : 'fail', msg });
+    }
+  }
+  out.sort((a,b)=> (a.ts||0)-(b.ts||0));
+  return out;
+});
+
+function summarizeTrace(t:any): string {
+  switch (t.kind) {
+    case 'if': return `if → ${t.value ? 'true' : 'false'}`;
+    case 'repeat_init': return `repeat init ${t.var ? `${t.var}=`:''}${t.count ?? `${t.start}..${t.end}${t.step?':'+t.step:''}`}`;
+    case 'repeat_iter': return `repeat iter ${t.var??'i'}=${t.value}`;
+    case 'repeat_end': return `repeat end`;
+    case 'var_set': return `${t.name} = ${t.value}`;
+    case 'predicate': return `predicate ${t.name} → ${t.result}`;
+    case 'ok': return `ok ${t.op}`;
+    case 'fail': return `fail ${t.error}`;
+  }
+  return '';
+}
+function summarizeStep(s:any): string {
+  if (s.ok) return `✓ ${s.op}${s.notes? ' '+JSON.stringify(s.notes):''}`;
+  return `✗ ${s.error}${s.message? ' — '+s.message:''}`;
+}
+function fmtTs(ts:number){
+  const d = new Date(ts||Date.now());
+  return d.toLocaleTimeString();
+}
 </script>
 
 <style scoped>
@@ -89,4 +161,16 @@ async function runAgain(){
   max-height: none;
   overflow: auto;
 }
+.cs-logs { margin-top:10px; padding:10px; background:#151515; border:1px solid #2E2E2E; border-radius:8px; }
+.cs-logs__hdr{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+.cs-logs__title{ color:#FFB86C; font-weight:600; font-size:12px; }
+.cs-logs__meta{ color:#7A7A7A; font-size:10px; }
+.cs-logs__empty{ color:#9CA3AF; font-size:12px; font-style: italic; }
+.cs-logs__list{ display:flex; flex-direction:column; gap:4px; }
+.cs-log{ display:grid; grid-template-columns: 60px 90px 1fr; gap:8px; align-items:baseline; font-size:12px; }
+.cs-log__time{ color:#7A7A7A; font-size:10px; }
+.cs-log__kind{ color:#9CA3AF; text-transform:uppercase; font-size:10px; letter-spacing:0.04em; }
+.cs-log__kind[data-kind="fail"]{ color:#F87171; }
+.cs-log__kind[data-kind="ok"]{ color:#34D399; }
+.cs-log__msg{ color:#EAEAEA; }
 </style>

@@ -63,7 +63,7 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
               tool_name: 'craftscript_step',
               input: {},
               params_summary: {},
-              output: JSON.stringify(r),
+              output: JSON.stringify({ ...r, job_id: job.id }),
               duration_ms: (r as any).ms ?? 0
             },
             role: 'tool',
@@ -82,7 +82,7 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
               tool_name: 'craftscript_trace',
               input: {},
               params_summary: {},
-              output: JSON.stringify(t),
+              output: JSON.stringify({ ...t, job_id: job.id }),
               duration_ms: 0
             },
             role: 'tool',
