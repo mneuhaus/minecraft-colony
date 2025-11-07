@@ -164,5 +164,6 @@ export interface ExecutorOptions {
   opLimit?: number;
   defaultScanRadius?: number;
   autoScanBeforeOps?: boolean;
+  // Optional per-step callback for streaming results to the dashboard
+  onStep?: (result: CraftscriptResult) => void;
 }
-

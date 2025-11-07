@@ -29,7 +29,7 @@ export class CraftscriptExecutor {
   private bot: Bot;
   private ops = 0;
   private macros = new Map<string, Block>();
-  private options: Required<ExecutorOptions>;
+  private options: Required<Omit<ExecutorOptions, 'onStep'>> & { onStep?: (result: CraftscriptResult) => void };
   private openContainer: any = null; // Currently open chest/furnace/etc
 
   constructor(bot: Bot, options?: ExecutorOptions) {
@@ -38,6 +38,7 @@ export class CraftscriptExecutor {
       opLimit: options?.opLimit ?? 10000,
       defaultScanRadius: options?.defaultScanRadius ?? 2,
       autoScanBeforeOps: options?.autoScanBeforeOps ?? true,
+      ...(options?.onStep ? { onStep: options.onStep } : {}),
     };
   }
 
@@ -936,10 +937,12 @@ export class CraftscriptExecutor {
   }
 
   private ok(op: string, t0: number, notes?: any): CraftscriptResult {
-    return { ok: true, op, ms: Date.now() - t0, notes } as any;
+    const res = { ok: true, op, ms: Date.now() - t0, notes } as CraftscriptResult;
+    try { this.options.onStep?.(res); } catch {}
+    return res;
   }
   private fail(error: string, message: string, cmd: CommandStmt, details?: any): CraftscriptResult {
-    return {
+    const res = {
       ok: false,
       error,
       message,
@@ -947,7 +950,9 @@ export class CraftscriptExecutor {
       op_index: this.ops,
       ts: Date.now(),
       ...(details ? { notes: details } : {}),
-    } as any;
+    } as CraftscriptResult;
+    try { this.options.onStep?.(res); } catch {}
+    return res;
   }
   private bumpOps() {
     this.ops++;

@@ -51,7 +51,27 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
     const ast = parseCraft(job.script);
     console.log('[CraftScript] Parsed successfully, executing...');
 
-    const exec = new CraftscriptExecutor(bot);
+    const exec = new CraftscriptExecutor(bot, {
+      onStep: (r) => {
+        try {
+          if (!activityWriter) return;
+          activityWriter.addActivity({
+            type: 'tool',
+            message: 'Tool: craftscript_step',
+            details: {
+              name: 'craftscript_step',
+              tool_name: 'craftscript_step',
+              input: {},
+              params_summary: {},
+              output: JSON.stringify(r),
+              duration_ms: (r as any).ms ?? 0
+            },
+            role: 'tool',
+            speaker: botName || minecraftBot.getBot().username || 'bot'
+          });
+        } catch {}
+      }
+    });
     const result = await exec.run(ast as any);
 
     console.log('[CraftScript] Execution completed:', {
@@ -60,20 +80,7 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
       failed: result.results.filter(r => !r.ok).length
     });
 
-    // Emit steps once finished (simple implementation). For true streaming, executor would need a callback.
-    try {
-      if (activityWriter) {
-        for (const r of result.results) {
-          activityWriter.addActivity({
-            type: 'tool',
-            message: 'Tool: craftscript_step',
-            details: { name: 'craftscript_step', tool_name: 'craftscript_step', input: {}, params_summary: {}, output: JSON.stringify(r), duration_ms: ((r as any).ms) ?? 0 },
-            role: 'tool',
-            speaker: botName || minecraftBot.getBot().username || 'bot'
-          });
-        }
-      }
-    } catch {}
+    // Steps were already streamed via onStep callback above.
 
     for (const r of result.results) {
       job.lastStep = r;
