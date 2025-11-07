@@ -131,6 +131,22 @@ export function createUnifiedMcpServer(
         const result = await get_inventory(bot);
         return { content: [{ type: 'text', text: result }] };
       }, context),
+      // Storage interaction tools
+      loggingTool('open_chest', 'Open a storage container (chest/barrel/shulker) at world coordinates and list its contents.', { x: z.number(), y: z.number(), z: z.number() }, async ({ x, y, z }) => {
+        const { open_chest } = await import('../tools/inventory/open_chest.js');
+        const out = await open_chest(bot, { x, y, z });
+        return { content: [{ type: 'text', text: out }] };
+      }, context),
+      loggingTool('deposit_items', 'Deposit items from inventory into a chest at world coordinates.', { x: z.number(), y: z.number(), z: z.number(), item_name: z.string(), count: z.number().optional() }, async ({ x, y, z, item_name, count }) => {
+        const { deposit_items } = await import('../tools/inventory/deposit_items.js');
+        const out = await deposit_items(bot, { x, y, z, item_name, count });
+        return { content: [{ type: 'text', text: out }] };
+      }, context),
+      loggingTool('withdraw_items', 'Withdraw items from a chest at world coordinates into inventory.', { x: z.number(), y: z.number(), z: z.number(), item_name: z.string(), count: z.number().optional() }, async ({ x, y, z, item_name, count }) => {
+        const { withdraw_items } = await import('../tools/inventory/withdraw_items.js');
+        const out = await withdraw_items(bot, { x, y, z, item_name, count });
+        return { content: [{ type: 'text', text: out }] };
+      }, context),
       loggingTool('get_vox', '3D voxel snapshot of the local area around the bot (x/y/z world coordinates). Use for precise short-range understanding; combine with look_at_map for 2D overview.', {
         radius: z.number().optional(),
         include_air: z.boolean().optional(),
