@@ -16,7 +16,7 @@
     "dashboard:dev": "vite --config src/runtime/ui/vite.config.ts",
     "dashboard:build": "vite build --config src/runtime/ui/vite.config.ts",
     "colony": "bun src/runtime/colonyRuntime.ts",
-    "migrate-memories": "bun src/utils/migrateMemories.ts"
+    "migrate-memories": "bun scripts/migrateMemories.ts"
   },
   "keywords": [
     "minecraft",
@@ -55,6 +55,7 @@
     "@types/vec3": "^0.1.4",
     "@types/ws": "^8.5.12",
     "@vitejs/plugin-vue": "^5.1.4",
+    "bun-types": "^1.3.2",
     "playwright": "^1.56.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",

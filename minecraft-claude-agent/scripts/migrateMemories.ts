@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from 'fs';
 import path from 'path';
-import { SqlMemoryStore } from './sqlMemoryStore.js';
+import { SqlMemoryStore } from '../src/utils/sqlMemoryStore.js';
 
 /**
  * Migration script to convert JSON memory files to SQLite databases

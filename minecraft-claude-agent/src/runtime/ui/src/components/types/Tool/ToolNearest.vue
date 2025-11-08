@@ -1,17 +1,20 @@
 <template>
-  <div class="tl-item__body tool-nearest">
-    <div class="tool-header">
-      <span class="tool-name">Nearest</span>
-    </div>
-    <div class="query-row">
-      <span class="query-key">query</span>
-      <span class="query-val">{{ query }}</span>
-    </div>
+  <MessageBlock
+    eyebrow="Spatial"
+    title="Nearest"
+    :tone="rows.length ? 'info' : 'neutral'"
+    padding="md"
+  >
+    <template #meta>
+      <span class="query-chip">query {{ query }}</span>
+      <span class="query-chip" v-if="rows.length">{{ rows.length }} match{{ rows.length === 1 ? '' : 'es' }}</span>
+    </template>
+
     <table v-if="rows.length" class="nearest-table">
       <thead>
         <tr>
           <th>dist</th>
-          <th>reach</th>
+          <th>reachable</th>
           <th>world</th>
         </tr>
       </thead>
@@ -23,12 +26,13 @@
         </tr>
       </tbody>
     </table>
-    <div v-else class="query-val">querytarget</div>
-  </div>
+    <div v-else class="query-val">No matches for query</div>
+  </MessageBlock>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import MessageBlock from '../../MessageBlock.vue';
 const props = defineProps<{ item: any }>();
 const p = computed(()=> props.item.payload?.params_summary ?? props.item.payload?.input ?? {});
 const out = computed(()=> props.item.payload?.output);
@@ -42,58 +46,41 @@ const rows = computed(()=> Array.isArray(out.value) ? out.value.map((m: any, i: 
 </script>
 
 <style scoped>
-.tool-header {
-  font-weight: 600;
-  color: #EAEAEA;
-  margin-bottom: 8px;
-  font-size: 13px;
-}
-.query-row {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  margin-bottom: 8px;
-}
-.query-key {
-  color: #B3B3B3;
-  font-size: 11px;
+.query-chip {
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-subtle);
+  font-size: var(--font-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 .query-val {
-  color: #EAEAEA;
-  font-size: 12px;
+  color: var(--color-text-muted);
+  font-size: var(--font-sm);
   font-family: 'Monaco', 'Courier New', monospace;
 }
 .nearest-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 8px;
-  font-size: 11px;
+  margin-top: var(--spacing-sm);
+  font-size: var(--font-sm);
 }
 .nearest-table th {
   text-align: left;
-  padding: 4px 6px;
-  color: #B3B3B3;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  color: var(--color-text-muted);
   font-weight: 600;
-  border-bottom: 1px solid #2E2E2E;
+  border-bottom: 1px solid var(--color-border-subtle);
+  text-transform: uppercase;
+  font-size: var(--font-xs);
 }
 .nearest-table td {
-  padding: 4px 6px;
-  color: #EAEAEA;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  color: var(--color-text-primary);
 }
-.td-dist {
-  font-family: 'Monaco', 'Courier New', monospace;
-}
-.td-reach {
-  text-align: center;
-}
-.td-sel code {
-  background: rgba(255, 255, 255, 0.05);
-  padding: 2px 4px;
-  border-radius: 3px;
-  font-size: 10px;
-}
+.td-dist,
 .td-world {
   font-family: 'Monaco', 'Courier New', monospace;
-  font-size: 10px;
 }
+.td-reach { text-align: center; }
 </style>

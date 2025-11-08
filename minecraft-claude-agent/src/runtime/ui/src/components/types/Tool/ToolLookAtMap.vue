@@ -1,10 +1,24 @@
 <template>
-  <div class="tl-item__body tool-look-at-map">
-    <div class="tool-header">
-      <span class="tool-name">Look At Map</span>
-      <span class="tool-meta">{{ gridInfo }}</span>
+  <MessageBlock
+    eyebrow="Spatial"
+    title="Look At Map"
+    :tone="tone"
+    padding="lg"
+  >
+    <template #meta>
+      <span class="map-chip" v-if="gridInfo">{{ gridInfo }}</span>
+      <span class="map-chip" v-if="radius">radius {{ radius }}</span>
+      <span class="map-chip" v-if="zoom && zoom > 1">zoom {{ zoom }}x</span>
+    </template>
+    <template #actions>
+      <button class="map-btn" @click="flipVertical = !flipVertical">
+        {{ flipVertical ? 'Flip N/S' : 'Reset Orientation' }}
+      </button>
+    </template>
+
+    <div class="tool-hint">
+      2D top-down map for quick orientation. Each cell summarizes a zoom block; ▲ / • / ▼ show relative height against the bot.
     </div>
-    <div class="tool-hint">2D-Karte (Draufsicht) zur schnellen Orientierung. Jede Zelle entspricht einem Zoom-Feld; ▲ / • / ▼ zeigen die relative Höhe gegenüber den Füßen.</div>
 
     <div class="map-params">
       <div class="param-row" v-if="radius">
@@ -73,11 +87,12 @@
         <span class="stat-val">{{ heightStats.min }} to {{ heightStats.max }}</span>
       </div>
     </div>
-  </div>
+  </MessageBlock>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import MessageBlock from '../../MessageBlock.vue';
 
 const props = defineProps<{ item: any }>();
 
@@ -113,6 +128,7 @@ const grep = computed(() => {
 
 // View options
 const flipVertical = ref(true);
+const tone = computed(() => (matchesOnly.value ? 'info' : 'neutral'));
 
 const uniqueBlocks = computed(() => {
   const blocks = new Set<string>();
@@ -337,251 +353,67 @@ const gridCells = computed(() => {
 </script>
 
 <style scoped>
-.tool-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: 600;
-  color: #EAEAEA;
-  margin-bottom: 8px;
-  font-size: 13px;
-}
-
-.tool-meta {
-  color: #7A7A7A;
-  font-size: 11px;
-  font-weight: 400;
-}
-
 .tool-hint {
-  color: #9A9A9A;
-  font-size: 11px;
-  margin-bottom: 8px;
+  color: var(--color-text-muted);
+  font-size: var(--font-sm);
+  margin-bottom: var(--spacing-sm);
 }
-
+.map-chip {
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-subtle);
+  font-size: var(--font-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.map-btn {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: transparent;
+  color: var(--color-text-primary);
+}
 .map-params {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 8px;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
 }
+.param-row { display: flex; gap: var(--spacing-xs); align-items: baseline; font-size: var(--font-sm); }
+.param-label { color: var(--color-text-muted); text-transform: uppercase; font-size: var(--font-xs); }
+.param-val { color: var(--color-text-primary); font-family: 'Monaco','Courier New',monospace; }
 
-.param-row {
-  display: flex;
-  gap: 6px;
-  align-items: baseline;
-}
-
-.param-label {
-  color: #B3B3B3;
-  font-size: 10px;
-}
-
-.param-val {
-  color: #4A9EFF;
-  font-size: 11px;
-  font-family: 'Monaco', 'Courier New', monospace;
-  font-weight: 600;
-}
-
-.map-summary {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #2E2E2E;
-}
-
-.summary-label {
-  color: #FFB86C;
-  font-size: 11px;
-  font-weight: 600;
-  margin-bottom: 6px;
-}
-
-.blocks-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 6px;
-}
-
-.block-tag {
-  background: rgba(124, 252, 0, 0.1);
-  border: 1px solid rgba(124, 252, 0, 0.3);
-  color: #7CFC00;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 9px;
-  font-family: 'Monaco', 'Courier New', monospace;
-  font-weight: 600;
-}
-
-.map-stats {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #2E2E2E;
-}
-
-.stat-row {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  margin-bottom: 4px;
-}
-
-.stat-label {
-  color: #B3B3B3;
-  font-size: 11px;
-}
-
-.stat-val {
-  color: #EAEAEA;
-  font-size: 11px;
-  font-family: 'Monaco', 'Courier New', monospace;
-}
-
-.map-grid-container {
-  margin: 12px 0;
-  padding: 12px;
-  background: #1a1a1a;
-  border-radius: 4px;
-  border: 1px solid #2E2E2E;
-  overflow-x: auto;
-}
-
-.map-orientation {
-  text-align: center;
-  margin-bottom: 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #2E2E2E;
-}
-
-.orientation-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.orientation-label {
-  color: #FFB86C;
-  font-size: 12px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.orientation-hint {
-  color: #7A7A7A;
-  font-size: 10px;
-}
-
-.flip-btn {
-  background: #2a2a2a;
-  color: #EAEAEA;
-  border: 1px solid #3a3a3a;
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 10px;
-  cursor: pointer;
-}
-
-.flip-btn:hover {
-  border-color: #5a5a5a;
-}
-
+.map-grid-container { border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--spacing-md); background: rgba(0,0,0,0.15); }
+.map-orientation { text-align: center; margin-bottom: var(--spacing-sm); color: var(--color-text-muted); font-size: var(--font-xs); }
 .map-grid {
   display: grid;
   gap: 1px;
-  width: fit-content;
-  margin: 0 auto;
+  margin-bottom: var(--spacing-sm);
 }
-
 .map-cell {
-  aspect-ratio: 1;
-  min-width: 32px;
-  min-height: 32px;
+  position: relative;
+  min-height: 36px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 3px;
-  cursor: help;
-  transition: transform 0.1s, border-color 0.1s, box-shadow 0.1s;
-  position: relative;
-  overflow: hidden;
 }
+.map-cell--bot { border-color: var(--color-accent); }
+.map-cell--match { outline: 1px solid var(--color-accent); }
+.cell-height { font-size: var(--font-xs); color: var(--color-text-muted); }
+.cell-mosaic { width: 100%; height: 100%; display: grid; grid-template-columns: repeat(2, 1fr); }
+.mosaic-tile { width: 100%; height: 100%; }
 
-.map-cell:hover {
-  transform: scale(1.15);
-  border-color: rgba(255, 255, 255, 0.5);
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
-  z-index: 10;
-}
+.map-legend { display: flex; gap: var(--spacing-sm); font-size: var(--font-xs); color: var(--color-text-muted); }
+.legend-symbol { font-weight: 600; color: var(--color-text-primary); }
 
-.map-cell--bot {
-  border: 3px solid #FFD700;
-  box-shadow: 0 0 12px rgba(255, 215, 0, 0.6), inset 0 0 8px rgba(255, 215, 0, 0.2);
-  animation: bot-pulse 2s ease-in-out infinite;
-}
+.map-summary { margin-top: var(--spacing-md); }
+.blocks-list { display: flex; flex-wrap: wrap; gap: var(--spacing-xs); margin-top: var(--spacing-xs); }
+.block-tag { padding: 2px 6px; border-radius: var(--radius-sm); border: 1px solid var(--color-border-subtle); font-size: var(--font-xs); }
 
-.map-cell--match {
-  outline: 2px solid #4A9EFF;
-  box-shadow: 0 0 8px rgba(74, 158, 255, 0.6);
-}
-
-@keyframes bot-pulse {
-  0%, 100% {
-    box-shadow: 0 0 12px rgba(255, 215, 0, 0.6), inset 0 0 8px rgba(255, 215, 0, 0.2);
-  }
-  50% {
-    box-shadow: 0 0 20px rgba(255, 215, 0, 0.9), inset 0 0 12px rgba(255, 215, 0, 0.4);
-  }
-}
-
-.cell-mosaic {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-  gap: 0;
-}
-
-.mosaic-tile {
-  width: 100%;
-  height: 100%;
-}
-
-.cell-height {
-  font-size: 16px;
-  color: rgba(255, 255, 255, 0.9);
-  font-weight: 700;
-  text-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.5);
-  font-family: 'Monaco', 'Courier New', monospace;
-  white-space: nowrap;
-  position: relative;
-  z-index: 1;
-}
-
-.map-legend {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
-  margin-top: 12px;
-  padding-top: 8px;
-  border-top: 1px solid #2E2E2E;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: #B3B3B3;
-  font-size: 10px;
-}
-
-.legend-symbol {
-  font-size: 14px;
-  font-weight: 700;
-  color: #EAEAEA;
-}
+.map-stats { margin-top: var(--spacing-md); }
+.stat-row { display: flex; gap: var(--spacing-xs); font-size: var(--font-sm); }
+.stat-label { color: var(--color-text-muted); }
+.stat-val { color: var(--color-text-primary); }
 </style>

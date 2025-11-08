@@ -13,7 +13,7 @@ export type VoxSnapshot = {
   predicates: Record<string, any>;
 };
 
-export function getPose(bot: Bot) {
+export function get_pose(bot: Bot) {
   const feet = bot.entity?.position?.floored();
   const heading = yawToHeadingRadians(bot.entity.yaw);
   return { heading, feet_world: feet ? [feet.x, feet.y, feet.z] : [0, 0, 0] };

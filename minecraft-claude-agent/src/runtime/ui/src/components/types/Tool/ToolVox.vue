@@ -1,12 +1,26 @@
 <template>
-  <div class="tl-item__body tool-vox">
-    <button class="view-toggle-inline" @click="show3D = !show3D">
-      {{ show3D ? '📊 List' : '🎮 3D' }}
-    </button>
-    <div class="tool-header">
-      <span class="tool-name">Get Vox</span>
-    </div>
-    <div class="tool-hint">3D‑Voxelansicht der nahen Umgebung zur präzisen Analyse. Zeigt einzelne Blöcke in Weltkoordinaten (x/y/z) rund um den Bot.</div>
+  <MessageBlock
+    eyebrow="Spatial"
+    title="Vox Snapshot"
+    :tone="tone"
+    padding="lg"
+    :shadow="true"
+  >
+    <template #meta>
+      <span class="vox-chip">radius {{ radius }}</span>
+      <span class="vox-chip" v-if="grep.length">filter: {{ grep.join(', ') }}</span>
+      <span class="vox-chip">blocks {{ blockCount }}</span>
+    </template>
+    <template #actions>
+      <button class="view-toggle" @click="toggleView">
+        {{ show3D ? '📊 List' : '🎮 3D' }}
+      </button>
+    </template>
+
+    <p class="tool-hint">
+      3D voxel snapshot of the nearby world for precise navigation. Shows exact block IDs and positions around the bot.
+    </p>
+
     <div class="vox-row">
       <span class="vox-key">radius</span>
       <span class="vox-val">{{ radius }}</span>
@@ -14,7 +28,6 @@
       <span class="vox-val" v-if="grep.length">{{ grep.join(', ') }}</span>
     </div>
 
-    <!-- 3D Voxel Viewer -->
     <div v-if="show3D" class="vox-3d-container">
       <div ref="canvasContainer" class="vox-canvas"></div>
       <div class="vox-3d-controls">
@@ -22,11 +35,10 @@
       </div>
     </div>
 
-    <!-- Text List View -->
     <div v-else>
       <div class="vox-blocks" v-if="blockCount > 0">
         <div class="blocks-header">
-          <span class="blocks-label">Blocks:</span>
+          <span class="blocks-label">Blocks</span>
           <span class="blocks-count">{{ blockCount }}</span>
         </div>
         <div class="blocks-grid">
@@ -43,16 +55,17 @@
     </div>
 
     <div class="vox-hazards" v-if="hazards.length">
-      <span class="hazards-label">Hazards:</span>
+      <span class="hazards-label">Hazards</span>
       <span class="hazards-list">{{ hazards.join(', ') }}</span>
     </div>
-  </div>
+  </MessageBlock>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, onMounted, watch, onBeforeUnmount } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import MessageBlock from '../../MessageBlock.vue';
 
 const props = defineProps<{ item: any }>();
 const show3D = ref(false); // Default to list view
@@ -88,6 +101,7 @@ const blocks = computed(()=> {
 });
 const blockCount = computed(()=> blocks.value.length);
 const maxBlocks = 12;
+const tone = computed(() => hazards.value.length ? 'warning' : 'info');
 
 // Legacy selector parsing removed; voxels now provided as world coordinates
 
@@ -124,8 +138,8 @@ function init3DViewer() {
   cleanup3DViewer();
 
   const container = canvasContainer.value;
-  const width = 800;
-  const height = 600;
+  const width = container.clientWidth || 640;
+  const height = Math.max(320, Math.min(520, width * 0.6));
 
   // Scene
   scene = new THREE.Scene();
@@ -191,7 +205,7 @@ function init3DViewer() {
   }
 
   // Add grid helper at y=0 (centered)
-  const gridSize = Math.max(10, maxDim * 2);
+const gridSize = Math.max(10, maxDim * 2);
   const gridHelper = new THREE.GridHelper(gridSize, gridSize, 0x444444, 0x222222);
   scene.add(gridHelper);
 
@@ -241,148 +255,97 @@ watch(show3D, (newVal) => {
 onBeforeUnmount(() => {
   cleanup3DViewer();
 });
+
+function toggleView() {
+  show3D.value = !show3D.value;
+}
 </script>
 
 <style scoped>
-.tool-vox {
-  position: relative;
-}
-.view-toggle-inline {
-  position: absolute;
-  top: -6px;
-  right: 50px;
-  background: rgba(74, 158, 255, 0.1);
-  border: 1px solid rgba(74, 158, 255, 0.3);
-  color: #4A9EFF;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.2s;
-  z-index: 10;
-}
-.view-toggle-inline:hover {
-  background: rgba(74, 158, 255, 0.2);
-  border-color: rgba(74, 158, 255, 0.5);
-}
-.tool-header {
-  font-weight: 600;
-  color: #EAEAEA;
-  margin-bottom: 8px;
-  font-size: 13px;
+.view-toggle {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: transparent;
+  color: var(--color-text-primary);
 }
 .tool-hint {
-  color: #9A9A9A;
-  font-size: 11px;
-  margin-bottom: 8px;
+  color: var(--color-text-muted);
+  font-size: var(--font-sm);
+  margin-bottom: var(--spacing-sm);
 }
-.vox-3d-container {
-  margin-top: 8px;
-  border: 1px solid #2E2E2E;
-  border-radius: 6px;
-  overflow: hidden;
-}
-.vox-canvas {
-  width: 800px;
-  height: 600px;
-  background: #1a1a1a;
-}
-.vox-3d-controls {
-  background: #202020;
-  padding: 6px 10px;
-  border-top: 1px solid #2E2E2E;
-}
-.control-hint {
-  font-size: 10px;
-  color: #7A7A7A;
+.vox-chip {
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  border: 1px solid var(--color-border-subtle);
+  color: var(--color-text-muted);
 }
 .vox-row {
   display: flex;
-  gap: 8px;
+  gap: var(--spacing-sm);
   align-items: baseline;
-  margin-bottom: 6px;
+  margin-bottom: var(--spacing-sm);
 }
-.vox-key {
-  color: #B3B3B3;
-  font-size: 11px;
+.vox-key { color: var(--color-text-muted); font-size: var(--font-xs); text-transform: uppercase; }
+.vox-val { color: var(--color-text-primary); font-size: var(--font-sm); font-family: 'Monaco','Courier New',monospace; }
+
+.vox-3d-container {
+  margin-top: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
 }
-.vox-val {
-  color: #EAEAEA;
-  font-size: 12px;
-  font-family: 'Monaco', 'Courier New', monospace;
+.vox-canvas {
+  width: 100%;
+  height: 360px;
+  background: #0f1115;
 }
+.vox-3d-controls {
+  background: rgba(255,255,255,0.02);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-top: 1px solid var(--color-border-subtle);
+}
+.control-hint { font-size: var(--font-xs); color: var(--color-text-muted); }
+
 .vox-blocks {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #2E2E2E;
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--color-border-subtle);
 }
 .blocks-header {
   display: flex;
-  gap: 6px;
+  gap: var(--spacing-xs);
   align-items: baseline;
-  margin-bottom: 6px;
+  margin-bottom: var(--spacing-xs);
 }
-.blocks-label {
-  color: #4A9EFF;
-  font-size: 11px;
-  font-weight: 600;
-}
-.blocks-count {
-  color: #7A7A7A;
-  font-size: 10px;
-}
+.blocks-label { color: var(--color-accent); font-size: var(--font-xs); font-weight: 600; }
+.blocks-count { color: var(--color-text-muted); font-size: var(--font-xs); }
 .blocks-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 4px;
-  font-size: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--spacing-xs);
+  font-size: var(--font-xs);
 }
 .block-item {
   display: flex;
   gap: 4px;
   align-items: center;
-  padding: 2px 4px;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 3px;
+  padding: 2px 6px;
+  background: rgba(255,255,255,0.02);
+  border-radius: var(--radius-sm);
 }
-.block-sel {
-  color: #4A9EFF;
-  font-family: 'Monaco', 'Courier New', monospace;
-  font-weight: 600;
-  min-width: 35px;
-}
-.block-arrow {
-  color: #4A4A4A;
-  font-size: 9px;
-}
-.block-id {
-  color: #EAEAEA;
-  font-family: 'Monaco', 'Courier New', monospace;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.block-more {
-  grid-column: 1 / -1;
-  justify-content: center;
-  color: #7A7A7A;
-  font-style: italic;
-}
+.block-sel { color: var(--color-accent); font-family: 'Monaco','Courier New',monospace; font-weight: 600; }
+.block-id { color: var(--color-text-primary); font-family: 'Monaco','Courier New',monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.block-more { grid-column: 1 / -1; justify-content: center; color: var(--color-text-muted); font-style: italic; }
+
 .vox-hazards {
   display: flex;
-  gap: 6px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #2E2E2E;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--color-border-subtle);
 }
-.hazards-label {
-  color: #E96D2F;
-  font-size: 11px;
-  font-weight: 600;
-}
-.hazards-list {
-  color: #EAEAEA;
-  font-size: 11px;
-}
+.hazards-label { color: var(--color-warning); font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; }
+.hazards-list { color: var(--color-text-primary); font-size: var(--font-sm); }
 </style>

@@ -1,5 +1,15 @@
 <template>
-  <MessageBlock class="tl-item__body" title="Block Info" :collapsible="true" :default-collapsed="true">
+  <MessageBlock
+    title="Block Info"
+    eyebrow="Spatial"
+    :tone="blockData ? 'info' : 'neutral'"
+    :collapsible="true"
+    :default-collapsed="true"
+    padding="md"
+  >
+    <template #meta>
+      <span v-if="position" class="block-chip">({{ position.x }}, {{ position.y }}, {{ position.z }})</span>
+    </template>
     <template #actions>
       <button class="inspector-toggle" @click="$emit('openInspector', item)" title="Open Inspector">
         🔍
@@ -57,90 +67,54 @@ const blockData = computed(()=> raw.value);
 </script>
 
 <style scoped>
+.block-chip {
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-subtle);
+  font-size: var(--font-xs);
+  color: var(--color-text-muted);
+}
 .block-row {
   display: flex;
-  gap: 8px;
+  gap: var(--spacing-sm);
   align-items: baseline;
-  margin-bottom: 6px;
+  margin-bottom: var(--spacing-sm);
 }
 .block-key {
-  color: #B3B3B3;
-  font-size: 11px;
+  color: var(--color-text-muted);
+  font-size: var(--font-xs);
+  text-transform: uppercase;
 }
 .block-val {
-  color: #4A9EFF;
-  font-size: 12px;
-  font-family: 'Monaco', 'Courier New', monospace;
+  color: var(--color-accent);
+  font-size: var(--font-sm);
+  font-family: 'Monaco','Courier New',monospace;
   font-weight: 600;
 }
-.block-info {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #2E2E2E;
-}
-.info-row {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  margin-bottom: 4px;
-}
-.info-label {
-  color: #B3B3B3;
-  font-size: 11px;
-  min-width: 70px;
-}
-.info-val {
-  color: #EAEAEA;
-  font-size: 11px;
-  font-family: 'Monaco', 'Courier New', monospace;
-}
-.block-id {
-  color: #7CFC00;
-  font-weight: 600;
-}
-.props-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-}
+.block-info { margin-top: var(--spacing-sm); padding-top: var(--spacing-sm); border-top: 1px solid var(--color-border-subtle); }
+.info-row { display: flex; gap: var(--spacing-sm); align-items: flex-start; margin-bottom: var(--spacing-xs); font-size: var(--font-sm); }
+.info-label { color: var(--color-text-muted); min-width: 80px; text-transform: uppercase; font-size: var(--font-xs); }
+.info-val { color: var(--color-text-primary); font-family: 'Monaco','Courier New',monospace; }
+.block-id { color: var(--color-success); font-weight: 600; }
+.props-grid { display: flex; flex-direction: column; gap: 4px; flex: 1; }
 .prop-item {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   align-items: center;
-  padding: 2px 4px;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 3px;
-  font-size: 10px;
+  padding: 2px 6px;
+  background: rgba(255,255,255,0.02);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
 }
-.prop-key {
-  color: #FFB86C;
-  font-family: 'Monaco', 'Courier New', monospace;
-  font-weight: 600;
-}
-.prop-arrow {
-  color: #4A4A4A;
-}
-.prop-val {
-  color: #EAEAEA;
-  font-family: 'Monaco', 'Courier New', monospace;
-}
+.prop-key { color: var(--color-warning); font-family: 'Monaco','Courier New',monospace; font-weight: 600; }
+.prop-val { color: var(--color-text-primary); font-family: 'Monaco','Courier New',monospace; }
 
 .inspector-toggle {
-  background: rgba(74, 158, 255, 0.1);
-  border: 1px solid rgba(74, 158, 255, 0.3);
-  color: #4A9EFF;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-  opacity: 0.7;
-}
-
-.inspector-toggle:hover {
-  background: rgba(74, 158, 255, 0.2);
-  border-color: rgba(74, 158, 255, 0.5);
-  opacity: 1;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-primary);
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
 }
 </style>

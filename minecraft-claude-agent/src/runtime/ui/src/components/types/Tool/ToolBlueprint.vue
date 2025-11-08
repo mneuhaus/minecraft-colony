@@ -1,24 +1,29 @@
 <template>
-  <div class="tl-item__body tool-blueprint">
-    <div class="tool-header">
-      <span class="tool-name">Blueprint</span>
-      <button class="view-toggle" @click="show3D = !show3D">{{ show3D ? '📊 List' : '🎮 3D' }}</button>
-    </div>
+  <MessageBlock
+    eyebrow="Blueprint"
+    title="Blueprint"
+    :tone="issues.length ? 'warning' : 'info'"
+    padding="lg"
+    :shadow="true"
+  >
+    <template #meta>
+      <span v-if="bp" class="bp-chip">{{ bp.name }}</span>
+      <span class="bp-chip">{{ voxCount }} vox</span>
+      <span class="bp-chip" v-if="issues.length">{{ issues.length }} issues</span>
+    </template>
+    <template #actions>
+      <button class="view-toggle" @click="toggleView">{{ show3D ? '📊 List' : '🎮 3D' }}</button>
+    </template>
 
     <div class="bp-meta" v-if="bp">
-      <div class="bp-row"><span class="bp-k">name</span><span class="bp-v">{{ bp.name }}</span></div>
       <div class="bp-row"><span class="bp-k">description</span><span class="bp-v">{{ bp.description || '—' }}</span></div>
-      <div class="bp-row"><span class="bp-k">voxels</span><span class="bp-v">{{ voxCount }}</span></div>
-      <div class="bp-row" v-if="issues.length"><span class="bp-k">issues</span><span class="bp-v">{{ issues.join(', ') }}</span></div>
     </div>
 
-    <!-- 3D viewer -->
     <div v-if="show3D" class="bp-3d-container">
       <div ref="canvasContainer" class="bp-canvas"></div>
       <div class="bp-3d-controls"><span class="control-hint">🖱️ Drag to rotate • Scroll to zoom</span></div>
     </div>
 
-    <!-- Summary list view -->
     <div v-else>
       <div class="bp-summary" v-if="Object.keys(summary).length">
         <div class="summary-row" v-for="(cnt, id) in summary" :key="id">
@@ -28,13 +33,14 @@
       </div>
       <div v-else class="bp-empty">No voxels</div>
     </div>
-  </div>
+  </MessageBlock>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import MessageBlock from '../../MessageBlock.vue';
 
 const props = defineProps<{ item: any }>();
 
@@ -130,23 +136,63 @@ onMounted(()=> { if (show3D.value) setTimeout(init3D, 30); });
 onBeforeUnmount(()=> cleanup());
 watch(show3D, (v)=> { if (v) setTimeout(init3D, 30); else cleanup(); });
 watch(vox, ()=> { if (show3D.value) setTimeout(init3D, 30); });
+
+function toggleView() {
+  show3D.value = !show3D.value;
+}
 </script>
 
 <style scoped>
-.tool-header { display:flex; justify-content: space-between; align-items:center; font-weight:600; color:#EAEAEA; margin-bottom:8px; font-size:13px; }
-.view-toggle { background: rgba(74,158,255,0.1); border:1px solid rgba(74,158,255,0.3); color:#4A9EFF; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; transition:all .2s; }
-.bp-meta { display:grid; grid-template-columns: auto 1fr; gap:4px 8px; margin-bottom:8px; }
+.view-toggle {
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-primary);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+}
+.bp-chip {
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-subtle);
+  font-size: var(--font-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.bp-meta { display: grid; grid-template-columns: auto 1fr; gap: var(--spacing-xs) var(--spacing-md); margin-bottom: var(--spacing-sm); }
 .bp-row { display: contents; }
-.bp-k { color:#B3B3B3; font-size:11px; }
-.bp-v { color:#EAEAEA; font-size:11px; font-family:'Monaco','Courier New',monospace; }
-.bp-3d-container { margin-top:8px; border:1px solid #2E2E2E; border-radius:6px; overflow:hidden; }
-.bp-canvas { width:800px; height:600px; background:#1a1a1a; }
-.bp-3d-controls { background:#202020; padding:6px 10px; border-top:1px solid #2E2E2E; color:#7A7A7A; font-size:10px; }
-.bp-summary { border:1px solid #2E2E2E; border-radius:6px; }
-.summary-row { display:grid; grid-template-columns: 1fr 60px; padding:6px 8px; border-bottom:1px solid #2E2E2E; }
-.summary-row:last-child { border-bottom:none; }
-.summary-id { color:#EAEAEA; font-size:12px; }
-.summary-count { text-align:right; font-family:'Monaco','Courier New',monospace; }
-.bp-empty { color:#7A7A7A; font-size:12px; }
-</style>
+.bp-k { color: var(--color-text-muted); font-size: var(--font-xs); text-transform: uppercase; }
+.bp-v { color: var(--color-text-primary); font-size: var(--font-sm); }
 
+.bp-3d-container {
+  margin-top: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.bp-canvas {
+  width: 100%;
+  height: 360px;
+  background: #0f1115;
+}
+.bp-3d-controls {
+  background: rgba(255,255,255,0.02);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-xs);
+  color: var(--color-text-muted);
+}
+.bp-summary {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-top: var(--spacing-md);
+}
+.summary-row {
+  display: grid;
+  grid-template-columns: 1fr 60px;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.summary-row:last-child { border-bottom: none; }
+.summary-id { color: var(--color-text-primary); font-size: var(--font-sm); }
+.summary-count { text-align: right; font-family: 'Monaco','Courier New',monospace; }
+.bp-empty { color: var(--color-text-muted); font-size: var(--font-sm); margin-top: var(--spacing-md); }
+</style>

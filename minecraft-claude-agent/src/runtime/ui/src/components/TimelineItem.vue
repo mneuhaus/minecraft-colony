@@ -1,9 +1,7 @@
 <template>
   <div class="tl-item-wrapper" :class="wrapperClass">
     <div class="tl-item" :class="cssClass">
-      <div class="tl-item__header">
-        <span class="tl-time">{{ time }}</span>
-      </div>
+      <div class="tl-item__time">{{ time }}</div>
       <component :is="componentName" :item="item" @openInspector="$emit('openInspector', $event)" />
       <div class="tl-meta">
         <small>{{ identityLabel }}</small>
@@ -80,71 +78,40 @@ const identityLabel = computed(() => {
 
 /* Item styling */
 .tl-item {
-  position: relative;
-  background: #202020;
-  border: 1px solid #2E2E2E;
-  border-radius: 12px;
-  padding: 10px 80px 10px 10px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
   max-width: 80%;
-  transition: border-color 0.2s ease;
+  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
 }
 
-.tl-item__body {
-  margin: 0;
-  padding: 0;
-}
+.tl-item__body { margin: 0; padding: 0; }
 
 .tl-wrapper--center .tl-item {
   max-width: 60%;
 }
 
-.tl-item__header {
-  position: absolute;
-  top: 8px;
-  right: 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-}
-
-.inspector-toggle {
-  background: rgba(74, 158, 255, 0.1);
-  border: 1px solid rgba(74, 158, 255, 0.3);
-  color: #4A9EFF;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-  opacity: 0.7;
-}
-
-.inspector-toggle:hover {
-  background: rgba(74, 158, 255, 0.2);
-  border-color: rgba(74, 158, 255, 0.5);
-  opacity: 1;
-}
-
-.tl-time {
-  color: #7A7A7A;
-  opacity: 0.7;
+.tl-item__time {
+  font-size: var(--font-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+  margin-bottom: var(--spacing-sm);
 }
 
 .tl-meta {
-  margin-top: 10px;
-  font-size: 16px;
-  color: #cfcfcf;
+  margin-top: var(--spacing-sm);
+  font-size: var(--font-xs);
+  color: var(--color-text-muted);
   text-align: right;
 }
 
-/* Chat message styling */
 .tl-item--chat-in {
-  background: linear-gradient(135deg, rgba(74, 158, 255, 0.08) 0%, rgba(74, 158, 255, 0.02) 100%);
-  border-color: rgba(74, 158, 255, 0.3);
+  border-left: 3px solid var(--color-accent);
 }
 .tl-item--chat-out {
-  background: linear-gradient(135deg, rgba(233, 109, 47, 0.08) 0%, rgba(233, 109, 47, 0.02) 100%);
-  border-color: rgba(233, 109, 47, 0.3);
+  border-left: 3px solid var(--color-warning);
 }
 </style>

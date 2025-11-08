@@ -1,10 +1,14 @@
 <template>
-  <div class="tl-item__body tool-csfunction">
-    <div class="tool-header">
-      <span class="tool-icon">⚙️</span>
-      <span class="tool-name">{{ toolTitle }}</span>
+  <MessageBlock
+    eyebrow="CraftScript"
+    :title="toolTitle"
+    :tone="tone"
+    padding="md"
+    :shadow="true"
+  >
+    <template #meta>
       <span class="tool-status" :class="statusClass">{{ statusText }}</span>
-    </div>
+    </template>
 
     <div class="fn-meta" v-if="fn">
       <div class="fn-row"><span class="fn-k">name</span><span class="fn-v">{{ fn.name }}</span></div>
@@ -13,7 +17,6 @@
       <div class="fn-row" v-if="fn.change_summary && operation === 'edit'"><span class="fn-k">changes</span><span class="fn-v">{{ fn.change_summary }}</span></div>
     </div>
 
-    <!-- Arguments list -->
     <div class="fn-args" v-if="args && args.length">
       <div class="fn-args-header">Arguments</div>
       <div class="arg-row" v-for="(arg, i) in args" :key="i">
@@ -24,7 +27,6 @@
       </div>
     </div>
 
-    <!-- Function body (collapsible) -->
     <div class="fn-body-section" v-if="body && !hasDiff">
       <button class="fn-body-toggle" @click="showBody = !showBody">
         {{ showBody ? '▼' : '▶' }} Function Body
@@ -34,7 +36,6 @@
       </div>
     </div>
 
-    <!-- Diff view (for edit operations) -->
     <div class="fn-diff-section" v-if="hasDiff">
       <button class="fn-diff-toggle" @click="showDiff = !showDiff">
         {{ showDiff ? '▼' : '▶' }} Changes (v{{ previousVersion }} → v{{ fn.version }})
@@ -61,7 +62,6 @@
       </div>
     </div>
 
-    <!-- Function list (for list_craftscript_functions) -->
     <div class="fn-list" v-if="functionList && functionList.length">
       <div class="fn-list-header">{{ functionList.length }} function{{ functionList.length === 1 ? '' : 's' }}</div>
       <div class="fn-list-item" v-for="func in functionList" :key="func.id || func.name">
@@ -71,7 +71,6 @@
       </div>
     </div>
 
-    <!-- Version history (for list_function_versions) -->
     <div class="fn-versions" v-if="versions && versions.length">
       <div class="fn-versions-header">Version History</div>
       <div class="version-row" v-for="ver in versions" :key="ver.version">
@@ -83,16 +82,16 @@
       </div>
     </div>
 
-    <!-- Error display -->
     <div class="fn-error" v-if="error">
       <span class="error-icon">⚠️</span>
       <span class="error-text">{{ error }}</span>
     </div>
-  </div>
+  </MessageBlock>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import MessageBlock from '../../MessageBlock.vue';
 import hljs from 'highlight.js/lib/core';
 import javascript from 'highlight.js/lib/languages/javascript';
 import 'highlight.js/styles/github-dark-dimmed.css';
@@ -307,396 +306,168 @@ function formatDate(ts: number): string {
 </script>
 
 <style scoped>
-.tool-csfunction {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
+.tool-status { font-size: var(--font-md); font-weight: 600; }
+.status-success { color: var(--color-success); }
+.status-error { color: var(--color-danger); }
 
-.tool-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  font-weight: 600;
-  color: #EAEAEA;
-  font-size: 13px;
-}
-
-.tool-icon {
-  font-size: 16px;
-}
-
-.tool-name {
-  flex: 1;
-}
-
-.tool-status {
-  font-size: 14px;
-  font-weight: bold;
-}
-
-.status-success {
-  color: #4ADE80;
-}
-
-.status-error {
-  color: #F87171;
-}
-
-/* Metadata grid */
 .fn-meta {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 6px 12px;
-  margin-bottom: 12px;
-  padding: 8px;
+  gap: var(--spacing-xs) var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  padding: var(--spacing-sm);
   background: rgba(255, 255, 255, 0.02);
-  border-radius: 6px;
-  border: 1px solid #2E2E2E;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
 }
-
-.fn-row {
-  display: contents;
-}
-
+.fn-row { display: contents; }
 .fn-k {
-  color: #B3B3B3;
-  font-size: 11px;
+  color: var(--color-text-muted);
+  font-size: var(--font-xs);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.05em;
 }
-
 .fn-v {
-  color: #EAEAEA;
-  font-size: 12px;
-  font-family: 'Monaco', 'Courier New', monospace;
+  color: var(--color-text-primary);
+  font-size: var(--font-sm);
+  font-family: 'Monaco','Courier New',monospace;
 }
 
-/* Arguments */
 .fn-args {
-  margin-bottom: 12px;
-  border: 1px solid #2E2E2E;
-  border-radius: 6px;
+  margin-bottom: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
-
 .fn-args-header {
-  background: rgba(74, 158, 255, 0.1);
-  padding: 6px 10px;
-  font-size: 11px;
+  background: var(--color-accent-soft);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-xs);
   font-weight: 600;
-  color: #4A9EFF;
+  color: var(--color-accent);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.05em;
 }
-
 .arg-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-top: 1px solid #2E2E2E;
-  font-size: 12px;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--font-sm);
 }
+.arg-name { font-weight: 600; color: var(--color-text-primary); }
+.arg-type { color: var(--color-text-muted); font-size: var(--font-xs); text-transform: uppercase; }
+.arg-optional { color: var(--color-accent); font-size: var(--font-xs); }
+.arg-default { color: var(--color-text-secondary); font-family: 'Monaco','Courier New',monospace; }
 
-.arg-name {
-  color: #EAEAEA;
-  font-family: 'Monaco', 'Courier New', monospace;
-  font-weight: 600;
-}
-
-.arg-type {
-  color: #4A9EFF;
-  font-family: 'Monaco', 'Courier New', monospace;
-  font-size: 11px;
-}
-
-.arg-optional {
-  color: #B3B3B3;
-  font-size: 10px;
-  font-style: italic;
-}
-
-.arg-default {
-  color: #FCD34D;
-  font-family: 'Monaco', 'Courier New', monospace;
-  font-size: 11px;
-  margin-left: auto;
-}
-
-/* Function body */
-.fn-body-section {
-  margin-bottom: 12px;
-}
-
-.fn-body-toggle {
-  background: rgba(74, 158, 255, 0.1);
-  border: 1px solid rgba(74, 158, 255, 0.3);
-  color: #4A9EFF;
-  padding: 6px 10px;
-  border-radius: 4px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.2s;
-  width: 100%;
-  text-align: left;
-  font-weight: 600;
-}
-
-.fn-body-toggle:hover {
-  background: rgba(74, 158, 255, 0.15);
-}
-
-.fn-body {
-  margin-top: 8px;
-  padding: 10px;
-  background: #1a1a1a;
-  border: 1px solid #2E2E2E;
-  border-radius: 6px;
-  font-family: 'Monaco', 'Courier New', monospace;
-  font-size: 11px;
-  line-height: 1.5;
-  overflow-x: auto;
-}
-
-.fn-body__code {
-  margin: 0;
-  padding: 0;
-  background: transparent;
+.fn-body-section { margin-bottom: var(--spacing-md); }
+.fn-body-toggle,
+.fn-diff-toggle {
+  background: none;
   border: none;
-  font: inherit;
-  color: inherit;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.fn-body__code code {
-  display: block;
-  font: inherit;
-  color: inherit;
-  background: transparent;
-}
-
-.fn-body :deep(.hljs) {
-  background: transparent;
-  color: #EAEAEA;
-  letter-spacing: 0.02em;
-}
-
-/* Function list */
-.fn-list {
-  border: 1px solid #2E2E2E;
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.fn-list-header {
-  background: rgba(74, 158, 255, 0.1);
-  padding: 6px 10px;
-  font-size: 11px;
+  color: var(--color-accent);
+  font-size: var(--font-sm);
   font-weight: 600;
-  color: #4A9EFF;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  cursor: pointer;
+  padding: 0;
 }
+.fn-body {
+  margin-top: var(--spacing-xs);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-muted);
+  overflow: auto;
+}
+.fn-body__code { margin: 0; padding: var(--spacing-sm); font-size: var(--font-sm); }
 
-.fn-list-item {
+.fn-diff-section { margin-top: var(--spacing-lg); }
+.fn-diff {
+  margin-top: var(--spacing-xs);
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 6px;
-  padding: 8px 10px;
-  border-top: 1px solid #2E2E2E;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-md);
+  font-size: var(--font-xs);
 }
-
-.fn-list-name {
-  color: #EAEAEA;
-  font-family: 'Monaco', 'Courier New', monospace;
-  font-weight: 600;
-  font-size: 12px;
-}
-
-.fn-list-desc {
-  color: #B3B3B3;
-  font-size: 11px;
-  grid-column: 1;
-}
-
-.fn-list-version {
-  color: #4A9EFF;
-  font-family: 'Monaco', 'Courier New', monospace;
-  font-size: 11px;
-  grid-column: 2;
-  grid-row: 1 / 3;
-  display: flex;
-  align-items: center;
-}
-
-/* Version history */
-.fn-versions {
-  border: 1px solid #2E2E2E;
-  border-radius: 6px;
+.diff-side {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
-
-.fn-versions-header {
-  background: rgba(74, 158, 255, 0.1);
-  padding: 6px 10px;
-  font-size: 11px;
+.diff-header {
+  padding: var(--spacing-xs) var(--spacing-sm);
   font-weight: 600;
-  color: #4A9EFF;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.05em;
+  font-size: var(--font-xs);
 }
+.diff-header--old { background: rgba(248,113,113,0.12); color: var(--color-danger); }
+.diff-header--new { background: var(--color-accent-soft); color: var(--color-accent); }
+.diff-body { max-height: 300px; overflow: auto; }
+.diff-line {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.diff-ln {
+  font-size: 10px;
+  font-family: 'Monaco','Courier New',monospace;
+  color: var(--color-text-muted);
+  padding: 0 6px;
+  border-right: 1px solid rgba(255,255,255,0.04);
+}
+.diff-code {
+  display: block;
+  font-family: 'Monaco','Courier New',monospace;
+  padding: 2px 6px;
+  white-space: pre-wrap;
+}
+.is-del { background: rgba(248,113,113,0.08); }
+.is-add { background: rgba(52,211,153,0.08); }
+
+.fn-list, .fn-versions {
+  margin-top: var(--spacing-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.fn-list-header,
+.fn-versions-header {
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-weight: 600;
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid var(--color-border);
+}
+.fn-list-item {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: var(--spacing-sm);
+  font-size: var(--font-sm);
+}
+.fn-list-name { font-weight: 600; color: var(--color-text-primary); }
+.fn-list-desc { color: var(--color-text-secondary); }
+.fn-list-version { color: var(--color-text-muted); font-family: 'Monaco','Courier New',monospace; }
 
 .version-row {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
   display: flex;
-  gap: 10px;
-  padding: 8px 10px;
-  border-top: 1px solid #2E2E2E;
+  gap: var(--spacing-md);
 }
+.version-num { font-family: 'Monaco','Courier New',monospace; color: var(--color-accent); }
+.version-summary { font-weight: 500; color: var(--color-text-primary); }
+.version-meta { font-size: var(--font-xs); color: var(--color-text-muted); }
 
-.version-num {
-  color: #4A9EFF;
-  font-family: 'Monaco', 'Courier New', monospace;
-  font-weight: 600;
-  font-size: 12px;
-  min-width: 40px;
-}
-
-.version-info {
-  flex: 1;
-}
-
-.version-summary {
-  color: #EAEAEA;
-  font-size: 12px;
-  margin-bottom: 3px;
-}
-
-.version-meta {
-  color: #7A7A7A;
-  font-size: 10px;
-}
-
-/* Error */
 .fn-error {
+  margin-top: var(--spacing-lg);
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px;
-  background: rgba(248, 113, 113, 0.1);
-  border: 1px solid rgba(248, 113, 113, 0.3);
-  border-radius: 6px;
-  margin-top: 12px;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid rgba(248,113,113,0.6);
+  border-radius: var(--radius-md);
+  background: rgba(248,113,113,0.12);
+  color: #fca5a5;
 }
-
-.error-icon {
-  font-size: 16px;
-}
-
-.error-text {
-  color: #F87171;
-  font-size: 12px;
-}
-
-/* Diff view */
-.fn-diff-section {
-  margin-bottom: 12px;
-}
-
-.fn-diff-toggle {
-  background: rgba(147, 197, 253, 0.1);
-  border: 1px solid rgba(147, 197, 253, 0.3);
-  color: #93C5FD;
-  padding: 6px 10px;
-  border-radius: 4px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.2s;
-  width: 100%;
-  text-align: left;
-  font-weight: 600;
-}
-
-.fn-diff-toggle:hover {
-  background: rgba(147, 197, 253, 0.15);
-}
-
-.fn-diff {
-  margin-top: 8px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  border: 1px solid #2E2E2E;
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.diff-side {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.diff-header {
-  padding: 6px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid #2E2E2E;
-}
-
-.diff-header--old {
-  background: rgba(248, 113, 113, 0.15);
-  color: #F87171;
-}
-
-.diff-header--new {
-  background: rgba(74, 222, 128, 0.15);
-  color: #4ADE80;
-}
-
-.diff-body {
-  padding: 10px;
-  background: #1a1a1a;
-  font-family: 'Monaco', 'Courier New', monospace;
-  font-size: 11px;
-  line-height: 1.5;
-  overflow-x: auto;
-  flex: 1;
-  white-space: pre; /* keep alignment */
-  word-wrap: normal;
-  color: #EAEAEA;
-}
-
-.diff-side:first-child {
-  border-right: 1px solid #2E2E2E;
-}
-
-.diff-body :deep(.hljs) {
-  background: transparent;
-  color: inherit;
-}
-
-/* Side-by-side rows and line numbers */
-.diff-line { display: flex; align-items: flex-start; gap: 8px; padding: 1px 4px; }
-.diff-ln { display: inline-block; width: 36px; text-align: right; color: #7A7A7A; user-select: none; }
-.diff-code {
-  flex: 1;
-  display: block;
-  white-space: pre;
-  font-family: 'Monaco', 'Courier New', monospace;
-  font-size: 11px;
-  color: #EAEAEA;
-  background: transparent;
-  padding: 0;
-  margin: 0;
-}
-.diff-code:empty::after {
-  content: '\00a0';
-}
-.is-add { background: rgba(74, 222, 128, 0.12); }
-.is-del { background: rgba(248, 113, 113, 0.12); }
-.is-same { background: transparent; }
-.is-empty { opacity: 0.6; }
 </style>

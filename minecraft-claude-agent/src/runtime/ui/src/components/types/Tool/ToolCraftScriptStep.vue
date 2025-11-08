@@ -1,34 +1,42 @@
 <template>
-  <div class="tl-item__body craftscript-step">
-    <div class="step-header">
-      <div class="step-op">
-        <span class="step-icon" :class="{ success: result.ok, failed: !result.ok }">
-          {{ result.ok ? '✓' : '✗' }}
-        </span>
-        <span class="step-name">{{ result.op || 'step' }}</span>
-      </div>
-      <span class="step-duration">{{ result.ms }}ms</span>
-    </div>
+  <MessageBlock
+    eyebrow="CraftScript Step"
+    :title="result.op || 'step'"
+    :tone="result.ok ? 'success' : 'danger'"
+    padding="sm"
+  >
+    <template #meta>
+      <span class="duration-chip">{{ result.ms }} ms</span>
+    </template>
 
-    <div v-if="result.ok && result.notes" class="step-notes">
-      <div v-for="(value, key) in result.notes" :key="key" class="note-item">
-        <span class="note-key">{{ key }}:</span>
-        <span class="note-value">{{ formatValue(value) }}</span>
+    <div class="step-body">
+      <div class="step-icon" :class="{ success: result.ok, failed: !result.ok }">
+        {{ result.ok ? '✓' : '✗' }}
       </div>
-    </div>
 
-    <div v-if="!result.ok" class="step-error">
-      <div class="error-type">{{ result.error }}</div>
-      <div v-if="result.message" class="error-message">{{ result.message }}</div>
-      <div v-if="result.loc" class="error-location">
-        at line {{ result.loc.line }}, column {{ result.loc.column }}
+      <div class="step-content">
+        <div v-if="result.ok && result.notes" class="step-notes">
+          <div v-for="(value, key) in result.notes" :key="key" class="note-item">
+            <span class="note-key">{{ key }}:</span>
+            <span class="note-value">{{ formatValue(value) }}</span>
+          </div>
+        </div>
+
+        <div v-else-if="!result.ok" class="step-error">
+          <div class="error-type">{{ result.error }}</div>
+          <div v-if="result.message" class="error-message">{{ result.message }}</div>
+          <div v-if="result.loc" class="error-location">
+            at line {{ result.loc.line }}, column {{ result.loc.column }}
+          </div>
+        </div>
       </div>
     </div>
-  </div>
+  </MessageBlock>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import MessageBlock from '../../MessageBlock.vue';
 
 const props = defineProps<{ item: any }>();
 
@@ -48,7 +56,7 @@ function formatValue(value: any): string {
   if (Array.isArray(value)) {
     return `[${value.join(', ')}]`;
   }
-  if (typeof value === 'object') {
+  if (typeof value === 'object' && value !== null) {
     return JSON.stringify(value);
   }
   return String(value);
@@ -56,100 +64,97 @@ function formatValue(value: any): string {
 </script>
 
 <style scoped>
-.craftscript-step {
-  font-size: 12px;
+.duration-chip {
+  font-size: var(--font-xs);
+  color: var(--color-text-muted);
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-subtle);
 }
 
-.step-header {
+.step-body {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.step-op {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  gap: var(--spacing-md);
+  align-items: flex-start;
 }
 
 .step-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  font-size: 10px;
-  font-weight: bold;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid transparent;
 }
 
 .step-icon.success {
   background: rgba(52, 211, 153, 0.2);
-  color: #34D399;
+  border-color: rgba(52, 211, 153, 0.4);
+  color: var(--color-success);
 }
 
 .step-icon.failed {
   background: rgba(248, 113, 113, 0.2);
-  color: #F87171;
+  border-color: rgba(248, 113, 113, 0.4);
+  color: var(--color-danger);
 }
 
-.step-name {
-  font-weight: 500;
-  color: #E5E7EB;
-}
-
-.step-duration {
-  color: #9CA3AF;
-  font-size: 11px;
+.step-content {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-sm);
 }
 
 .step-notes {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm);
   background: rgba(255, 255, 255, 0.02);
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-subtle);
 }
 
 .note-item {
-  display: flex;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--spacing-sm);
 }
 
 .note-key {
-  color: #9CA3AF;
+  color: var(--color-text-muted);
   font-weight: 500;
-  min-width: 60px;
+  text-transform: capitalize;
 }
 
 .note-value {
-  color: #E5E7EB;
+  color: var(--color-text-primary);
   font-family: 'Courier New', monospace;
 }
 
 .step-error {
-  padding: 8px;
+  padding: var(--spacing-sm);
   background: rgba(248, 113, 113, 0.1);
-  border-radius: 4px;
-  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(248, 113, 113, 0.4);
 }
 
 .error-type {
-  color: #F87171;
+  color: var(--color-danger);
   font-weight: 600;
   margin-bottom: 4px;
 }
 
 .error-message {
-  color: #FCA5A5;
+  color: #fca5a5;
   margin-bottom: 4px;
 }
 
 .error-location {
-  color: #9CA3AF;
-  font-size: 11px;
+  color: var(--color-text-muted);
+  font-size: var(--font-xs);
 }
 </style>

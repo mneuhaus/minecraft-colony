@@ -1,25 +1,32 @@
 <template>
-  <div class="tl-item__body">
-    <div class="tl-hdr">
-      <div class="tl-kv">
-        <span class="tl-kv__key">CraftScript</span>
-        <span class="tl-kv__val">{{ lineCount }} line(s)</span>
-      </div>
-      <div class="tl-actions">
-        <span class="tl-status" :data-state="status.state">{{ status.state.toUpperCase() }}</span>
-        <button class="tl-btn" :disabled="running" @click="runAgain">{{ running ? 'Running…' : 'Run Again' }}</button>
-        <button class="tl-btn" @click="showLogs = !showLogs">{{ showLogs ? 'Hide Logs' : 'Show Logs' }}</button>
-        <button class="tl-btn tl-btn--trace" @click="toggleTrace" :disabled="!activeJobId" title="View 3D block changes and movement">{{ showTrace ? 'Hide Trace' : '🔍 View Trace' }}</button>
-      </div>
-    </div>
+  <MessageBlock
+    eyebrow="CraftScript"
+    title="Script"
+    :tone="tone"
+    padding="lg"
+    :shadow="true"
+  >
+    <template #meta>
+      <span v-if="activeJobId" class="cs-chip cs-chip--muted">job {{ activeJobId }}</span>
+      <span class="cs-chip" :class="[`cs-chip--${status.state || 'unknown'}`]">{{ status.state }}</span>
+      <span class="cs-chip cs-chip--muted">{{ lineCount }} lines</span>
+    </template>
+    <template #actions>
+      <button class="cs-btn" :disabled="running" @click="runAgain">{{ running ? 'Running…' : 'Run Again' }}</button>
+      <button class="cs-btn" @click="showLogs = !showLogs">{{ showLogs ? 'Hide Logs' : 'Show Logs' }}</button>
+      <button class="cs-btn" :disabled="!activeJobId" @click="toggleTrace">{{ showTrace ? 'Hide Trace' : 'View Trace' }}</button>
+    </template>
+
     <pre class="tool-output"><code class="language-javascript hljs" v-html="highlightedCode"></code></pre>
 
-    <div v-if="showLogs" class="cs-logs">
-      <div class="cs-logs__hdr">
-        <span class="cs-logs__title">Logs</span>
-        <span class="cs-logs__meta" v-if="activeJobId">job {{ activeJobId }}</span>
-      </div>
-      <div v-if="logs.length === 0" class="cs-logs__empty">No logs yet for this script (status: {{ status.state }}).</div>
+    <section v-if="showLogs" class="cs-panel">
+      <header class="cs-panel__header">
+        <span>Logs</span>
+        <span class="cs-panel__meta" v-if="activeJobId">job {{ activeJobId }}</span>
+      </header>
+      <p v-if="logs.length === 0" class="cs-panel__empty">
+        No logs yet for this script (status: {{ status.state }}).
+      </p>
       <div v-else class="cs-logs__list">
         <div v-for="log in logs" :key="log.id" class="cs-log">
           <span class="cs-log__time">{{ fmtTs(log.ts) }}</span>
@@ -27,30 +34,32 @@
           <span class="cs-log__msg">{{ log.msg }}</span>
         </div>
       </div>
-    </div>
+    </section>
 
-    <div v-if="showTrace" class="cs-trace">
-      <div class="cs-trace__hdr">
-        <span class="cs-trace__title">Block Changes</span>
-        <span class="cs-trace__meta" v-if="traceData">{{ traceData.total_changes || 0 }} changes</span>
-      </div>
-      <div v-if="loadingTrace" class="cs-trace__loading">Loading trace data...</div>
-      <div v-else-if="!traceData || !traceData.changes || traceData.changes.length === 0" class="cs-trace__empty">No block changes recorded for this script execution.</div>
+    <section v-if="showTrace" class="cs-panel">
+      <header class="cs-panel__header">
+        <span>Block Changes</span>
+        <span class="cs-panel__meta" v-if="traceData">{{ traceData.total_changes || 0 }} changes</span>
+      </header>
+      <p v-if="loadingTrace" class="cs-panel__empty">Loading trace data...</p>
+      <p v-else-if="!traceData || !traceData.changes || traceData.changes.length === 0" class="cs-panel__empty">
+        No block changes recorded for this script execution.
+      </p>
       <div v-else class="cs-trace__list">
         <div v-for="(change, idx) in traceData.changes" :key="idx" class="cs-trace-item">
           <span class="cs-trace-item__action" :data-action="change.action">{{ change.action }}</span>
           <span class="cs-trace-item__block">{{ change.block_id }}</span>
           <span class="cs-trace-item__pos">@ {{ change.x }}, {{ change.y }}, {{ change.z }}</span>
-          <span class="cs-trace-item__cmd" v-if="change.command">{{ change.command }}</span>
+          <span v-if="change.command" class="cs-trace-item__cmd">{{ change.command }}</span>
         </div>
       </div>
-    </div>
-  </div>
-
+    </section>
+  </MessageBlock>
 </template>
 
 <script setup lang="ts">
 import { computed, inject, ref } from 'vue';
+import MessageBlock from '../../MessageBlock.vue';
 import hljs from 'highlight.js/lib/core';
 import javascript from 'highlight.js/lib/languages/javascript';
 import 'highlight.js/styles/github-dark-dimmed.css';
@@ -115,6 +124,14 @@ const status = computed(() => {
     } catch {}
   }
   return latest || { state: (jobIdFromCard.value ? 'queued' : 'unknown'), duration_ms: 0, error: null };
+});
+
+const tone = computed(() => {
+  const state = String(status.value.state || '').toLowerCase();
+  if (status.value.error || state === 'failed' || state === 'error') return 'danger';
+  if (state === 'completed' || state === 'ok') return 'success';
+  if (state === 'running' || state === 'queued') return 'info';
+  return 'neutral';
 });
 
 // Extract script from various possible locations
@@ -285,49 +302,99 @@ function fmtTs(ts:number){
 </script>
 
 <style scoped>
-.tl-hdr { display:flex; justify-content: space-between; align-items:center; }
-.tl-actions { display:flex; gap:6px; }
-.tl-status { padding: 2px 6px; border:1px solid #2E2E2E; border-radius:6px; font-size:10px; color:#B3B3B3; }
-.tl-status[data-state="failed"] { color:#F87171; border-color: rgba(248,113,113,.5); }
-.tl-status[data-state="completed"] { color:#34D399; border-color: rgba(52,211,153,.5); }
-.tl-status[data-state="running"] { color:#4A9EFF; border-color: rgba(74,158,255,.5); }
-.tl-status[data-state="canceled"] { color:#9CA3AF; border-color:#444; }
-.tl-btn { background: rgba(74, 158, 255, 0.1); border:1px solid rgba(74,158,255,0.3); color:#4A9EFF; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; }
-.tl-btn:disabled { opacity: 0.6; cursor: default; }
-.tl-btn--trace { background: linear-gradient(135deg, #00d9ff 0%, #0099cc 100%); border: 1px solid #00d9ff; color: #000; font-weight: 600; transition: all 0.2s; }
-.tl-btn--trace:hover:not(:disabled) { background: linear-gradient(135deg, #00b8d4 0%, #007799 100%); transform: translateY(-1px); box-shadow: 0 3px 6px rgba(0, 217, 255, 0.3); }
-.tl-btn--trace:active:not(:disabled) { transform: translateY(0); }
+.cs-btn {
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: var(--font-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--transition-base), color var(--transition-base);
+}
+.cs-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.cs-btn:not([disabled]):hover { border-color: var(--color-accent); color: var(--color-accent); }
+
+.cs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  border: 1px solid var(--color-border-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.cs-chip--muted { color: var(--color-text-muted); }
+.cs-chip--completed { border-color: rgba(52,211,153,0.4); color: var(--color-success); }
+.cs-chip--failed { border-color: rgba(248,113,113,0.4); color: var(--color-danger); }
+.cs-chip--running { border-color: rgba(74,158,255,0.4); color: var(--color-accent); }
+
 .tool-output {
-  margin-top: 8px;
-  max-height: none;
+  margin-top: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-muted);
+  padding: var(--spacing-sm);
+  font-size: var(--font-sm);
+  max-height: 420px;
   overflow: auto;
 }
-.cs-logs { margin-top:10px; padding:10px; background:#151515; border:1px solid #2E2E2E; border-radius:8px; }
-.cs-logs__hdr{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
-.cs-logs__title{ color:#FFB86C; font-weight:600; font-size:12px; }
-.cs-logs__meta{ color:#7A7A7A; font-size:10px; }
-.cs-logs__empty{ color:#9CA3AF; font-size:12px; font-style: italic; }
-.cs-logs__list{ display:flex; flex-direction:column; gap:4px; }
-.cs-log{ display:grid; grid-template-columns: 60px 90px 1fr; gap:8px; align-items:baseline; font-size:12px; }
-.cs-log__time{ color:#7A7A7A; font-size:10px; }
-.cs-log__kind{ color:#9CA3AF; text-transform:uppercase; font-size:10px; letter-spacing:0.04em; }
-.cs-log__kind[data-kind="fail"]{ color:#F87171; }
-.cs-log__kind[data-kind="ok"]{ color:#34D399; }
-.cs-log__msg{ color:#EAEAEA; }
 
-.cs-trace { margin-top:10px; padding:10px; background:#0A1A1A; border:1px solid #00d9ff; border-radius:8px; }
-.cs-trace__hdr{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
-.cs-trace__title{ color:#00d9ff; font-weight:600; font-size:13px; text-shadow: 0 0 8px rgba(0, 217, 255, 0.5); }
-.cs-trace__meta{ color:#00b8d4; font-size:11px; font-weight:600; }
-.cs-trace__loading{ color:#9CA3AF; font-size:12px; font-style: italic; text-align:center; padding:12px; }
-.cs-trace__empty{ color:#7A7A7A; font-size:12px; font-style: italic; text-align:center; padding:12px; }
-.cs-trace__list{ display:flex; flex-direction:column; gap:3px; max-height:300px; overflow-y:auto; }
-.cs-trace-item{ display:grid; grid-template-columns: 70px 120px 140px 1fr; gap:8px; align-items:baseline; font-size:11px; padding:6px 8px; background:#0D1F1F; border-radius:4px; border:1px solid #1A3A3A; }
-.cs-trace-item:hover{ background:#102828; border-color:#00d9ff40; }
-.cs-trace-item__action{ color:#EAEAEA; text-transform:uppercase; font-size:10px; letter-spacing:0.04em; font-weight:600; }
-.cs-trace-item__action[data-action="placed"]{ color:#34D399; }
-.cs-trace-item__action[data-action="destroyed"]{ color:#F87171; }
-.cs-trace-item__block{ color:#00d9ff; font-family: monospace; font-size:10px; }
-.cs-trace-item__pos{ color:#B3B3B3; font-family: monospace; font-size:10px; }
-.cs-trace-item__cmd{ color:#7A7A7A; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cs-panel {
+  margin-top: var(--spacing-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,0.01);
+  padding: var(--spacing-md);
+}
+.cs-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+  font-weight: 600;
+}
+.cs-panel__meta { font-size: var(--font-xs); color: var(--color-text-muted); }
+.cs-panel__empty { margin: 0; color: var(--color-text-muted); font-style: italic; }
+
+.cs-logs__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+.cs-log {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: var(--spacing-sm);
+  font-size: var(--font-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-subtle);
+  background: rgba(255,255,255,0.02);
+}
+.cs-log__time { font-family: 'Courier New', monospace; color: var(--color-text-muted); }
+.cs-log__kind { text-transform: uppercase; font-size: var(--font-xs); font-weight: 600; color: var(--color-accent); }
+.cs-log__msg { color: var(--color-text-primary); }
+
+.cs-trace__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+.cs-trace-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: var(--spacing-sm);
+  align-items: center;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+}
+.cs-trace-item__action[data-action='placed'] { color: var(--color-success); }
+.cs-trace-item__action[data-action='destroyed'] { color: var(--color-danger); }
+.cs-trace-item__block { font-family: 'Courier New', monospace; }
+.cs-trace-item__pos { color: var(--color-text-muted); font-size: var(--font-xs); }
+.cs-trace-item__cmd { color: var(--color-accent); font-size: var(--font-xs); }
 </style>

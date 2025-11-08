@@ -17,7 +17,7 @@ import { fileURLToPath } from 'url';
 import mcAssets from 'minecraft-assets';
 import WebSocket, { WebSocketServer } from 'ws';
 import { BotManager } from './BotManager.js';
-import { ColonyDatabase } from '../database/ColonyDatabase.js';
+import { ColonyDatabase, ISSUE_SEVERITIES, ISSUE_STATES, type IssueState } from '../database/ColonyDatabase.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -257,8 +257,13 @@ export function createDashboardApp(botManager: BotManager) {
       db.prepare('DELETE FROM memory WHERE bot_id = ?').run(botId);
       db.prepare('DELETE FROM blueprints WHERE bot_id = ?').run(botId);
 
-      // Restart bot
-      await botManager.startBot(name);
+      // Restart bot using existing config
+      const instance = botManager.getBot(name);
+      const config = instance?.config ?? botManager.loadConfig().find((b) => b.name === name);
+      if (!config) {
+        return c.json({ error: 'Bot config not found' }, 404);
+      }
+      await botManager.startBot(config);
 
       return c.json({ success: true, message: `Bot ${name} reset and restarted` });
     } catch (error: any) {
@@ -282,14 +287,14 @@ export function createDashboardApp(botManager: BotManager) {
       }
 
       const stateParam = c.req.query('state');
-      let states;
+      let states: IssueState[] | undefined;
       if (stateParam) {
         const requested = stateParam.split(',').map((s) => s.trim()).filter(Boolean);
         const invalid = requested.filter((s) => !ISSUE_STATES.includes(s as any));
         if (invalid.length) {
           return c.json({ error: `Invalid state(s): ${invalid.join(', ')}` }, 400);
         }
-        states = requested;
+        states = requested as IssueState[];
       }
 
       let assignedBotId: number | null | undefined = undefined;

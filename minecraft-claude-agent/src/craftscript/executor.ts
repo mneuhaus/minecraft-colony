@@ -22,7 +22,7 @@ import {
 } from './types.js';
 import { selectorToOffset, yawToHeadingRadians } from './selector.js';
 import { can_stand, detect_hazards, get_vox, is_air, safe_step_down, safe_step_up } from './env.js';
-import { get_waypoint } from '../tools/navigation/waypoints.js';
+import { get_waypoint } from './waypoints.js';
 import { parse as parseCraft } from './parser.js';
 
 const { goals } = pathfinderPkg as any;

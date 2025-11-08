@@ -9,6 +9,7 @@ This file contains legacy development details and debugging methodology.
 ## Project Documentation
 
 - **AGENTS.md** - **AI agent programming guide (READ THIS FIRST)**
+- **ARCHITECTURE.md** - System architecture overview (MCP tools, CraftScript runtime, dashboard pipeline)
 - **CLAUDE.md** (this file) - Legacy development guide and debugging methodology  
 - **TODO.md** - Roadmap of planned features and tasks
 - **CHANGELOG.md** - Version history following [Keep a Changelog](https://keepachangelog.com/) format
@@ -753,7 +754,7 @@ bun run colony            # Start runtime in foreground
 **Status:** ✅ Migrated to Claude Agent SDK with automatic skill loading
 **Recent Changes:**
 - ✅ **Migrated from raw Anthropic SDK to Claude Agent SDK**
-  - All 22 tools converted to MCP format using `createSdkMcpServer`
+  - All 32 MCP tools live in `src/agent/mcpTools.ts` via `createSdkMcpServer`
   - Skills now automatically load from `.claude/skills/` directory
   - Agent SDK handles skill injection into system prompt
   - Tools use Zod schemas for type safety

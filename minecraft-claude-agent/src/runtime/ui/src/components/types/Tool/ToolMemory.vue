@@ -1,13 +1,18 @@
 <template>
-  <div class="tool-memory">
-    <div v-if="isUpdateMemory" class="memory-update">
-      <div class="memory-header">
-        <h3>Memory Update</h3>
-        <button @click="toggleView" class="view-toggle">
-          {{ showDiff ? 'Show Full Memory' : 'Show Diff' }}
-        </button>
-      </div>
+  <MessageBlock
+    :eyebrow="isUpdateMemory ? 'Memory' : 'Context'"
+    :title="isUpdateMemory ? 'Memory Update' : 'Memory Retrieved'"
+    :tone="isUpdateMemory ? (hasDiff ? 'warning' : 'info') : 'neutral'"
+    padding="lg"
+    :shadow="true"
+  >
+    <template #actions>
+      <button v-if="isUpdateMemory" @click="toggleView" class="view-toggle">
+        {{ showDiff ? 'Show Full Memory' : 'Show Diff' }}
+      </button>
+    </template>
 
+    <div v-if="isUpdateMemory">
       <div v-if="showDiff && hasDiff" class="diff-view">
         <div class="diff-line" v-for="(change, idx) in diffLines" :key="idx" :class="change.type">
           <span class="diff-marker">{{ change.marker }}</span>
@@ -15,21 +20,21 @@
         </div>
       </div>
 
-      <div v-else-if="!showDiff || !hasDiff" class="full-memory">
+      <div v-else class="full-memory">
         <div class="markdown-content" v-html="renderedMarkdown"></div>
       </div>
     </div>
 
     <div v-else class="memory-get">
-      <h3>Memory Retrieved</h3>
       <div class="markdown-content" v-html="renderedMarkdown"></div>
     </div>
-  </div>
+  </MessageBlock>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { marked } from 'marked';
+import MessageBlock from '../../MessageBlock.vue';
 
 const props = defineProps<{
   item: any;
@@ -92,35 +97,14 @@ function toggleView() {
 </script>
 
 <style scoped>
-.tool-memory {
-  padding: 12px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 6px;
-  border-left: 3px solid #9b59b6;
-}
-
-.memory-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.memory-header h3 {
-  margin: 0;
-  font-size: 14px;
-  color: #9b59b6;
-  font-weight: 600;
-}
-
 .view-toggle {
   padding: 4px 12px;
   background: rgba(155, 89, 182, 0.2);
   border: 1px solid #9b59b6;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: #9b59b6;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-sm);
   transition: all 0.2s;
 }
 
@@ -130,12 +114,12 @@ function toggleView() {
 
 .diff-view {
   font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
-  font-size: 12px;
+  font-size: var(--font-sm);
   line-height: 1.6;
   overflow-x: auto;
   background: rgba(0, 0, 0, 0.3);
-  padding: 8px;
-  border-radius: 4px;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-md);
 }
 
 .diff-line {
@@ -180,9 +164,9 @@ function toggleView() {
 }
 
 .markdown-content {
-  font-size: 13px;
+  font-size: var(--font-sm);
   line-height: 1.6;
-  color: #ecf0f1;
+  color: var(--color-text-primary);
 }
 
 .markdown-content :deep(h1),
@@ -195,8 +179,8 @@ function toggleView() {
   font-weight: 600;
 }
 
-.markdown-content :deep(h1) { font-size: 18px; }
-.markdown-content :deep(h2) { font-size: 16px; }
+.markdown-content :deep(h1) { font-size: var(--font-xl); }
+.markdown-content :deep(h2) { font-size: 15px; }
 .markdown-content :deep(h3) { font-size: 14px; }
 .markdown-content :deep(h4) { font-size: 13px; }
 

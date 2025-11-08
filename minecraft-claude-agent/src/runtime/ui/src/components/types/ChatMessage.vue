@@ -1,14 +1,16 @@
 <template>
-  <div class="tl-item__body chat-message">
-    <div class="chat-message__header">
-      <strong class="chat-from">{{ from }}</strong>
-    </div>
+  <MessageBlock
+    :eyebrow="directionLabel"
+    :title="from"
+    :tone="direction === 'in' ? 'info' : 'neutral'"
+  >
     <div class="chat-text" v-html="safeText"></div>
-  </div>
+  </MessageBlock>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import MessageBlock from '../MessageBlock.vue';
 const props = defineProps<{ item: any }>();
 function escapeHtml(s: string){ return String(s).replace(/[&<>\"]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[m])); }
 
@@ -48,19 +50,14 @@ const safeText = computed(() => {
   const text = parsedMessage.value.message;
   return escapeHtml(text).replace(/\n/g, '<br>');
 });
+
+const directionLabel = computed(() => direction.value === 'in' ? 'Player' : 'Bot');
 </script>
 
 <style scoped>
-.chat-message__header {
-  margin-bottom: 4px;
-}
-.chat-from {
-  color: #EAEAEA;
-  font-size: 13px;
-}
 .chat-text {
-  color: #D0D0D0;
+  color: var(--color-text-secondary);
   line-height: 1.5;
+  font-size: var(--font-md);
 }
 </style>
-

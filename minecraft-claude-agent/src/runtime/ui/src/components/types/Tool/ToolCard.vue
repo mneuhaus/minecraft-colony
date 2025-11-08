@@ -5,7 +5,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import ToolTodo from './ToolTodo.vue';
-import ToolNav from './ToolNav.vue';
 import ToolGetPosition from './ToolGetPosition.vue';
 import ToolNearest from './ToolNearest.vue';
 import ToolVox from './ToolVox.vue';
@@ -13,7 +12,6 @@ import ToolAffordances from './ToolAffordances.vue';
 import ToolCraftScript from './ToolCraftScript.vue';
 import ToolCraftScriptStep from './ToolCraftScriptStep.vue';
 import ToolCraftScriptTrace from './ToolCraftScriptTrace.vue';
-import ToolTopography from './ToolTopography.vue';
 import ToolBlockInfo from './ToolBlockInfo.vue';
 import ToolBlueprint from './ToolBlueprint.vue';
 import ToolLookAtMap from './ToolLookAtMap.vue';
@@ -23,7 +21,6 @@ import ToolGeneric from './ToolGeneric.vue';
 import ToolCraftScriptStatus from './ToolCraftScriptStatus.vue';
 import ToolCraftScriptFunction from './ToolCraftScriptFunction.vue';
 import ToolCraftScriptLogs from './ToolCraftScriptLogs.vue';
-import ToolCraftScriptBlockChanges from './ToolCraftScriptBlockChanges.vue';
 
 const props = defineProps<{ item: any }>();
 const normalized = computed(() => {
@@ -54,7 +51,6 @@ const key = computed(()=> {
   if (/^craftscript_start$/.test(n)) return 'craftscript';
   if (/craftscript_function/.test(n)) return 'craftscript_function';
   if (/get_vox$/.test(n)) return 'vox';
-  if (/get_topography$/.test(n)) return 'topography';
   if (/look_at_map/.test(n)) return 'look_at_map';
   if (/^(get|create|update)_blueprint$/.test(n)) return 'blueprint';
   if (/block_info$/.test(n)) return 'block_info';
@@ -63,17 +59,14 @@ const key = computed(()=> {
   if (/get_position$/.test(n)) return 'get_position';
   if (/get_inventory$/.test(n)) return 'inventory';
   if (/(get|update)_memory$/.test(n)) return 'memory';
-  if (/\bnav$/.test(n)) return 'nav';
   return 'generic';
 });
 
 const toolComponent = computed(()=> ({
   todo: ToolTodo,
-  nav: ToolNav,
   get_position: ToolGetPosition,
   nearest: ToolNearest,
   vox: ToolVox,
-  topography: ToolTopography,
   look_at_map: ToolLookAtMap,
   block_info: ToolBlockInfo,
   blueprint: ToolBlueprint,
@@ -82,7 +75,7 @@ const toolComponent = computed(()=> ({
   craftscript_step: ToolCraftScriptStep,
   craftscript_status: ToolCraftScriptStatus,
   craftscript_logs: ToolCraftScriptLogs,
-  craftscript_trace: ToolCraftScriptBlockChanges,
+  craftscript_trace: ToolCraftScriptTrace,
   craftscript_function: ToolCraftScriptFunction,
   memory: ToolMemory,
   inventory: ToolInventory,

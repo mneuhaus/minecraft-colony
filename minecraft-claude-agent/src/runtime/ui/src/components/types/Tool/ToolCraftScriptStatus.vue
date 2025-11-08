@@ -1,11 +1,16 @@
 <template>
-  <div class="tl-item__body craftscript-status">
-    <div class="hdr">
-      <span class="title">CraftScript Status</span>
-      <span class="badge" :data-state="status.state">{{ status.state }}</span>
-    </div>
+  <MessageBlock
+    eyebrow="CraftScript"
+    title="Status"
+    :tone="tone"
+    padding="sm"
+  >
+    <template #meta>
+      <span class="status-badge">{{ status.state }}</span>
+    </template>
+
     <div class="grid">
-      <div class="k">job</div><div class="v mono">{{ status.id }}</div>
+      <div class="k">job</div><div class="v mono">{{ status.id || '—' }}</div>
       <div class="k">duration</div><div class="v mono">{{ status.duration_ms }} ms</div>
       <template v-if="status.error">
         <div class="k">error</div><div class="v mono">{{ status.error.type }} — {{ status.error.message }}</div>
@@ -13,12 +18,15 @@
         <div class="k" v-if="status.error.line">line</div><div class="v mono" v-if="status.error.line">{{ status.error.line }}:{{ status.error.column || 1 }}</div>
       </template>
     </div>
+
     <pre class="script" v-if="status.script"><code>{{ status.script }}</code></pre>
-  </div>
+  </MessageBlock>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import MessageBlock from '../../MessageBlock.vue';
+
 const props = defineProps<{ item: any }>();
 
 const raw = computed(()=>{
@@ -37,18 +45,57 @@ const status = computed(()=> {
   const error = o.error || null;
   return { id, state, duration_ms, script, error };
 });
+
+const tone = computed(() => {
+  const state = status.value.state.toLowerCase();
+  if (state === 'failed' || state === 'error') return 'danger';
+  if (state === 'completed' || state === 'ok') return 'success';
+  if (state === 'running' || state === 'queued') return 'info';
+  return 'neutral';
+});
 </script>
 
 <style scoped>
-.craftscript-status { font-size: 12px; }
-.hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
-.title { font-weight:600; color:#EAEAEA; }
-.badge { padding:2px 6px; border:1px solid #2E2E2E; border-radius:6px; font-size:10px; text-transform:uppercase; letter-spacing:.03em; }
-.badge[data-state="failed"]{ color:#F87171; border-color:rgba(248,113,113,.5); }
-.badge[data-state="completed"], .badge[data-state="ok"]{ color:#34D399; border-color:rgba(52,211,153,.5); }
-.grid { display:grid; grid-template-columns: 80px 1fr; gap:4px 8px; margin-bottom:6px; }
-.k { color:#9CA3AF; }
-.v { color:#EAEAEA; }
-.mono { font-family:'Monaco','Menlo','Courier New',monospace; }
-.script { margin-top:6px; background:#111; border:1px solid #2E2E2E; border-radius:6px; padding:8px; color:#C9D1D9; max-height:200px; overflow:auto; }
+.status-badge {
+  padding: 2px var(--spacing-sm);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: var(--spacing-xs) var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+  font-size: var(--font-sm);
+}
+
+.k {
+  color: var(--color-text-muted);
+  text-transform: lowercase;
+}
+
+.v {
+  color: var(--color-text-primary);
+}
+
+.mono {
+  font-family: 'Monaco','Menlo','Courier New',monospace;
+}
+
+.script {
+  margin-top: var(--spacing-sm);
+  background: var(--color-bg-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm);
+  color: #c9d1d9;
+  max-height: 200px;
+  overflow: auto;
+  font-size: var(--font-sm);
+}
 </style>

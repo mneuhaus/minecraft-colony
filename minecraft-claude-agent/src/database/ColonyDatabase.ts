@@ -775,7 +775,7 @@ export class ColonyDatabase extends EventEmitter {
     }
   }
 
-  public getDb(): Database.Database {
+  public getDb(): Database {
     return this.db;
   }
 }
