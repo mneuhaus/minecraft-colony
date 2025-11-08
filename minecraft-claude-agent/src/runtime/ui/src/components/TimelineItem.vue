@@ -2,12 +2,12 @@
   <div class="tl-item-wrapper" :class="wrapperClass">
     <div class="tl-item" :class="cssClass">
       <div class="tl-item__header">
-        <button class="inspector-toggle" @click="$emit('openInspector', item)" title="Open Inspector">
-          🔍
-        </button>
         <span class="tl-time">{{ time }}</span>
       </div>
-      <component :is="componentName" :item="item" />
+      <component :is="componentName" :item="item" @openInspector="$emit('openInspector', $event)" />
+      <div class="tl-meta">
+        <small>{{ identityLabel }}</small>
+      </div>
     </div>
   </div>
 </template>
@@ -48,6 +48,13 @@ const componentName = computed(()=> {
   if (t === 'skill') return SkillMessage;
   if (t === 'tool') return ToolCard;
   return SystemMessage;
+});
+
+const identityLabel = computed(() => {
+  const type = String(props.item?.type || 'unknown');
+  const id = props.item?.id ?? props.item?.payload?.id ?? props.item?.payload?.job_id ?? props.item?.payload?.run_id ?? 'n/a';
+  const tool = props.item?.payload?.tool_name ? `, tool: ${props.item.payload.tool_name}` : '';
+  return `(${type}, ${id}${tool})`;
 });
 </script>
 
@@ -124,6 +131,13 @@ const componentName = computed(()=> {
   opacity: 0.7;
 }
 
+.tl-meta {
+  margin-top: 10px;
+  font-size: 16px;
+  color: #cfcfcf;
+  text-align: right;
+}
+
 /* Chat message styling */
 .tl-item--chat-in {
   background: linear-gradient(135deg, rgba(74, 158, 255, 0.08) 0%, rgba(74, 158, 255, 0.02) 100%);
@@ -134,4 +148,3 @@ const componentName = computed(()=> {
   border-color: rgba(233, 109, 47, 0.3);
 }
 </style>
-

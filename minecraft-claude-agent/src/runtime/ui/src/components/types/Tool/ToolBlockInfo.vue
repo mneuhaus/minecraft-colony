@@ -1,8 +1,11 @@
 <template>
-  <div class="tl-item__body tool-block-info">
-    <div class="tool-header">
-      <span class="tool-name">Block Info</span>
-    </div>
+  <MessageBlock class="tl-item__body" title="Block Info" :collapsible="true" :default-collapsed="true">
+    <template #actions>
+      <button class="inspector-toggle" @click="$emit('openInspector', item)" title="Open Inspector">
+        🔍
+      </button>
+    </template>
+
     <div class="block-row" v-if="position">
       <span class="block-key">position</span>
       <span class="block-val">({{ position.x }}, {{ position.y }}, {{ position.z }})</span>
@@ -27,12 +30,15 @@
         </div>
       </div>
     </div>
-  </div>
+  </MessageBlock>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import MessageBlock from '../../MessageBlock.vue';
+
 const props = defineProps<{ item: any }>();
+defineEmits<{ openInspector: [item: any] }>();
 
 const raw = computed(()=> {
   let out = props.item.payload?.output;
@@ -51,12 +57,6 @@ const blockData = computed(()=> raw.value);
 </script>
 
 <style scoped>
-.tool-header {
-  font-weight: 600;
-  color: #EAEAEA;
-  margin-bottom: 8px;
-  font-size: 13px;
-}
 .block-row {
   display: flex;
   gap: 8px;
@@ -124,5 +124,23 @@ const blockData = computed(()=> raw.value);
 .prop-val {
   color: #EAEAEA;
   font-family: 'Monaco', 'Courier New', monospace;
+}
+
+.inspector-toggle {
+  background: rgba(74, 158, 255, 0.1);
+  border: 1px solid rgba(74, 158, 255, 0.3);
+  color: #4A9EFF;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  opacity: 0.7;
+}
+
+.inspector-toggle:hover {
+  background: rgba(74, 158, 255, 0.2);
+  border-color: rgba(74, 158, 255, 0.5);
+  opacity: 1;
 }
 </style>
