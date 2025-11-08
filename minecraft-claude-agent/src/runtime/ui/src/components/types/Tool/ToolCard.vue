@@ -21,6 +21,9 @@ import ToolMemory from './ToolMemory.vue';
 import ToolInventory from './ToolInventory.vue';
 import ToolGeneric from './ToolGeneric.vue';
 import ToolCraftScriptStatus from './ToolCraftScriptStatus.vue';
+import ToolCraftScriptFunction from './ToolCraftScriptFunction.vue';
+import ToolCraftScriptLogs from './ToolCraftScriptLogs.vue';
+import ToolCraftScriptBlockChanges from './ToolCraftScriptBlockChanges.vue';
 
 const props = defineProps<{ item: any }>();
 const normalized = computed(() => {
@@ -45,9 +48,11 @@ const key = computed(()=> {
   if (n === 'todowrite') return 'todo';
   // Match both prefixed (mcp__minecraft__*) and unprefixed tool names
   if (/^craftscript_step$/.test(n)) return 'craftscript_step';
-  if (/^craftscript_trace$/.test(n)) return 'craftscript_trace';
   if (/^craftscript_status$/.test(n)) return 'craftscript_status';
+  if (/^craftscript_logs$/.test(n)) return 'craftscript_logs';
+  if (/^craftscript_trace$/.test(n)) return 'craftscript_trace';
   if (/^craftscript_start$/.test(n)) return 'craftscript';
+  if (/craftscript_function/.test(n)) return 'craftscript_function';
   if (/get_vox$/.test(n)) return 'vox';
   if (/get_topography$/.test(n)) return 'topography';
   if (/look_at_map/.test(n)) return 'look_at_map';
@@ -75,8 +80,10 @@ const toolComponent = computed(()=> ({
   affordances: ToolAffordances,
   craftscript: ToolCraftScript,
   craftscript_step: ToolCraftScriptStep,
-  craftscript_trace: ToolCraftScriptTrace,
   craftscript_status: ToolCraftScriptStatus,
+  craftscript_logs: ToolCraftScriptLogs,
+  craftscript_trace: ToolCraftScriptBlockChanges,
+  craftscript_function: ToolCraftScriptFunction,
   memory: ToolMemory,
   inventory: ToolInventory,
   generic: ToolGeneric,

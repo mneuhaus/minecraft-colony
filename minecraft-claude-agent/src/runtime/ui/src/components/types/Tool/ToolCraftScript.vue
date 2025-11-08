@@ -9,6 +9,7 @@
         <span class="tl-status" :data-state="status.state">{{ status.state.toUpperCase() }}</span>
         <button class="tl-btn" :disabled="running" @click="runAgain">{{ running ? 'Running…' : 'Run Again' }}</button>
         <button class="tl-btn" @click="showLogs = !showLogs">{{ showLogs ? 'Hide Logs' : 'Show Logs' }}</button>
+        <button class="tl-btn tl-btn--trace" @click="toggleTrace" :disabled="!activeJobId" title="View 3D block changes and movement">{{ showTrace ? 'Hide Trace' : '🔍 View Trace' }}</button>
       </div>
     </div>
     <pre class="tool-output"><code class="language-javascript hljs" v-html="highlightedCode"></code></pre>
@@ -27,8 +28,25 @@
         </div>
       </div>
     </div>
+
+    <div v-if="showTrace" class="cs-trace">
+      <div class="cs-trace__hdr">
+        <span class="cs-trace__title">Block Changes</span>
+        <span class="cs-trace__meta" v-if="traceData">{{ traceData.total_changes || 0 }} changes</span>
+      </div>
+      <div v-if="loadingTrace" class="cs-trace__loading">Loading trace data...</div>
+      <div v-else-if="!traceData || !traceData.changes || traceData.changes.length === 0" class="cs-trace__empty">No block changes recorded for this script execution.</div>
+      <div v-else class="cs-trace__list">
+        <div v-for="(change, idx) in traceData.changes" :key="idx" class="cs-trace-item">
+          <span class="cs-trace-item__action" :data-action="change.action">{{ change.action }}</span>
+          <span class="cs-trace-item__block">{{ change.block_id }}</span>
+          <span class="cs-trace-item__pos">@ {{ change.x }}, {{ change.y }}, {{ change.z }}</span>
+          <span class="cs-trace-item__cmd" v-if="change.command">{{ change.command }}</span>
+        </div>
+      </div>
+    </div>
   </div>
-  
+
 </template>
 
 <script setup lang="ts">
@@ -44,6 +62,9 @@ const props = defineProps<{ item: any }>();
 const store = inject<any>('store');
 const running = ref(false);
 const showLogs = ref(false);
+const showTrace = ref(false);
+const loadingTrace = ref(false);
+const traceData = ref<any>(null);
 
 const payload = computed(() => props.item.payload || {});
 
@@ -153,6 +174,42 @@ async function runAgain(){
   }
 }
 
+async function toggleTrace() {
+  showTrace.value = !showTrace.value;
+
+  if (showTrace.value && !traceData.value) {
+    const job = activeJobId.value;
+    if (!job) {
+      console.warn('[toggleTrace] No active job ID');
+      showTrace.value = false;
+      return;
+    }
+
+    loadingTrace.value = true;
+    try {
+      console.log('[toggleTrace] Fetching trace for job:', job);
+      const res = await fetch(`/api/craftscript/${encodeURIComponent(job)}/trace`);
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error('[toggleTrace] Failed to fetch trace:', text);
+        alert(`Failed to load trace data: ${text}`);
+        showTrace.value = false;
+        return;
+      }
+
+      traceData.value = await res.json();
+      console.log('[toggleTrace] Loaded trace data:', traceData.value);
+    } catch (error: any) {
+      console.error('[toggleTrace] Error fetching trace:', error);
+      alert(`Error loading trace data: ${error.message || error}`);
+      showTrace.value = false;
+    } finally {
+      loadingTrace.value = false;
+    }
+  }
+}
+
 // Consolidated logs under the CraftScript card
 const logs = computed(() => {
   const id = activeJobId.value; if (!id) return [] as any[];
@@ -237,6 +294,9 @@ function fmtTs(ts:number){
 .tl-status[data-state="canceled"] { color:#9CA3AF; border-color:#444; }
 .tl-btn { background: rgba(74, 158, 255, 0.1); border:1px solid rgba(74,158,255,0.3); color:#4A9EFF; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; }
 .tl-btn:disabled { opacity: 0.6; cursor: default; }
+.tl-btn--trace { background: linear-gradient(135deg, #00d9ff 0%, #0099cc 100%); border: 1px solid #00d9ff; color: #000; font-weight: 600; transition: all 0.2s; }
+.tl-btn--trace:hover:not(:disabled) { background: linear-gradient(135deg, #00b8d4 0%, #007799 100%); transform: translateY(-1px); box-shadow: 0 3px 6px rgba(0, 217, 255, 0.3); }
+.tl-btn--trace:active:not(:disabled) { transform: translateY(0); }
 .tool-output {
   margin-top: 8px;
   max-height: none;
@@ -254,4 +314,20 @@ function fmtTs(ts:number){
 .cs-log__kind[data-kind="fail"]{ color:#F87171; }
 .cs-log__kind[data-kind="ok"]{ color:#34D399; }
 .cs-log__msg{ color:#EAEAEA; }
+
+.cs-trace { margin-top:10px; padding:10px; background:#0A1A1A; border:1px solid #00d9ff; border-radius:8px; }
+.cs-trace__hdr{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.cs-trace__title{ color:#00d9ff; font-weight:600; font-size:13px; text-shadow: 0 0 8px rgba(0, 217, 255, 0.5); }
+.cs-trace__meta{ color:#00b8d4; font-size:11px; font-weight:600; }
+.cs-trace__loading{ color:#9CA3AF; font-size:12px; font-style: italic; text-align:center; padding:12px; }
+.cs-trace__empty{ color:#7A7A7A; font-size:12px; font-style: italic; text-align:center; padding:12px; }
+.cs-trace__list{ display:flex; flex-direction:column; gap:3px; max-height:300px; overflow-y:auto; }
+.cs-trace-item{ display:grid; grid-template-columns: 70px 120px 140px 1fr; gap:8px; align-items:baseline; font-size:11px; padding:6px 8px; background:#0D1F1F; border-radius:4px; border:1px solid #1A3A3A; }
+.cs-trace-item:hover{ background:#102828; border-color:#00d9ff40; }
+.cs-trace-item__action{ color:#EAEAEA; text-transform:uppercase; font-size:10px; letter-spacing:0.04em; font-weight:600; }
+.cs-trace-item__action[data-action="placed"]{ color:#34D399; }
+.cs-trace-item__action[data-action="destroyed"]{ color:#F87171; }
+.cs-trace-item__block{ color:#00d9ff; font-family: monospace; font-size:10px; }
+.cs-trace-item__pos{ color:#B3B3B3; font-family: monospace; font-size:10px; }
+.cs-trace-item__cmd{ color:#7A7A7A; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 </style>

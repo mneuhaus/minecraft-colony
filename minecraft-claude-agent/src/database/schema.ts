@@ -5,7 +5,7 @@
  * where all tables have a bot_id column for multi-tenancy.
  */
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 3;
 
 /**
  * SQL statements to create the shared colony database schema
@@ -120,6 +120,81 @@ export const SCHEMA_SQL = `
     updated_at INTEGER NOT NULL
   );
 
+  -- Bug/issue tracking table
+  CREATE TABLE IF NOT EXISTS issues (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id INTEGER,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'open',
+    severity TEXT NOT NULL DEFAULT 'medium',
+    assigned_to TEXT,
+    assigned_bot_id INTEGER,
+    created_by TEXT,
+    updated_by TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (bot_id) REFERENCES bots(id) ON DELETE SET NULL,
+    FOREIGN KEY (assigned_bot_id) REFERENCES bots(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS issue_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    issue_id INTEGER NOT NULL,
+    author TEXT,
+    body TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+  );
+
+  -- CraftScript custom functions - reusable bot procedures
+  CREATE TABLE IF NOT EXISTS craftscript_functions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    args TEXT NOT NULL, -- JSON array of {name, type, optional, default}
+    body TEXT NOT NULL, -- CraftScript source code
+    current_version INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    created_by TEXT, -- bot name that created it
+    FOREIGN KEY (bot_id) REFERENCES bots(id) ON DELETE CASCADE,
+    UNIQUE(bot_id, name)
+  );
+
+  -- CraftScript function version history
+  CREATE TABLE IF NOT EXISTS craftscript_function_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    function_id INTEGER NOT NULL,
+    version INTEGER NOT NULL,
+    body TEXT NOT NULL,
+    description TEXT,
+    args TEXT NOT NULL, -- JSON array of arg definitions
+    created_at INTEGER NOT NULL,
+    created_by TEXT,
+    change_summary TEXT,
+    metadata TEXT, -- JSON: {test_results, performance, notes}
+    FOREIGN KEY (function_id) REFERENCES craftscript_functions(id) ON DELETE CASCADE,
+    UNIQUE(function_id, version)
+  );
+
+  -- CraftScript block changes - tracks all block modifications during execution
+  CREATE TABLE IF NOT EXISTS craftscript_block_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id TEXT NOT NULL,
+    bot_id INTEGER NOT NULL,
+    timestamp INTEGER NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('placed', 'destroyed')),
+    x INTEGER NOT NULL,
+    y INTEGER NOT NULL,
+    z INTEGER NOT NULL,
+    block_id TEXT NOT NULL,
+    previous_block_id TEXT,
+    command TEXT,
+    FOREIGN KEY (bot_id) REFERENCES bots(id) ON DELETE CASCADE
+  );
+
   -- Indexes for fast lookups
   CREATE INDEX IF NOT EXISTS idx_sessions_bot ON sessions(bot_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(is_active);
@@ -138,6 +213,15 @@ export const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_learned_facts_importance ON learned_facts(importance);
   CREATE INDEX IF NOT EXISTS idx_relationships_bot ON relationships(bot_id);
   CREATE INDEX IF NOT EXISTS idx_preferences_bot ON preferences(bot_id);
+  CREATE INDEX IF NOT EXISTS idx_craftscript_functions_bot_name ON craftscript_functions(bot_id, name);
+  CREATE INDEX IF NOT EXISTS idx_craftscript_function_versions_function ON craftscript_function_versions(function_id, version);
+  CREATE INDEX IF NOT EXISTS idx_craftscript_block_changes_job ON craftscript_block_changes(job_id);
+  CREATE INDEX IF NOT EXISTS idx_craftscript_block_changes_position ON craftscript_block_changes(x, y, z);
+  CREATE INDEX IF NOT EXISTS idx_craftscript_block_changes_bot ON craftscript_block_changes(bot_id);
+  CREATE INDEX IF NOT EXISTS idx_issues_state ON issues(state);
+  CREATE INDEX IF NOT EXISTS idx_issues_bot ON issues(bot_id);
+  CREATE INDEX IF NOT EXISTS idx_issues_assigned_bot ON issues(assigned_bot_id);
+  CREATE INDEX IF NOT EXISTS idx_issue_comments_issue ON issue_comments(issue_id);
 `;
 
 /**

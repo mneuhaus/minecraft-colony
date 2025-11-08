@@ -43,32 +43,28 @@ function toggleCollapse() {
 <style scoped>
 .msg-block {
   width: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 .msg-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-bottom: 8px;
-  margin-bottom: 8px;
-  border-bottom: 1px solid #2E2E2E;
+  margin-bottom: 12px;
+  font-weight: 600;
+  color: #EAEAEA;
+  font-size: 13px;
   user-select: none;
 }
 
 .msg-block--collapsed .msg-header {
   margin-bottom: 0;
-  padding-bottom: 0;
-  border-bottom: none;
-}
-
-.msg-header--clickable {
-  cursor: pointer;
 }
 
 .msg-header__content {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex: 1;
 }
 

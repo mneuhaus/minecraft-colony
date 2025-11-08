@@ -4,6 +4,38 @@ import path from 'path';
 import { EventEmitter } from 'events';
 import { SCHEMA_SQL, SCHEMA_VERSION, BotStatus } from './schema.js';
 
+export const ISSUE_STATES = ['open', 'triage', 'in_progress', 'testing', 'resolved', 'closed'] as const;
+export type IssueState = typeof ISSUE_STATES[number];
+
+export const ISSUE_SEVERITIES = ['low', 'medium', 'high', 'critical'] as const;
+export type IssueSeverity = typeof ISSUE_SEVERITIES[number];
+
+export interface Issue {
+  id: number;
+  bot_id: number | null;
+  bot_name?: string | null;
+  title: string;
+  description: string;
+  state: IssueState;
+  severity: IssueSeverity;
+  assigned_to?: string | null;
+  assigned_bot_id?: number | null;
+  assigned_bot_name?: string | null;
+  created_by?: string | null;
+  updated_by?: string | null;
+  created_at: number;
+  updated_at: number;
+  comment_count?: number;
+}
+
+export interface IssueComment {
+  id: number;
+  issue_id: number;
+  author?: string | null;
+  body: string;
+  created_at: number;
+}
+
 /**
  * Shared colony-wide database that replaces per-bot SQLite files
  *
@@ -61,9 +93,53 @@ export class ColonyDatabase extends EventEmitter {
 
     // Store schema version
     const version = this.getMetadata('schema_version');
-    if (!version) {
+    if (!version || Number(version) < SCHEMA_VERSION) {
       this.setMetadata('schema_version', SCHEMA_VERSION.toString());
     }
+  }
+
+  private mapIssueRow(row: any): Issue {
+    return {
+      id: Number(row.id),
+      bot_id: row.bot_id ?? null,
+      bot_name: row.bot_name ?? null,
+      title: row.title,
+      description: row.description,
+      state: (row.state || 'open') as IssueState,
+      severity: (row.severity || 'medium') as IssueSeverity,
+      assigned_to: row.assigned_to ?? null,
+      assigned_bot_id: row.assigned_bot_id ?? null,
+      assigned_bot_name: row.assigned_bot_name ?? null,
+      created_by: row.created_by ?? null,
+      updated_by: row.updated_by ?? null,
+      created_at: Number(row.created_at) || 0,
+      updated_at: Number(row.updated_at) || 0,
+      comment_count: row.comment_count !== undefined ? Number(row.comment_count) : undefined
+    };
+  }
+
+  private mapIssueComment(row: any): IssueComment {
+    return {
+      id: Number(row.id),
+      issue_id: Number(row.issue_id),
+      author: row.author ?? null,
+      body: row.body,
+      created_at: Number(row.created_at) || 0
+    };
+  }
+
+  private ensureValidState(state: string): IssueState {
+    if (!ISSUE_STATES.includes(state as IssueState)) {
+      throw new Error(`Invalid issue state: ${state}`);
+    }
+    return state as IssueState;
+  }
+
+  private ensureValidSeverity(severity: string): IssueSeverity {
+    if (!ISSUE_SEVERITIES.includes(severity as IssueSeverity)) {
+      throw new Error(`Invalid issue severity: ${severity}`);
+    }
+    return severity as IssueSeverity;
   }
 
   // ============================================================================
@@ -457,6 +533,185 @@ export class ColonyDatabase extends EventEmitter {
     status.sessionId = this.getActiveSession(botId) || undefined;
 
     return status;
+  }
+
+  // ============================================================================
+  // Issues / Bug Reports
+  // ============================================================================
+
+  public createIssue(
+    botId: number | null,
+    title: string,
+    description: string,
+    createdBy?: string | null,
+    severity: IssueSeverity = 'medium'
+  ): Issue {
+    const now = Math.floor(Date.now() / 1000);
+    const validSeverity = this.ensureValidSeverity(severity);
+    const result = this.db.prepare(`
+      INSERT INTO issues (
+        bot_id, title, description, state, severity, assigned_to, assigned_bot_id,
+        created_by, updated_by, created_at, updated_at
+      ) VALUES (?, ?, ?, 'open', ?, 'human', NULL, ?, ?, ?, ?)
+    `).run(botId ?? null, title, description, validSeverity, createdBy || null, createdBy || null, now, now);
+
+    const issueId = Number(result.lastInsertRowid);
+    const issue = this.getIssue(issueId);
+    if (!issue) throw new Error('Failed to create issue');
+    this.emit('issue:created', issue);
+    return issue;
+  }
+
+  public listIssues(options?: { botId?: number | null; state?: IssueState | IssueState[]; assignedBotId?: number | null; limit?: number }): Issue[] {
+    const clauses: string[] = [];
+    const params: any[] = [];
+
+    if (options?.botId !== undefined && options.botId !== null) {
+      clauses.push('issues.bot_id = ?');
+      params.push(options.botId);
+    }
+
+    if (options?.state) {
+      const states = Array.isArray(options.state) ? options.state : [options.state];
+      const validStates = states.map((s) => this.ensureValidState(s));
+      clauses.push(`issues.state IN (${validStates.map(() => '?').join(',')})`);
+      params.push(...validStates);
+    }
+
+    if (options?.assignedBotId !== undefined) {
+      if (options.assignedBotId === null) {
+        clauses.push('issues.assigned_bot_id IS NULL');
+      } else {
+        clauses.push('issues.assigned_bot_id = ?');
+        params.push(options.assignedBotId);
+      }
+    }
+
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const limit = Math.max(1, Math.min(options?.limit ?? 100, 500));
+
+    const rows = this.db.prepare(`
+      SELECT issues.*, bots.name AS bot_name, assigned_bot.name AS assigned_bot_name,
+             (SELECT COUNT(*) FROM issue_comments WHERE issue_id = issues.id) AS comment_count
+      FROM issues
+      LEFT JOIN bots ON issues.bot_id = bots.id
+      LEFT JOIN bots AS assigned_bot ON issues.assigned_bot_id = assigned_bot.id
+      ${where}
+      ORDER BY issues.updated_at DESC
+      LIMIT ?
+    `).all(...params, limit) as any[];
+
+    return rows.map((row) => this.mapIssueRow(row));
+  }
+
+  public getIssue(issueId: number): Issue | null {
+    const row = this.db.prepare(`
+      SELECT issues.*, bots.name AS bot_name, assigned_bot.name AS assigned_bot_name,
+             (SELECT COUNT(*) FROM issue_comments WHERE issue_id = issues.id) AS comment_count
+      FROM issues
+      LEFT JOIN bots ON issues.bot_id = bots.id
+      LEFT JOIN bots AS assigned_bot ON issues.assigned_bot_id = assigned_bot.id
+      WHERE issues.id = ?
+    `).get(issueId) as any;
+
+    return row ? this.mapIssueRow(row) : null;
+  }
+
+  public getIssueDetail(issueId: number): { issue: Issue; comments: IssueComment[] } | null {
+    const issue = this.getIssue(issueId);
+    if (!issue) return null;
+    const comments = this.getIssueComments(issueId);
+    return { issue, comments };
+  }
+
+  public updateIssue(
+    issueId: number,
+    updates: {
+      state?: IssueState;
+      assigned_to?: string | null;
+      assigned_bot_id?: number | null;
+      severity?: IssueSeverity;
+      title?: string;
+      description?: string;
+      updated_by?: string | null;
+    }
+  ): Issue | null {
+    const sets: string[] = [];
+    const params: any[] = [];
+
+    if (updates.state) {
+      sets.push('state = ?');
+      params.push(this.ensureValidState(updates.state));
+    }
+
+    if (updates.assigned_to !== undefined) {
+      sets.push('assigned_to = ?');
+      params.push(updates.assigned_to ?? null);
+    }
+
+    if (updates.assigned_bot_id !== undefined) {
+      sets.push('assigned_bot_id = ?');
+      params.push(updates.assigned_bot_id ?? null);
+    }
+
+    if (updates.severity) {
+      sets.push('severity = ?');
+      params.push(this.ensureValidSeverity(updates.severity));
+    }
+
+    if (updates.title !== undefined) {
+      sets.push('title = ?');
+      params.push(updates.title);
+    }
+
+    if (updates.description !== undefined) {
+      sets.push('description = ?');
+      params.push(updates.description);
+    }
+
+    if (!sets.length) {
+      return this.getIssue(issueId);
+    }
+
+    sets.push('updated_at = ?');
+    params.push(Math.floor(Date.now() / 1000));
+
+    if (updates.updated_by !== undefined) {
+      sets.push('updated_by = ?');
+      params.push(updates.updated_by);
+    }
+
+    params.push(issueId);
+
+    this.db.prepare(`
+      UPDATE issues SET ${sets.join(', ')} WHERE id = ?
+    `).run(...params);
+
+    const issue = this.getIssue(issueId);
+    if (issue) this.emit('issue:updated', issue);
+    return issue;
+  }
+
+  public addIssueComment(issueId: number, author: string | null, body: string): IssueComment {
+    const now = Math.floor(Date.now() / 1000);
+    const result = this.db.prepare(`
+      INSERT INTO issue_comments (issue_id, author, body, created_at)
+      VALUES (?, ?, ?, ?)
+    `).run(issueId, author || null, body, now);
+
+    const commentRow = this.db.prepare('SELECT * FROM issue_comments WHERE id = ?').get(Number(result.lastInsertRowid)) as any;
+    const comment = this.mapIssueComment(commentRow);
+    this.emit('issue:commented', { issueId, comment });
+    return comment;
+  }
+
+  public getIssueComments(issueId: number): IssueComment[] {
+    const rows = this.db.prepare(`
+      SELECT * FROM issue_comments
+      WHERE issue_id = ?
+      ORDER BY created_at ASC
+    `).all(issueId) as any[];
+    return rows.map((row) => this.mapIssueComment(row));
   }
 
   // ============================================================================

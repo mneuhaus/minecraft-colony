@@ -3,6 +3,7 @@ import { CraftscriptExecutor } from '../craftscript/executor.js';
 import { parse as parseCraft } from '../craftscript/parser.js';
 import { ActivityWriter } from '../utils/activityWriter.js';
 import { SqlMemoryStore } from '../utils/sqlMemoryStore.js';
+import { ColonyDatabase } from '../database/ColonyDatabase.js';
 
 type JobState = 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
 
@@ -112,7 +113,15 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
     }
     console.log('[CraftScript] Parsed successfully, executing...');
 
+    // Get database connection and bot ID for custom functions
+    const colonyDb = ColonyDatabase.getInstance();
+    const db = colonyDb.getDb();
+    const botId = colonyDb.getBotId(botName || minecraftBot.getBot().username || 'bot');
+
     const exec = new CraftscriptExecutor(bot, {
+      db,
+      botId: botId || undefined,
+      jobId: job.id,
       onStep: (r) => {
         try {
           if (!activityWriter) return;

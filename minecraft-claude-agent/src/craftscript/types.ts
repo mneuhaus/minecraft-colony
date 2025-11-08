@@ -204,4 +204,24 @@ export interface ExecutorOptions {
   onStep?: (result: CraftscriptResult) => void;
   // Verbose trace callback for internal events (ifs, loops, vars, predicates, command start)
   onTrace?: (trace: any) => void;
+  // Database connection for custom functions and block tracking
+  db?: any;
+  // Bot ID for retrieving custom functions and logging block changes
+  botId?: number;
+  // Job ID for tracking block changes
+  jobId?: string;
+}
+
+// Custom function definition
+export interface CustomFunction {
+  id: number;
+  bot_id: number;
+  name: string;
+  description: string | null;
+  args: Array<{ name: string; type: string; optional?: boolean; default?: any }>;
+  body: string; // CraftScript source code
+  current_version: number;
+  created_at: number;
+  updated_at: number;
+  created_by: string | null;
 }

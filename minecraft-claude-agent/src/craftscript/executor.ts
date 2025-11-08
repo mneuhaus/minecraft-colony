@@ -18,10 +18,12 @@ import {
   type IdentifierExpr,
   type CraftscriptResult,
   type ExecutorOptions,
+  type CustomFunction,
 } from './types.js';
 import { selectorToOffset, yawToHeadingRadians } from './selector.js';
 import { can_stand, detect_hazards, get_vox, is_air, safe_step_down, safe_step_up } from './env.js';
 import { get_waypoint } from '../tools/navigation/waypoints.js';
+import { parse as parseCraft } from './parser.js';
 
 const { goals } = pathfinderPkg as any;
 
@@ -29,9 +31,11 @@ export class CraftscriptExecutor {
   private bot: Bot;
   private ops = 0;
   private macros = new Map<string, Block>();
-  private options: Required<Omit<ExecutorOptions, 'onStep' | 'onTrace'>> & { onStep?: (result: CraftscriptResult) => void; onTrace?: (t:any)=>void };
+  private options: Required<Omit<ExecutorOptions, 'onStep' | 'onTrace' | 'db' | 'botId' | 'jobId'>> & { onStep?: (result: CraftscriptResult) => void; onTrace?: (t:any)=>void; db?: any; botId?: number; jobId?: string };
   private vars = new Map<string, any>();
   private openContainer: any = null; // Currently open chest/furnace/etc
+  private functionCallDepth = 0; // Track recursion depth
+  private readonly MAX_FUNCTION_DEPTH = 10; // Prevent infinite recursion
 
   constructor(bot: Bot, options?: ExecutorOptions) {
     this.bot = bot;
@@ -41,6 +45,9 @@ export class CraftscriptExecutor {
       autoScanBeforeOps: options?.autoScanBeforeOps ?? true,
       ...(options?.onStep ? { onStep: options.onStep } : {}),
       ...(options?.onTrace ? { onTrace: options.onTrace } : {}),
+      ...(options?.db ? { db: options.db } : {}),
+      ...(options?.botId ? { botId: options.botId } : {}),
+      ...(options?.jobId ? { jobId: options.jobId } : {}),
     };
   }
 
@@ -50,6 +57,18 @@ export class CraftscriptExecutor {
 
   async run(program: Program): Promise<{ ok: boolean; results: CraftscriptResult[] }> {
     this.ops = 0;
+
+    // Set pathfinder movements to disallow digging by default (for clean block tracking)
+    try {
+      const pathfinderPkg = await import('mineflayer-pathfinder');
+      const { Movements } = pathfinderPkg as any;
+      const movements = new Movements(this.bot);
+      (movements as any).canDig = false; // Prevent pathfinder from breaking blocks
+      this.bot.pathfinder.setMovements(movements);
+    } catch (error: any) {
+      console.warn('[CraftScript] Could not set pathfinder movements:', error.message);
+    }
+
     // collect macros
     for (const st of program.body) {
       if (st.type === 'MacroDecl') this.macros.set(st.name, st.body);
@@ -231,18 +250,8 @@ export class CraftscriptExecutor {
       }
       if (name === 'dig' || name === 'break') {
         const arg0 = cmd.args[0];
-        let worldPos: Vec3;
-
-        // Support two forms:
-        // 1. dig(x, y, z) - direct coordinates
-        // 2. dig(^f1) - selector
-        if ((arg0 as any)?.type === 'Number' && cmd.args.length >= 3) {
-          // Direct coordinates: dig(x, y, z)
-          const x = Number(this.evalExprSync(cmd.args[0] as Expr));
-          const y = Number(this.evalExprSync(cmd.args[1] as Expr));
-          const z = Number(this.evalExprSync(cmd.args[2] as Expr));
-          worldPos = new Vec3(x, y, z);
-        } else {
+        let worldPos = this.tryEvalWorldCoords(cmd.args);
+        if (!worldPos) {
           worldPos = this.selectorToWorld(this.requireSelectorArg(arg0));
         }
         // Prevent digging upwards if gravity blocks overhead
@@ -254,7 +263,7 @@ export class CraftscriptExecutor {
         if (!target || target.name === 'air') return this.fail('no_target', 'no block to dig', cmd);
         if (this.bot.entity.position.distanceTo(worldPos) > 4.5) return this.fail('out_of_reach', 'target beyond reach (4.5)', cmd);
         try {
-          await this.bot.dig(target);
+          await this.safeDigBlock(target, name);
           return this.ok(name, t0, { world: [worldPos.x, worldPos.y, worldPos.z], id: target.name });
         } catch (e: any) {
           return this.fail('runtime_error', e?.message || `${name}_failed`, cmd);
@@ -263,18 +272,9 @@ export class CraftscriptExecutor {
       if (name === 'place') {
         const id = this.requireString(cmd.args[0]).value;
         const arg1 = cmd.args[1];
-        let worldPos: Vec3;
         let namedStartIdx = 2;
-
-        // Support two forms:
-        // 1. place("stone", x, y, z) - direct coordinates
-        // 2. place("stone", ^f1) - selector
-        if ((arg1 as any)?.type === 'Number' && cmd.args.length >= 4) {
-          // Direct coordinates: place("stone", x, y, z)
-          const x = Number(this.evalExprSync(cmd.args[1] as Expr));
-          const y = Number(this.evalExprSync(cmd.args[2] as Expr));
-          const z = Number(this.evalExprSync(cmd.args[3] as Expr));
-          worldPos = new Vec3(x, y, z);
+        let worldPos = this.tryEvalWorldCoords(cmd.args.slice(1));
+        if (worldPos) {
           namedStartIdx = 4;
         } else {
           worldPos = this.selectorToWorld(this.requireSelectorArg(arg1));
@@ -299,7 +299,7 @@ export class CraftscriptExecutor {
           return this.fail('occupied', `target not empty: minecraft:${occupied.name}`, cmd, { target: [worldPos.x, worldPos.y, worldPos.z], id: occupied.name });
         }
         try {
-          await this.safePlaceBlock(reference, faceVector);
+          await this.safePlaceBlock(reference, faceVector, 'place');
           return this.ok('place', t0, { id, world: [worldPos.x, worldPos.y, worldPos.z], face });
         } catch (e: any) {
           const msg = String(e?.message || 'place_failed');
@@ -496,6 +496,13 @@ export class CraftscriptExecutor {
         // Accept direct coordinates (x,y,z), world(), waypoint(), or selector
         const arg = cmd.args[0];
 
+        // Capture starting position
+        const fromPos = {
+          x: Math.floor(this.bot.entity.position.x),
+          y: Math.floor(this.bot.entity.position.y),
+          z: Math.floor(this.bot.entity.position.z)
+        };
+
         // Check if we have three coordinate arguments (x, y, z)
         if (cmd.args.length >= 3 &&
             (arg as any).type !== 'World' &&
@@ -507,7 +514,17 @@ export class CraftscriptExecutor {
           const z = Number(this.evalExprSync(cmd.args[2] as Expr));
           const named = this.namedArgs(cmd.args.slice(3));
           const tol = named.tol ? Number(this.evalExprSync(named.tol)) : 1;
+
+          this.trace('movement', { cmd: 'goto', from: fromPos, to: { x, y, z } });
           await this.bot.pathfinder.goto(new goals.GoalNear(x, y, z, tol));
+
+          const toPos = {
+            x: Math.floor(this.bot.entity.position.x),
+            y: Math.floor(this.bot.entity.position.y),
+            z: Math.floor(this.bot.entity.position.z)
+          };
+          this.trace('movement', { cmd: 'goto', arrived: toPos });
+
           return this.ok('goto', t0, { world: [x, y, z] });
         }
 
@@ -516,17 +533,46 @@ export class CraftscriptExecutor {
         const tol = named.tol ? Number(this.evalExprSync(named.tol)) : 1;
         if ((arg as any).type === 'World') {
           const w = arg as World;
+          this.trace('movement', { cmd: 'goto', from: fromPos, to: { x: w.x, y: w.y, z: w.z } });
           await this.bot.pathfinder.goto(new goals.GoalNear(w.x, w.y, w.z, tol));
+
+          const toPos = {
+            x: Math.floor(this.bot.entity.position.x),
+            y: Math.floor(this.bot.entity.position.y),
+            z: Math.floor(this.bot.entity.position.z)
+          };
+          this.trace('movement', { cmd: 'goto', arrived: toPos });
+
           return this.ok('goto', t0, { world: [w.x, w.y, w.z] });
         } else if ((arg as any).type === 'Waypoint') {
           const name = (arg as Waypoint).name.value;
           const wp = await get_waypoint(this.bot.username, name);
           if (!wp) return this.fail('no_path', `unknown waypoint ${name}`, cmd);
+
+          this.trace('movement', { cmd: 'goto', from: fromPos, to: { x: wp.x, y: wp.y, z: wp.z }, waypoint: name });
           await this.bot.pathfinder.goto(new goals.GoalNear(wp.x, wp.y, wp.z, tol));
+
+          const toPos = {
+            x: Math.floor(this.bot.entity.position.x),
+            y: Math.floor(this.bot.entity.position.y),
+            z: Math.floor(this.bot.entity.position.z)
+          };
+          this.trace('movement', { cmd: 'goto', arrived: toPos });
+
           return this.ok('goto', t0, { world: [wp.x, wp.y, wp.z] });
         } else if ((arg as any).type === 'Selector') {
           const pos = this.selectorToWorld(arg as SelAst);
+
+          this.trace('movement', { cmd: 'goto', from: fromPos, to: { x: pos.x, y: pos.y, z: pos.z } });
           await this.bot.pathfinder.goto(new goals.GoalNear(pos.x, pos.y, pos.z, tol));
+
+          const toPos = {
+            x: Math.floor(this.bot.entity.position.x),
+            y: Math.floor(this.bot.entity.position.y),
+            z: Math.floor(this.bot.entity.position.z)
+          };
+          this.trace('movement', { cmd: 'goto', arrived: toPos });
+
           return this.ok('goto', t0, { world: [pos.x, pos.y, pos.z] });
         } else {
           return this.fail('no_path', 'unsupported goto arg', cmd);
@@ -671,7 +717,7 @@ export class CraftscriptExecutor {
           const referenceBlock = this.bot.blockAt(worldPos.offset(0, -1, 0));
           if (!referenceBlock) return this.fail('no_reference', 'no block beneath', cmd);
 
-          await this.safePlaceBlock(referenceBlock, new Vec3(0, 1, 0));
+          await this.safePlaceBlock(referenceBlock, new Vec3(0, 1, 0), 'plant');
           return this.ok('plant', t0, { sapling: saplingId, pos: [x, y, z] });
         } catch (e: any) {
           return this.fail('runtime_error', e?.message || 'plant_failed', cmd);
@@ -950,6 +996,12 @@ export class CraftscriptExecutor {
         return this.ok('container_items', t0, { items });
       }
 
+      // Custom function invocation: check database for user-defined functions
+      const customFunc = await this.resolveCustomFunction(name);
+      if (customFunc) {
+        return await this.executeCustomFunction(customFunc, cmd.args, cmd);
+      }
+
       // Macro invocation: treat unknown commands matching macro names as body exec
       if (this.macros.has(name)) {
         const body = this.macros.get(name)!;
@@ -1143,11 +1195,49 @@ export class CraftscriptExecutor {
   private asNumber(expr: Expr): number | null {
     try { const v = Number(this.evalExprSync(expr)); return Number.isFinite(v) ? v : null; } catch { return null; }
   }
-  private async safePlaceBlock(reference: any, face: Vec3, retries = 4): Promise<void> {
+
+  /**
+   * Log a block change to the database
+   */
+  private logBlockChange(action: 'placed' | 'destroyed', x: number, y: number, z: number, blockId: string, previousBlockId: string | null, command: string) {
+    if (!this.options.db || !this.options.botId || !this.options.jobId) return;
+
+    try {
+      this.options.db.prepare(`
+        INSERT INTO craftscript_block_changes (job_id, bot_id, timestamp, action, x, y, z, block_id, previous_block_id, command)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        this.options.jobId,
+        this.options.botId,
+        Math.floor(Date.now() / 1000),
+        action,
+        x,
+        y,
+        z,
+        blockId,
+        previousBlockId,
+        command
+      );
+    } catch (error: any) {
+      console.error(`[CraftScript] Error logging block change:`, error.message);
+    }
+  }
+
+  private async safePlaceBlock(reference: any, face: Vec3, command: string, retries = 4): Promise<void> {
+    const targetPos = reference.position.plus(face);
+    const previousBlock = this.bot.blockAt(targetPos);
+    const previousBlockId = previousBlock?.name || 'air';
+
     let lastErr: any = null;
     for (let i = 0; i < retries; i++) {
       try {
         await this.bot.placeBlock(reference, face);
+
+        // Log the block change
+        const placedBlock = this.bot.blockAt(targetPos);
+        if (placedBlock) {
+          this.logBlockChange('placed', targetPos.x, targetPos.y, targetPos.z, placedBlock.name, previousBlockId, command);
+        }
         return;
       } catch (e: any) {
         lastErr = e;
@@ -1159,6 +1249,16 @@ export class CraftscriptExecutor {
       }
     }
     throw lastErr || new Error('place_timeout');
+  }
+
+  private async safeDigBlock(block: any, command: string): Promise<void> {
+    const pos = block.position;
+    const blockId = block.name;
+
+    await this.bot.dig(block);
+
+    // Log the block change
+    this.logBlockChange('destroyed', pos.x, pos.y, pos.z, blockId, null, command);
   }
   private async openContainerWithRetry(block: any, retries = 3): Promise<any> {
     let lastErr: any = null;
@@ -1180,6 +1280,118 @@ export class CraftscriptExecutor {
   private bumpOps() {
     this.ops++;
     if (this.ops > this.options.opLimit) throw new Error('op_limit_exceeded');
+  }
+
+  /**
+   * Resolve a custom function from the database
+   */
+  private async resolveCustomFunction(name: string): Promise<CustomFunction | null> {
+    if (!this.options.db || !this.options.botId) return null;
+
+    try {
+      const row = this.options.db.prepare(
+        'SELECT * FROM craftscript_functions WHERE bot_id = ? AND name = ?'
+      ).get(this.options.botId, name);
+
+      if (!row) return null;
+
+      return {
+        ...row,
+        args: JSON.parse(row.args),
+      } as CustomFunction;
+    } catch (error: any) {
+      console.error(`[CraftScript] Error resolving custom function "${name}":`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Execute a custom function with named arguments
+   */
+  private async executeCustomFunction(func: CustomFunction, callArgs: any[], cmd: CommandStmt): Promise<CraftscriptResult> {
+    const t0 = Date.now();
+
+    // Check recursion depth
+    if (this.functionCallDepth >= this.MAX_FUNCTION_DEPTH) {
+      return this.fail('runtime_error', `Maximum function call depth (${this.MAX_FUNCTION_DEPTH}) exceeded`, cmd);
+    }
+
+    try {
+      // Extract named arguments from call
+      const named = this.namedArgs(callArgs);
+
+      // Validate and bind arguments
+      const argValues = new Map<string, any>();
+      for (const argDef of func.args) {
+        const argName = argDef.name;
+
+        if (named[argName]) {
+          // Argument provided
+          argValues.set(argName, await this.evalExpr(named[argName]));
+        } else if (argDef.optional && argDef.default !== undefined) {
+          // Use default value
+          argValues.set(argName, argDef.default);
+        } else if (!argDef.optional) {
+          // Required argument missing
+          return this.fail('compile_error', `Missing required argument "${argName}" for function "${func.name}"`, cmd);
+        }
+      }
+
+      // Parse function body
+      let ast: Program;
+      try {
+        ast = parseCraft(func.body);
+      } catch (e: any) {
+        return this.fail('compile_error', `Failed to parse custom function "${func.name}": ${e.message}`, cmd);
+      }
+
+      // Save current variable state
+      const savedVars = new Map(this.vars);
+
+      // Set function arguments as variables
+      for (const [name, value] of argValues) {
+        this.vars.set(name, value);
+      }
+
+      // Increment depth and execute function body
+      this.functionCallDepth++;
+      try {
+        for (const st of ast.body) {
+          if (st.type === 'Command') {
+            const result = await this.execStatement(st);
+            if (result && !result.ok) {
+              // Restore state and return error
+              this.vars = savedVars;
+              this.functionCallDepth--;
+              return result;
+            }
+          } else {
+            await this.execStatement(st);
+          }
+        }
+      } finally {
+        // Restore variable state and depth
+        this.vars = savedVars;
+        this.functionCallDepth--;
+      }
+
+      return this.ok('custom_function', t0, { name: func.name, version: func.current_version });
+    } catch (e: any) {
+      return this.fail('runtime_error', `Error executing custom function "${func.name}": ${e.message}`, cmd);
+    }
+  }
+
+  private tryEvalWorldCoords(args: any[]): Vec3 | null {
+    if (!args || args.length < 3) return null;
+    try {
+      const x = Number(this.evalExprSync(args[0] as Expr));
+      const y = Number(this.evalExprSync(args[1] as Expr));
+      const z = Number(this.evalExprSync(args[2] as Expr));
+      if ([x, y, z].some((v) => Number.isNaN(v))) return null;
+      return new Vec3(x, y, z);
+    } catch {
+      return null;
+    }
   }
 }
 

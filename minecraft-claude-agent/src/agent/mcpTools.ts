@@ -234,6 +234,318 @@ export function createUnifiedMcpServer(
         cancelCraftscriptJob(job_id);
         return { content: [{ type: 'text', text: JSON.stringify({ job_id, state: 'canceled' }) }] };
       }, context),
+      loggingTool('craftscript_trace', 'Retrieve all traces for a CraftScript job including block changes (placed/destroyed) and movement. Returns chronological list with coordinates, block types, commands, positions, and timestamps. Useful for verifying builds, debugging paths, testing, and creating visualizations. Every modification and movement is tracked automatically even if the script fails.', {
+        job_id: z.string()
+      }, async ({ job_id }) => {
+        const { ColonyDatabase } = await import('../database/ColonyDatabase.js');
+        const colonyDb = ColonyDatabase.getInstance();
+        const db = colonyDb.getDb();
+        const botId = colonyDb.getBotId(context.botName);
+        if (!botId) return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'bot_not_found' }) }], isError: true } as any;
+
+        try {
+          const changes = db.prepare(`
+            SELECT action, x, y, z, block_id, previous_block_id, command, timestamp
+            FROM craftscript_block_changes
+            WHERE job_id = ? AND bot_id = ?
+            ORDER BY timestamp ASC
+          `).all(job_id, botId);
+
+          const result = {
+            job_id,
+            bot_id: botId,
+            total_changes: changes.length,
+            changes
+          };
+
+          return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+        } catch (error: any) {
+          return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: error.message }) }], isError: true } as any;
+        }
+      }, context),
+
+      // Custom CraftScript Function Management
+      loggingTool('create_craftscript_function', 'Create a new reusable CraftScript function with automatic versioning. Functions are persistent across sessions and can be called from any CraftScript. Args must specify {name, type, optional?, default?} where type is "int", "bool", or "string". Body is CraftScript code that can reference arg names as variables.', {
+        name: z.string(),
+        description: z.string().optional(),
+        args: z.array(z.object({
+          name: z.string(),
+          type: z.enum(['int', 'bool', 'string']),
+          optional: z.boolean().optional(),
+          default: z.any().optional()
+        })),
+        body: z.string()
+      }, async ({ name, description, args, body }) => {
+        const { ColonyDatabase } = await import('../database/ColonyDatabase.js');
+        const colonyDb = ColonyDatabase.getInstance();
+        const db = colonyDb.getDb();
+        const botId = colonyDb.getBotId(context.botName);
+        if (!botId) return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'bot_not_found' }) }] };
+
+        const now = Date.now();
+        const cleanBody = body !== undefined ? sanitizeScriptBody(body) : undefined;
+          const sanitized = sanitizeScriptBody(body);
+        try {
+          const result = db.prepare(`
+            INSERT INTO craftscript_functions (bot_id, name, description, args, body, current_version, created_at, updated_at, created_by)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
+          `).run(botId, name, description || null, JSON.stringify(args), cleanBody, now, now, context.botName);
+
+          const functionId = Number(result.lastInsertRowid);
+
+          // Create version 1 entry
+          db.prepare(`
+            INSERT INTO craftscript_function_versions (function_id, version, body, description, args, created_at, created_by, change_summary)
+            VALUES (?, 1, ?, ?, ?, ?, ?, 'Initial version')
+          `).run(functionId, cleanBody, description || null, JSON.stringify(args), now, context.botName);
+
+          return { content: [{ type: 'text', text: JSON.stringify({ ok: true, id: functionId, name, version: 1 }) }] };
+        } catch (error: any) {
+          if (error.message?.includes('UNIQUE constraint')) {
+            return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'function_exists', message: `Function "${name}" already exists` }) }] };
+          }
+          return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'database_error', message: error.message }) }] };
+        }
+      }, context),
+
+      loggingTool('edit_craftscript_function', 'Update an existing CraftScript function. Creates a new version automatically (increments version number). You can update body, description, args, or any combination. Use change_summary to document what changed. Previous versions are preserved and can be viewed with list_function_versions.', {
+        name: z.string(),
+        description: z.string().optional(),
+        args: z.array(z.object({
+          name: z.string(),
+          type: z.enum(['int', 'bool', 'string']),
+          optional: z.boolean().optional(),
+          default: z.any().optional()
+        })).optional(),
+        body: z.string().optional(),
+        change_summary: z.string().optional()
+      }, async ({ name, description, args, body, change_summary }) => {
+        const { ColonyDatabase } = await import('../database/ColonyDatabase.js');
+        const colonyDb = ColonyDatabase.getInstance();
+        const db = colonyDb.getDb();
+        const botId = colonyDb.getBotId(context.botName);
+        if (!botId) return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'bot_not_found' }) }] };
+
+        const now = Date.now();
+        try {
+          // Get current function
+          const func = db.prepare('SELECT * FROM craftscript_functions WHERE bot_id = ? AND name = ?').get(botId, name) as any;
+          if (!func) return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'not_found', message: `Function "${name}" not found` }) }] };
+
+          const newVersion = func.current_version + 1;
+          const newBody = cleanBody !== undefined ? cleanBody : func.body;
+          const newDescription = description !== undefined ? description : func.description;
+          const newArgs = args !== undefined ? JSON.stringify(args) : func.args;
+
+          // Update main function record
+          db.prepare(`
+            UPDATE craftscript_functions
+            SET body = ?, description = ?, args = ?, current_version = ?, updated_at = ?
+            WHERE id = ?
+          `).run(newBody, newDescription, newArgs, newVersion, now, func.id);
+
+          // Create new version entry
+          db.prepare(`
+            INSERT INTO craftscript_function_versions (function_id, version, body, description, args, created_at, created_by, change_summary)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(func.id, newVersion, newBody, newDescription, newArgs, now, context.botName, change_summary || 'Updated');
+
+          return { content: [{ type: 'text', text: JSON.stringify({
+            ok: true,
+            name,
+            version: newVersion,
+            previous_version: func.current_version,
+            previous_body: func.body,
+            new_body: newBody
+          }) }] };
+        } catch (error: any) {
+          return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'database_error', message: error.message }) }] };
+        }
+      }, context),
+
+      loggingTool('delete_craftscript_function', 'Permanently delete a CraftScript function and ALL its version history. This cannot be undone. Use with caution.', {
+        name: z.string()
+      }, async ({ name }) => {
+        const { ColonyDatabase } = await import('../database/ColonyDatabase.js');
+        const colonyDb = ColonyDatabase.getInstance();
+        const db = colonyDb.getDb();
+        const botId = colonyDb.getBotId(context.botName);
+        if (!botId) return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'bot_not_found' }) }] };
+
+        try {
+          const result = db.prepare('DELETE FROM craftscript_functions WHERE bot_id = ? AND name = ?').run(botId, name);
+          if (result.changes === 0) {
+            return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'not_found', message: `Function "${name}" not found` }) }] };
+          }
+          return { content: [{ type: 'text', text: JSON.stringify({ ok: true, name, deleted: true }) }] };
+        } catch (error: any) {
+          return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'database_error', message: error.message }) }] };
+        }
+      }, context),
+
+      loggingTool('list_craftscript_functions', 'List all custom CraftScript functions created by this bot. Returns name, description, args, current_version, and timestamps for each function. Use this to discover available functions before calling them in CraftScript.', {}, async () => {
+        const { ColonyDatabase } = await import('../database/ColonyDatabase.js');
+        const colonyDb = ColonyDatabase.getInstance();
+        const db = colonyDb.getDb();
+        const botId = colonyDb.getBotId(context.botName);
+        if (!botId) return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'bot_not_found' }) }] };
+
+        const functions = db.prepare(`
+          SELECT id, name, description, args, current_version, created_at, updated_at
+          FROM craftscript_functions
+          WHERE bot_id = ?
+          ORDER BY name ASC
+        `).all(botId) as any[];
+
+        const list = functions.map(f => ({
+          id: f.id,
+          name: f.name,
+          description: f.description,
+          args: JSON.parse(f.args),
+          current_version: f.current_version,
+          created_at: f.created_at,
+          updated_at: f.updated_at
+        }));
+
+        return { content: [{ type: 'text', text: JSON.stringify({ ok: true, functions: list, count: list.length }) }] };
+      }, context),
+
+      loggingTool('get_craftscript_function', 'Get complete details of a specific CraftScript function including its current body, args, description, and version info. Use this to inspect a function before editing or to understand what it does.', {
+        name: z.string()
+      }, async ({ name }) => {
+        const { ColonyDatabase } = await import('../database/ColonyDatabase.js');
+        const colonyDb = ColonyDatabase.getInstance();
+        const db = colonyDb.getDb();
+        const botId = colonyDb.getBotId(context.botName);
+        if (!botId) return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'bot_not_found' }) }] };
+
+        const func = db.prepare(`
+          SELECT id, name, description, args, body, current_version, created_at, updated_at, created_by
+          FROM craftscript_functions
+          WHERE bot_id = ? AND name = ?
+        `).get(botId, name) as any;
+
+        if (!func) {
+          return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'not_found', message: `Function "${name}" not found` }) }] };
+        }
+
+        return { content: [{ type: 'text', text: JSON.stringify({
+          ok: true,
+          function: {
+            id: func.id,
+            name: func.name,
+            description: func.description,
+            args: JSON.parse(func.args),
+            body: func.body,
+            current_version: func.current_version,
+            created_at: func.created_at,
+            updated_at: func.updated_at,
+            created_by: func.created_by
+          }
+        }) }] };
+      }, context),
+
+      loggingTool('list_function_versions', 'List complete version history of a CraftScript function. Returns all versions with their body, args, timestamps, who created them, and change summaries. Useful for understanding how a function evolved or reverting to previous logic. Versions ordered newest first.', {
+        name: z.string(),
+        limit: z.number().optional()
+      }, async ({ name, limit = 10 }) => {
+        const { ColonyDatabase } = await import('../database/ColonyDatabase.js');
+        const colonyDb = ColonyDatabase.getInstance();
+        const db = colonyDb.getDb();
+        const botId = colonyDb.getBotId(context.botName);
+        if (!botId) return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'bot_not_found' }) }] };
+
+        // Get function ID
+        const func = db.prepare('SELECT id FROM craftscript_functions WHERE bot_id = ? AND name = ?').get(botId, name) as any;
+        if (!func) return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'not_found', message: `Function "${name}" not found` }) }] };
+
+        const versions = db.prepare(`
+          SELECT version, body, description, args, created_at, created_by, change_summary, metadata
+          FROM craftscript_function_versions
+          WHERE function_id = ?
+          ORDER BY version DESC
+          LIMIT ?
+        `).all(func.id, limit) as any[];
+
+        const list = versions.map(v => ({
+          version: v.version,
+          body: v.body,
+          description: v.description,
+          args: JSON.parse(v.args),
+          created_at: v.created_at,
+          created_by: v.created_by,
+          change_summary: v.change_summary,
+          metadata: v.metadata ? JSON.parse(v.metadata) : null
+        }));
+
+        return { content: [{ type: 'text', text: JSON.stringify({ ok: true, name, versions: list, count: list.length }) }] };
+      }, context),
+
+      loggingTool('report_bug', 'Report a bug or regression with a markdown description and reproduction steps.', {
+        title: z.string().min(5),
+        description: z.string().min(10),
+        severity: z.enum(['low', 'medium', 'high', 'critical']).optional()
+      }, async ({ title, description, severity }) => {
+        const { ColonyDatabase } = await import('../database/ColonyDatabase.js');
+        const colonyDb = ColonyDatabase.getInstance();
+        const botId = colonyDb.getBotId(context.botName);
+        if (botId === null) {
+          return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'bot_not_found' }) }], isError: true };
+        }
+        try {
+          const issue = colonyDb.createIssue(botId, title, description, context.botName, severity || 'medium');
+          return { content: [{ type: 'text', text: JSON.stringify({ ok: true, issue }) }] };
+        } catch (error: any) {
+          return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: error.message }) }], isError: true };
+        }
+      }, context),
+
+      loggingTool('list_issues', 'List issues from the tracker. By default returns issues assigned to this bot that are not closed.', {
+        state: z.string().optional(),
+        assigned: z.enum(['me', 'any', 'none']).optional(),
+        limit: z.number().min(1).max(100).optional()
+      }, async ({ state, assigned = 'me', limit = 20 }) => {
+        const { ColonyDatabase, ISSUE_STATES } = await import('../database/ColonyDatabase.js');
+        const colonyDb = ColonyDatabase.getInstance();
+        const botId = colonyDb.getBotId(context.botName);
+        if (botId === null && assigned === 'me') {
+          return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'bot_not_found' }) }], isError: true };
+        }
+
+        let states: string[] | undefined;
+        if (state) {
+          const requested = state.split(',').map((s) => s.trim()).filter(Boolean);
+          const invalid = requested.filter((s) => !ISSUE_STATES.includes(s as any));
+          if (invalid.length) {
+            return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: `invalid_state`, details: invalid }) }], isError: true };
+          }
+          states = requested;
+        } else {
+          states = ISSUE_STATES.filter((s: string) => !['resolved', 'closed'].includes(s));
+        }
+
+        const filters: any = { state: states, limit };
+        if (assigned === 'me') {
+          filters.assignedBotId = botId;
+        } else if (assigned === 'none') {
+          filters.assignedBotId = null;
+        }
+
+        const issues = colonyDb.listIssues(filters);
+        return { content: [{ type: 'text', text: JSON.stringify({ ok: true, count: issues.length, issues }) }] };
+      }, context),
+
+      loggingTool('get_issue', 'Get details for a single issue, including comments and current assignment.', {
+        id: z.number().int().positive()
+      }, async ({ id }) => {
+        const { ColonyDatabase } = await import('../database/ColonyDatabase.js');
+        const colonyDb = ColonyDatabase.getInstance();
+        const detail = colonyDb.getIssueDetail(id);
+        if (!detail) {
+          return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'not_found' }) }], isError: true };
+        }
+        return { content: [{ type: 'text', text: JSON.stringify({ ok: true, issue: detail.issue, comments: detail.comments }) }] };
+      }, context),
 
       // Memory tools
       loggingTool('get_memory', 'Get bot memory as markdown text. Returns what the bot remembers.', {}, async () => {
@@ -295,7 +607,9 @@ export function createUnifiedMcpServer(
   if (!server.manifest) server.manifest = { name: 'minecraft', tools: [
     { name: 'send_chat' }, { name: 'get_position' }, { name: 'get_inventory' }, { name: 'get_vox' }, { name: 'affordances' },
     { name: 'nearest' }, { name: 'block_info' }, { name: 'look_at_map' }, { name: 'look_at_map_4' }, { name: 'look_at_map_5' },
-    { name: 'craftscript_start' }, { name: 'craftscript_status' }, { name: 'craftscript_cancel' },
+    { name: 'craftscript_start' }, { name: 'craftscript_status' }, { name: 'craftscript_cancel' }, { name: 'craftscript_trace' },
+    { name: 'create_craftscript_function' }, { name: 'edit_craftscript_function' }, { name: 'delete_craftscript_function' },
+    { name: 'list_craftscript_functions' }, { name: 'get_craftscript_function' }, { name: 'list_function_versions' },
     { name: 'get_memory' }, { name: 'update_memory' },
     { name: 'list_blueprints' }, { name: 'create_blueprint' }, { name: 'update_blueprint' }, { name: 'remove_blueprint' }, { name: 'get_blueprint' }, { name: 'instantiate_blueprint' }
   ] };
@@ -305,3 +619,17 @@ export function createUnifiedMcpServer(
 // Back-compat exports
 export const createMinecraftMcpServer = createUnifiedMcpServer;
 export const createPlannerMcpServer = createUnifiedMcpServer;
+function sanitizeScriptBody(input: string): string {
+  if (!input) return '';
+  let body = String(input);
+  body = body
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+  if (/<\/?[a-z][^>]*>/i.test(body)) {
+    body = body.replace(/<[^>]+>/g, '');
+  }
+  return body;
+}

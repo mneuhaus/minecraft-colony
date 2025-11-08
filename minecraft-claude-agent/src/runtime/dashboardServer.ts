@@ -231,6 +231,188 @@ export function createDashboardApp(botManager: BotManager) {
     }
   });
 
+  app.post('/api/bots/:name/reset', async (c) => {
+    try {
+      const name = c.req.param('name');
+      const colonyDb = ColonyDatabase.getInstance();
+      const db = colonyDb.getDb();
+      const botId = colonyDb.getBotId(name);
+
+      if (!botId) {
+        return c.json({ error: 'Bot not found' }, 404);
+      }
+
+      // Stop bot if running
+      try {
+        await botManager.stopBot(name);
+      } catch {}
+
+      // Clear all bot data from database
+      db.prepare('DELETE FROM messages WHERE bot_id = ?').run(botId);
+      db.prepare('DELETE FROM tool_calls WHERE bot_id = ?').run(botId);
+      db.prepare('DELETE FROM craftscript_jobs WHERE bot_id = ?').run(botId);
+      db.prepare('DELETE FROM craftscript_block_changes WHERE bot_id = ?').run(botId);
+      db.prepare('DELETE FROM craftscript_functions WHERE bot_id = ?').run(botId);
+      db.prepare('DELETE FROM craftscript_function_versions WHERE function_id IN (SELECT id FROM craftscript_functions WHERE bot_id = ?)').run(botId);
+      db.prepare('DELETE FROM memory WHERE bot_id = ?').run(botId);
+      db.prepare('DELETE FROM blueprints WHERE bot_id = ?').run(botId);
+
+      // Restart bot
+      await botManager.startBot(name);
+
+      return c.json({ success: true, message: `Bot ${name} reset and restarted` });
+    } catch (error: any) {
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
+  // =========================================================================
+  // Issue Tracker API
+  // =========================================================================
+
+  app.get('/api/issues', (c) => {
+    try {
+      const colonyDb = ColonyDatabase.getInstance();
+      let botId: number | null = null;
+      const botName = c.req.query('bot');
+      if (botName) {
+        const id = colonyDb.getBotId(botName);
+        if (id === null) return c.json({ error: 'Bot not found' }, 404);
+        botId = id;
+      }
+
+      const stateParam = c.req.query('state');
+      let states;
+      if (stateParam) {
+        const requested = stateParam.split(',').map((s) => s.trim()).filter(Boolean);
+        const invalid = requested.filter((s) => !ISSUE_STATES.includes(s as any));
+        if (invalid.length) {
+          return c.json({ error: `Invalid state(s): ${invalid.join(', ')}` }, 400);
+        }
+        states = requested;
+      }
+
+      let assignedBotId: number | null | undefined = undefined;
+      const assignedParam = c.req.query('assigned');
+      if (assignedParam) {
+        if (assignedParam === 'none') {
+          assignedBotId = null;
+        } else {
+          const id = colonyDb.getBotId(assignedParam);
+          if (id === null) return c.json({ error: 'Assigned bot not found' }, 404);
+          assignedBotId = id;
+        }
+      }
+
+      const issues = colonyDb.listIssues({ botId, state: states, assignedBotId });
+      return c.json(issues);
+    } catch (error: any) {
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
+  app.post('/api/issues', async (c) => {
+    try {
+      const body = await c.req.json();
+      const title = String(body?.title || '').trim();
+      const description = String(body?.description || '').trim();
+      if (!title || !description) {
+        return c.json({ error: 'title and description required' }, 400);
+      }
+
+      const colonyDb = ColonyDatabase.getInstance();
+      let botId: number | null = null;
+      const botName = String(body?.bot || body?.bot_name || '').trim();
+      if (botName) {
+        const id = colonyDb.getBotId(botName);
+        if (id === null) return c.json({ error: 'Bot not found' }, 404);
+        botId = id;
+      }
+
+      const severity = ISSUE_SEVERITIES.includes(body?.severity) ? body.severity : 'medium';
+      const issue = colonyDb.createIssue(botId, title, description, body?.created_by || body?.reporter || null, severity);
+      return c.json(issue, 201);
+    } catch (error: any) {
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
+  app.get('/api/issues/:id', (c) => {
+    try {
+      const id = Number(c.req.param('id'));
+      const colonyDb = ColonyDatabase.getInstance();
+      const detail = colonyDb.getIssueDetail(id);
+      if (!detail) return c.json({ error: 'Issue not found' }, 404);
+      return c.json(detail);
+    } catch (error: any) {
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
+  app.patch('/api/issues/:id', async (c) => {
+    try {
+      const id = Number(c.req.param('id'));
+      const body = await c.req.json();
+      const colonyDb = ColonyDatabase.getInstance();
+
+      const updates: any = {};
+
+      if (body.state) {
+        if (!ISSUE_STATES.includes(body.state)) {
+          return c.json({ error: 'Invalid state' }, 400);
+        }
+        updates.state = body.state;
+      }
+
+      if (body.assigned_to !== undefined) {
+        updates.assigned_to = body.assigned_to;
+      }
+
+      if (body.assigned_bot !== undefined) {
+        if (body.assigned_bot === null || body.assigned_bot === '') {
+          updates.assigned_bot_id = null;
+        } else {
+          const botId = colonyDb.getBotId(String(body.assigned_bot));
+          if (botId === null) return c.json({ error: 'Assigned bot not found' }, 404);
+          updates.assigned_bot_id = botId;
+        }
+      }
+
+      if (body.severity) {
+        if (!ISSUE_SEVERITIES.includes(body.severity)) {
+          return c.json({ error: 'Invalid severity' }, 400);
+        }
+        updates.severity = body.severity;
+      }
+
+      if (body.title !== undefined) updates.title = body.title;
+      if (body.description !== undefined) updates.description = body.description;
+      if (body.updated_by !== undefined) updates.updated_by = body.updated_by;
+
+      const issue = colonyDb.updateIssue(id, updates);
+      if (!issue) return c.json({ error: 'Issue not found' }, 404);
+      return c.json(issue);
+    } catch (error: any) {
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
+  app.post('/api/issues/:id/comments', async (c) => {
+    try {
+      const id = Number(c.req.param('id'));
+      const body = await c.req.json();
+      const text = String(body?.body || '').trim();
+      if (!text) return c.json({ error: 'body required' }, 400);
+      const colonyDb = ColonyDatabase.getInstance();
+      const issue = colonyDb.getIssue(id);
+      if (!issue) return c.json({ error: 'Issue not found' }, 404);
+      const comment = colonyDb.addIssueComment(id, body?.author || null, text);
+      return c.json(comment, 201);
+    } catch (error: any) {
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
   // ============================================================================
   // CraftScript Execution (Direct method call - no IPC!)
   // ============================================================================
@@ -273,6 +455,32 @@ export function createDashboardApp(botManager: BotManager) {
       const jobId = c.req.param('job_id');
       botManager.cancelCraftScript(jobId);
       return c.json({ ok: true });
+    } catch (error: any) {
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
+  app.get('/api/craftscript/:job_id/trace', (c) => {
+    try {
+      const jobId = c.req.param('job_id');
+      const colonyDb = ColonyDatabase.getInstance();
+      const db = colonyDb.getDb();
+
+      // Get block changes from database
+      const changes = db.prepare(`
+        SELECT action, x, y, z, block_id, previous_block_id, command, timestamp
+        FROM craftscript_block_changes
+        WHERE job_id = ?
+        ORDER BY timestamp ASC
+      `).all(jobId);
+
+      const result = {
+        job_id: jobId,
+        total_changes: changes.length,
+        changes
+      };
+
+      return c.json(result);
     } catch (error: any) {
       return c.json({ error: error.message }, 500);
     }

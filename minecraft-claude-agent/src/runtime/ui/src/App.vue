@@ -19,6 +19,9 @@
               <button class="chip chip--link" @click.stop="bpModalOpen = true">
                 {{ blueprints.length }} Blueprint{{ blueprints.length !== 1 ? 's' : '' }}
               </button>
+              <button class="chip chip--link" @click.stop="openIssuesModal">
+                {{ openIssuesCount }} Issue{{ openIssuesCount !== 1 ? 's' : '' }}
+              </button>
               <button class="chip chip--danger" @click.stop="resetActiveBot" :disabled="resetting">
                 {{ resetting ? 'Resetting…' : 'Reset' }}
               </button>
@@ -42,16 +45,18 @@
     <Inspector :open="inspectorOpen" :item="inspectorItem" @close="inspectorOpen=false" />
     <BlueprintsModal :open="bpModalOpen" :items="blueprints" @close="bpModalOpen=false" @refresh="loadBlueprints" @view="viewBlueprint" @remove="handleRemoveBlueprint" @create="handleCreateBlueprint" />
     <BlueprintDetail v-if="bpDetailOpen" :name="bpDetailName" :data="bpDetail" @close="bpDetailOpen=false" />
+    <IssueTrackerModal :open="issuesModalOpen" :items="issues" :active-bot="store.activeBot" :bots="botNames" @close="issuesModalOpen=false" @refresh="loadIssues" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, inject, onMounted, ref } from 'vue';
+import { computed, inject, onMounted, ref, watch } from 'vue';
 import type { store as Store } from './main';
 import Timeline from './components/Timeline.vue';
 import Inspector from './components/Inspector.vue';
 import BlueprintsModal from './components/BlueprintsModal.vue';
 import BlueprintDetail from './components/BlueprintDetail.vue';
+import IssueTrackerModal from './components/IssueTrackerModal.vue';
 import SidebarInventory from './components/SidebarInventory.vue';
 
 const store = inject<any>('store');
@@ -88,8 +93,12 @@ const bpModalOpen = ref(false);
 const bpDetailOpen = ref(false);
 const bpDetailName = ref('');
 const bpDetail = ref<any>(null);
+const issues = ref<any[]>([]);
+const issuesModalOpen = ref(false);
 const inspectorOpen = ref(false);
 const inspectorItem = ref<any>(null);
+const botNames = computed(() => bots.value.map((b: any) => b.name));
+const openIssuesCount = computed(() => issues.value.filter((i: any) => !['resolved', 'closed'].includes(String(i.state))).length);
 
 function openInspector(item: any){ inspectorItem.value = item; inspectorOpen.value = true; }
 function setViewMode(mode: 'single'|'all'){ store.viewMode = mode; if (mode==='single' && store.activeBot) loadBotTimeline(store.activeBot); else loadAllTimeline(); }
@@ -101,6 +110,18 @@ async function loadBots(){
   store.bots = data;
   if (!store.activeBot && data.length) store.activeBot = data[0].name;
 }
+
+async function loadIssues(){
+  try {
+    const query = store.activeBot ? `?bot=${encodeURIComponent(store.activeBot)}` : '';
+    const res = await fetch(`/api/issues${query}`);
+    issues.value = await res.json();
+  } catch (error) {
+    console.error('Failed to load issues', error);
+    issues.value = [];
+  }
+}
+
 async function loadBotTimeline(botName: string){
   const res = await fetch(`/api/bots/${encodeURIComponent(botName)}/events?limit=120`);
   const data = await res.json();
@@ -145,7 +166,7 @@ const filteredItems = computed(()=> {
   const prelim = store.items
     .filter((e: any) => store.viewMode==='all' || e.bot_id===activeBotId)
     // Hide noisy CraftScript internals from the main timeline; view them in the card's Show Logs instead
-    .filter((e: any) => !(e.type==='tool' && /^(craftscript_step|craftscript_trace|craftscript_status|craftscript_cancel)$/i.test(String(e?.payload?.tool_name||''))))
+    .filter((e: any) => !(e.type==='tool' && /^(craftscript_step|craftscript_status|craftscript_cancel)$/i.test(String(e?.payload?.tool_name||''))))
     // Also hide send_chat spam from tools
     .filter((e: any) => !(e.type==='tool' && /send_chat/i.test(String(e?.payload?.tool_name||''))));
 
@@ -196,6 +217,15 @@ onMounted(async () => {
   else await loadAllTimeline();
   connectWebSocket();
   loadBlueprints();
+  loadIssues();
+});
+
+watch(() => issuesModalOpen.value, (open) => {
+  if (open) loadIssues();
+});
+
+watch(() => store.activeBot, () => {
+  loadIssues();
 });
 
 async function loadBlueprints(){
@@ -219,6 +249,11 @@ async function handleCreateBlueprint(payload: any){
     if (!res.ok) throw new Error('create_failed');
     loadBlueprints();
   } catch { alert('Failed to create blueprint'); }
+}
+
+function openIssuesModal(){
+  issuesModalOpen.value = true;
+  loadIssues();
 }
 </script>
 

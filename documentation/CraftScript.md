@@ -509,7 +509,414 @@ Comment = "//" [^\n]* "\n"? / "/*" (!"*/" .)* "*/"
 
 ---
 
-## 13) Validation & limits
+## 13) Custom Functions (Reusable, Versioned Methods)
+
+Custom functions allow bots to create, store, and evolve reusable CraftScript procedures with automatic versioning. Unlike macros (which are script-local), custom functions are **persistent**, **per-bot**, and **version-tracked** in the database.
+
+### Key Features
+
+- **Named Arguments Only**: Functions use key-value syntax for clarity: `fell_oak_tree(type:oak, count:3)`
+- **Automatic Versioning**: Every edit creates a new version; always executes the latest
+- **Nesting Support**: Functions can call other custom functions (max depth: 10)
+- **Per-Bot Scoped**: Each bot maintains its own function library
+- **Fail-Fast**: Errors stop execution immediately with clear messages
+
+### Management Tools
+
+| Tool | Description |
+|------|-------------|
+| `create_craftscript_function` | Define a new function with name, description, args, and body |
+| `edit_craftscript_function` | Update function body (auto-increments version) |
+| `delete_craftscript_function` | Remove a function and all its versions |
+| `list_craftscript_functions` | List all available functions |
+| `get_craftscript_function` | View function details and current body |
+| `list_function_versions` | Browse version history |
+
+### Tool Usage Examples
+
+#### Creating a Function
+
+```javascript
+// Using create_craftscript_function MCP tool
+mcp__minecraft__create_craftscript_function({
+  name: "fell_oak",
+  description: "Fell an oak tree by breaking logs from bottom to top",
+  args: [
+    { name: "base_x", type: "int", optional: false },
+    { name: "base_y", type: "int", optional: false },
+    { name: "base_z", type: "int", optional: false },
+    { name: "height", type: "int", optional: true, default: 10 }
+  ],
+  body: `
+// Navigate to tree base
+goto(base_x, base_y, base_z, tol:1);
+
+// Break logs from bottom to top
+repeat(py: base_y..(base_y+height)) {
+  if (block_is(base_x, py, base_z, "oak_log")) {
+    break(base_x, py, base_z);
+    wait(200);
+  }
+}
+
+// Collect drops
+pickup_blocks(16);
+  `.trim()
+})
+// Returns: {"ok": true, "id": 1, "name": "fell_oak", "version": 1}
+```
+
+#### Editing a Function (Auto-Versions)
+
+```javascript
+// Using edit_craftscript_function MCP tool
+mcp__minecraft__edit_craftscript_function({
+  name: "fell_oak",
+  body: `
+// Version 2: Optimized with single wait
+goto(base_x, base_y, base_z, tol:1);
+
+repeat(py: base_y..(base_y+height)) {
+  if (block_is(base_x, py, base_z, "oak_log")) {
+    break(base_x, py, base_z);
+  }
+}
+
+wait(2000);  // Single wait after all breaks
+pickup_blocks(16);
+  `.trim(),
+  change_summary: "Optimized: batch wait instead of wait per block"
+})
+// Returns: {"ok": true, "name": "fell_oak", "version": 2}
+```
+
+#### Listing Functions
+
+```javascript
+// Using list_craftscript_functions MCP tool
+mcp__minecraft__list_craftscript_functions()
+// Returns:
+// {
+//   "ok": true,
+//   "functions": [
+//     {
+//       "id": 1,
+//       "name": "fell_oak",
+//       "description": "Fell an oak tree...",
+//       "args": [...],
+//       "current_version": 2,
+//       "created_at": 1699564800000,
+//       "updated_at": 1699568400000
+//     }
+//   ]
+// }
+```
+
+#### Getting Function Details
+
+```javascript
+// Using get_craftscript_function MCP tool
+mcp__minecraft__get_craftscript_function({ name: "fell_oak" })
+// Returns full function details including current body
+```
+
+#### Viewing Version History
+
+```javascript
+// Using list_function_versions MCP tool
+mcp__minecraft__list_function_versions({ name: "fell_oak", limit: 10 })
+// Returns:
+// {
+//   "ok": true,
+//   "name": "fell_oak",
+//   "versions": [
+//     {
+//       "version": 2,
+//       "created_at": 1699568400000,
+//       "created_by": "Kubo",
+//       "change_summary": "Optimized: batch wait instead of wait per block",
+//       "args": [...]
+//     },
+//     {
+//       "version": 1,
+//       "created_at": 1699564800000,
+//       "created_by": "Kubo",
+//       "change_summary": "Initial version",
+//       "args": [...]
+//     }
+//   ]
+// }
+```
+
+#### Deleting a Function
+
+```javascript
+// Using delete_craftscript_function MCP tool
+mcp__minecraft__delete_craftscript_function({ name: "fell_oak" })
+// Returns: {"ok": true, "deleted": "fell_oak"}
+// Note: This removes ALL versions permanently
+```
+
+### Function Definition Structure
+
+```json
+{
+  "name": "fell_oak_tree",
+  "description": "Safely fell an oak tree by breaking from bottom to top",
+  "args": [
+    { "name": "height", "type": "number", "optional": false },
+    { "name": "cleanup", "type": "boolean", "optional": true, "default": true }
+  ],
+  "body": "// CraftScript code here\nrepeat(h: 1..height) {\n  break(f1+u(h));\n}\nif (cleanup) { pickup_blocks(16); }"
+}
+```
+
+### Example: Creating a Tree-Felling Function
+
+```c
+// Initial version: basic tree felling
+// Created via: create_craftscript_function({name: "fell_oak", ...})
+
+let base_x = 102;
+let base_y = 64;
+let base_z = 108;
+
+// Navigate to tree base
+goto(base_x, base_y, base_z, tol:1);
+
+// Break from bottom to top (prevents leaves floating)
+repeat(py: base_y..(base_y+10)) {
+  if (block_is(base_x, py, base_z, "oak_log")) {
+    break(base_x, py, base_z);
+    wait(200);  // Let blocks settle
+  }
+}
+
+// Collect drops
+pickup_blocks(16);
+```
+
+### Calling Custom Functions
+
+Once created, call functions using the same syntax as built-in commands:
+
+```c
+// Call with named arguments
+fell_oak(height:12, cleanup:true);
+
+// Can be nested in loops
+repeat(tree_num: 0..4) {
+  goto(100 + tree_num * 10, 64, 200, tol:1);
+  fell_oak(height:15, cleanup:true);
+}
+```
+
+### Testing Strategy: Iterative Refinement
+
+Use a systematic test-driven approach to develop robust functions:
+
+#### 1. Define the Task
+
+Be specific about inputs, expected outcomes, and success criteria:
+
+```
+Task: Fell an oak tree safely
+- Input: Tree base coordinates, expected height
+- Expected: All logs removed, saplings/sticks collected
+- Success: No floating logs, inventory has drops
+```
+
+#### 2. Execute the Function
+
+Run your custom function with test data:
+
+```c
+// Test script: test_fell_oak.cs
+log("=== EXECUTING FUNCTION ===");
+fell_oak(base_x:102, base_y:64, base_z:108, height:12);
+log("=== DONE ===");
+```
+
+#### 3. Review Block Changes and Movement
+
+After execution, use the `craftscript_trace` MCP tool to see all block modifications and movement:
+
+```typescript
+// Bot queries its own trace data (block changes + movement)
+const trace = await craftscript_trace({ job_id: "cs_xyz123" });
+
+// Returns:
+{
+  job_id: "cs_xyz123",
+  total_changes: 47,
+  changes: [
+    { action: "destroyed", x: 102, y: 64, z: 108, block_id: "oak_log", command: "break", timestamp: 1234567890 },
+    { action: "destroyed", x: 102, y: 65, z: 108, block_id: "oak_log", command: "break", timestamp: 1234567891 },
+    { action: "placed", x: 100, y: 64, z: 105, block_id: "oak_sapling", command: "plant", timestamp: 1234567892 },
+    // ... all blocks destroyed/placed
+  ]
+}
+```
+
+The system automatically tracks:
+- **Every block placed or destroyed** - Complete audit trail
+- **Exact coordinates and block type** - Know exactly what changed where
+- **Which CraftScript command caused the change** - Full traceability
+- **Timestamp for each modification** - Chronological ordering
+- **Works even if the script fails mid-execution** - Failure-resilient
+
+**3D Visualization**: The dashboard displays a 3D voxel view with:
+- Green glowing blocks for placed blocks
+- Red glowing blocks for destroyed blocks
+- Yellow movement path showing bot navigation
+- Interactive orbit controls for inspection
+
+**Movement Tracking**: The `craftscript_logs` tool includes movement traces from `goto` commands:
+- Starting position (`from`)
+- Target position (`to`)
+- Actual arrival position (`arrived`)
+- Waypoint names if used
+
+#### 4. Compare and Iterate
+
+If the test fails:
+1. Review the CraftScript logs (click "Show Logs" in dashboard)
+2. Identify the failure point (wrong coordinates? timing issue? missing check?)
+3. Update the function using `edit_craftscript_function`
+4. Re-run the test
+
+Example iteration:
+
+```c
+// Version 1: Missed logs due to wait time
+// ... fails because blocks fall too slowly
+
+// Version 2: Added wait after each break
+// ... works but slow
+
+// Version 3: Optimized with batch waits
+repeat(py: base_y..(base_y+height)) {
+  if (block_is(base_x, py, base_z, "oak_log")) {
+    break(base_x, py, base_z);
+  }
+}
+wait(2000);  // Single wait after all breaks
+pickup_blocks(16);
+```
+
+### Advanced Testing Example
+
+```c
+// Comprehensive test for plant_sapling_grid function
+
+log("=== TEST: plant_sapling_grid ===");
+
+// 1. Define test area
+let test_ox = 113;
+let test_oy = 64;
+let test_oz = 114;
+
+// 2. Pre-check: Verify ground is dirt
+log("Pre-check: Ground material");
+let prep_fail = false;
+repeat(ix: 0..2) {
+  repeat(iz: 0..2) {
+    let px = test_ox + ix * 6;
+    let pz = test_oz + iz * 6;
+    if (!block_is(px, test_oy - 1, pz, "dirt") &&
+        !block_is(px, test_oy - 1, pz, "grass_block")) {
+      log("PREP_FAIL: Not dirt at", px, pz);
+      prep_fail = true;
+    }
+  }
+}
+
+if (prep_fail) {
+  log("ABORT: Test area not prepared");
+  assert(false, "test_area_invalid");
+}
+
+// 3. Execute function
+log("Executing: plant_sapling_grid");
+plant_sapling_grid(origin_x:test_ox, origin_y:test_oy, origin_z:test_oz,
+                    rows:3, cols:3, spacing:6);
+
+// 4. Verify results
+log("Post-check: Sapling placement");
+let planted = 0;
+let expected = 9;
+repeat(ix: 0..2) {
+  repeat(iz: 0..2) {
+    let px = test_ox + ix * 6;
+    let pz = test_oz + iz * 6;
+    if (block_is(px, test_oy, pz, "oak_sapling")) {
+      planted = planted + 1;
+      log("PASS: Sapling at", px, pz);
+    } else {
+      log("FAIL: Missing sapling at", px, pz);
+    }
+  }
+}
+
+// 5. Report results
+if (planted == expected) {
+  log("SUCCESS:", planted, "/", expected, "saplings planted");
+} else {
+  log("FAIL:", planted, "/", expected, "saplings planted");
+}
+```
+
+### Best Practices
+
+1. **Start Simple**: Create minimal working version first
+2. **Test Incrementally**: Test each new capability as you add it
+3. **Use Logging**: Add `log()` calls liberally to trace execution
+4. **Check Predicates**: Use `block_is()`, `has_item()`, `can_stand()` for validation
+5. **Handle Edge Cases**: Check for obstacles, missing items, wrong terrain
+6. **Version Deliberately**: Each version should fix specific issues
+7. **Document Changes**: Use descriptive change_summary when editing
+
+### Error Handling in Functions
+
+Functions fail immediately on errors, but you can design them to be more robust:
+
+```c
+// Defensive function: check preconditions
+if (!has_item("oak_sapling")) {
+  log("ERROR: No oak_sapling in inventory");
+  assert(false, "missing_item");
+}
+
+if (!block_is(px, py-1, pz, "dirt") && !block_is(px, py-1, pz, "grass_block")) {
+  log("ERROR: Cannot plant on", px, py-1, pz);
+  assert(false, "invalid_ground");
+}
+
+// Now safe to proceed
+plant("oak_sapling", px, py, pz);
+```
+
+### Recursive Functions (Limited Depth)
+
+Functions can call themselves or other custom functions, up to depth 10:
+
+```c
+// Function: clear_column
+// Recursively clears blocks above until air found
+if (is_air(x, y, z)) {
+  log("Column clear at y=", y);
+} else {
+  break(x, y, z);
+  wait(100);
+  clear_column(x:x, y:y+1, z:z);  // Recursive call
+}
+```
+
+**Note**: Excessive recursion (>10 depth) returns error `"Maximum function call depth exceeded"`.
+
+---
+
+## 14) Validation & limits
 
 * Unknown commands → compile error.
 * Named arguments checked per command.

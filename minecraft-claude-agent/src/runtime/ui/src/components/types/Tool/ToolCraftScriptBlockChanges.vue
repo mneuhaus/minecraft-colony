@@ -1,9 +1,8 @@
 <template>
-  <MessageBlock class="block-changes-card" :collapsible="true" :default-collapsed="true">
+  <MessageBlock class="tl-item__body">
     <template #title>
-      <span class="bc-title">Block Changes</span>
-    </template>
-    <template #meta>
+      <span class="tool-icon">🧱</span>
+      <span class="tool-name">Block Changes</span>
       <span class="bc-job-id">{{ jobId }}</span>
       <span class="bc-count">{{ totalChanges }} changes</span>
     </template>
@@ -14,17 +13,19 @@
     </template>
 
     <div v-if="changes.length > 0">
-      <!-- List View -->
-      <div class="bc-list">
-        <div class="bc-list-header">
-          <span>Detailed Changes</span>
-        </div>
-        <div class="bc-list-items">
-          <div v-for="(change, idx) in changes" :key="idx" class="bc-list-item">
-            <span class="bc-list-item__action" :data-action="change.action">{{ change.action }}</span>
-            <span class="bc-list-item__block">{{ change.block_id }}</span>
-            <span class="bc-list-item__pos">@ {{ change.x }}, {{ change.y }}, {{ change.z }}</span>
-            <span class="bc-list-item__cmd" v-if="change.command">{{ change.command }}</span>
+      <!-- Block Changes List -->
+      <div class="bc-entries">
+        <div
+          v-for="(change, idx) in changes"
+          :key="idx"
+          class="bc-entry"
+          :class="`bc-entry--${change.action}`"
+        >
+          <div class="bc-entry-header">
+            <span class="bc-action" :data-action="change.action">{{ change.action.toUpperCase() }}</span>
+            <span class="bc-block">{{ change.block_id.replace('minecraft:', '') }}</span>
+            <span class="bc-pos">@ {{ change.x }}, {{ change.y }}, {{ change.z }}</span>
+            <span v-if="change.command" class="bc-cmd">{{ change.command }}</span>
           </div>
         </div>
       </div>
@@ -306,106 +307,89 @@ watch(() => changes.value.length, (newLen) => {
 </script>
 
 <style scoped>
-.block-changes-card {
-  background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
-  border-radius: 8px;
-  padding: 16px;
-  margin: 8px 0;
-  color: #e0e0e0;
-  font-family: 'Courier New', monospace;
-  border: 1px solid #3a3a3a;
+.tool-icon {
+  font-size: 16px;
 }
 
-.bc-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #00d9ff;
+.tool-name {
+  flex: 1;
 }
 
 .bc-job-id {
-  color: #888;
+  color: #7A7A7A;
+  font-size: 11px;
+  font-family: 'Monaco', 'Courier New', monospace;
 }
 
 .bc-count {
   color: #00d9ff;
   font-weight: 600;
+  font-size: 11px;
 }
 
-.bc-list {
+.bc-entries {
+  border: 1px solid #2E2E2E;
+  border-radius: 6px;
+  overflow: hidden;
   margin-bottom: 16px;
-  padding: 10px;
-  background: #0A1A1A;
-  border: 1px solid #00d9ff;
-  border-radius: 8px;
-}
-
-.bc-list-header {
-  color: #00d9ff;
-  font-weight: 600;
-  font-size: 13px;
-  text-shadow: 0 0 8px rgba(0, 217, 255, 0.5);
-  margin-bottom: 8px;
-}
-
-.bc-list-items {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  max-height: 300px;
+  max-height: 400px;
   overflow-y: auto;
 }
 
-.bc-list-item {
-  display: grid;
-  grid-template-columns: 70px 120px 140px 1fr;
+.bc-entry {
+  border-bottom: 1px solid #2E2E2E;
+}
+
+.bc-entry:last-child {
+  border-bottom: none;
+}
+
+.bc-entry--placed {
+  background: rgba(74, 222, 128, 0.03);
+}
+
+.bc-entry--destroyed {
+  background: rgba(248, 113, 113, 0.05);
+}
+
+.bc-entry-header {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  align-items: baseline;
-  font-size: 11px;
-  padding: 6px 8px;
-  background: #0D1F1F;
-  border-radius: 4px;
-  border: 1px solid #1A3A3A;
+  padding: 8px 12px;
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
 }
 
-.bc-list-item:hover {
-  background: #102828;
-  border-color: #00d9ff40;
-}
-
-.bc-list-item__action {
-  color: #EAEAEA;
-  text-transform: uppercase;
+.bc-action {
+  font-weight: 700;
   font-size: 10px;
-  letter-spacing: 0.04em;
-  font-weight: 600;
+  letter-spacing: 0.5px;
+  min-width: 80px;
 }
 
-.bc-list-item__action[data-action="placed"] {
+.bc-action[data-action="placed"] {
   color: #34D399;
 }
 
-.bc-list-item__action[data-action="destroyed"] {
+.bc-action[data-action="destroyed"] {
   color: #F87171;
 }
 
-.bc-list-item__block {
-  color: #00d9ff;
-  font-family: monospace;
-  font-size: 10px;
+.bc-block {
+  color: #EAEAEA;
+  font-weight: 600;
+  min-width: 120px;
 }
 
-.bc-list-item__pos {
-  color: #B3B3B3;
-  font-family: monospace;
-  font-size: 10px;
-}
-
-.bc-list-item__cmd {
+.bc-pos {
   color: #7A7A7A;
-  font-size: 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 140px;
+}
+
+.bc-cmd {
+  color: #7A7A7A;
+  margin-left: auto;
 }
 
 .bc-viewer {
