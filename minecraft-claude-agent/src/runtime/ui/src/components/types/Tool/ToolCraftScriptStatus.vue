@@ -1,14 +1,5 @@
 <template>
-  <MessageBlock
-    eyebrow="CraftScript"
-    title="Status"
-    :tone="tone"
-    padding="sm"
-  >
-    <template #meta>
-      <span class="status-badge">{{ status.state }}</span>
-    </template>
-
+  <div>
     <div class="grid">
       <div class="k">job</div><div class="v mono">{{ status.id || '—' }}</div>
       <div class="k">duration</div><div class="v mono">{{ status.duration_ms }} ms</div>
@@ -20,12 +11,11 @@
     </div>
 
     <pre class="script" v-if="status.script"><code>{{ status.script }}</code></pre>
-  </MessageBlock>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import MessageBlock from '../../MessageBlock.vue';
 
 const props = defineProps<{ item: any }>();
 
@@ -57,30 +47,30 @@ const tone = computed(() => {
 
 <style scoped>
 .status-badge {
-  padding: 2px var(--spacing-sm);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-xs);
+  padding: 2px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--color-text-secondary);
+  opacity: 0.85;
 }
 
 .grid {
   display: grid;
   grid-template-columns: 80px 1fr;
-  gap: var(--spacing-xs) var(--spacing-md);
-  margin-bottom: var(--spacing-sm);
-  font-size: var(--font-sm);
+  gap: 4px 12px;
+  margin-bottom: 8px;
+  font-size: 14px;
 }
 
 .k {
-  color: var(--color-text-muted);
+  opacity: 0.65;
   text-transform: lowercase;
 }
 
 .v {
-  color: var(--color-text-primary);
+  ;
 }
 
 .mono {
@@ -88,14 +78,14 @@ const tone = computed(() => {
 }
 
 .script {
-  margin-top: var(--spacing-sm);
+  margin-top: 8px;
   background: var(--color-bg-muted);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: var(--spacing-sm);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 8px;
   color: #c9d1d9;
   max-height: 200px;
   overflow: auto;
-  font-size: var(--font-sm);
+  font-size: 14px;
 }
 </style>

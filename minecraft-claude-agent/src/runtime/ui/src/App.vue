@@ -1,56 +1,183 @@
 <template>
-  <div class="app">
-    <aside class="sidebar">
-      <header class="sidebar__hdr">Agents</header>
-      <div class="sidebar__list">
-        <div v-for="b in bots" :key="b.name" class="agent" :aria-selected="activeBot===b.name">
-          <div class="agent__row" @click="selectBot(b.name)">
-            <div class="agent__name">{{ b.name }}</div>
-            <div class="agent__badge" :data-status="b.connectionStatus">{{ b.connectionStatus || 'idle' }}</div>
-          </div>
+  <n-config-provider :theme="darkTheme" :theme-overrides="themeOverrides">
+    <n-message-provider>
+      <n-layout has-sider class="app-layout">
+      <n-layout-sider
+        bordered
+        collapse-mode="width"
+        :collapsed-width="0"
+        :width="320"
+        :native-scrollbar="false"
+        show-trigger="bar"
+        class="sidebar"
+      >
+        <n-space vertical :size="16" class="sidebar-content">
+          <n-h3 prefix="bar" class="sidebar-header">
+            Colony Agents
+          </n-h3>
 
-          <!-- Only show details for active bot -->
-          <div v-if="activeBot===b.name" class="agent__details">
-            <!-- Inventory -->
-            <SidebarInventory />
+          <!-- Bot List -->
+          <n-space vertical :size="8">
+            <n-card
+              v-for="b in bots"
+              :key="b.name"
+              size="small"
+              :bordered="activeBot === b.name"
+              :class="{ 'bot-card-active': activeBot === b.name }"
+              @click="selectBot(b.name)"
+              hoverable
+              class="bot-card"
+            >
+              <n-space vertical :size="12">
+                <!-- Header Row -->
+                <n-space justify="space-between" align="center">
+                  <n-text strong>{{ b.name }}</n-text>
+                  <n-badge
+                    :type="getStatusType(b.connectionStatus)"
+                    :value="b.connectionStatus || 'idle'"
+                  />
+                </n-space>
 
-            <!-- Info Row: Blueprints + Reset -->
-            <div class="agent__info-row">
-              <button class="chip chip--link" @click.stop="bpModalOpen = true">
-                {{ blueprints.length }} Blueprint{{ blueprints.length !== 1 ? 's' : '' }}
-              </button>
-              <button class="chip chip--link" @click.stop="openIssuesModal">
-                {{ openIssuesCount }} Issue{{ openIssuesCount !== 1 ? 's' : '' }}
-              </button>
-              <button class="chip chip--danger" @click.stop="resetActiveBot" :disabled="resetting">
-                {{ resetting ? 'Resetting…' : 'Reset' }}
-              </button>
-            </div>
-          </div>
+                <!-- Details (only for active bot) -->
+                <div v-if="activeBot === b.name">
+                  <!-- Health & Food -->
+                  <n-space vertical :size="8">
+                    <div>
+                      <n-text depth="3" :size="12">Health</n-text>
+                      <n-progress
+                        type="line"
+                        :percentage="(b.health || 0) / 20 * 100"
+                        :color="getHealthColor(b.health)"
+                        :show-indicator="false"
+                        :height="6"
+                      />
+                      <n-text depth="3" :size="12">{{ b.health || 0 }}/20</n-text>
+                    </div>
+                    <div>
+                      <n-text depth="3" :size="12">Food</n-text>
+                      <n-progress
+                        type="line"
+                        :percentage="(b.food || 0) / 20 * 100"
+                        status="success"
+                        :show-indicator="false"
+                        :height="6"
+                      />
+                      <n-text depth="3" :size="12">{{ b.food || 0 }}/20</n-text>
+                    </div>
+                  </n-space>
 
-          <!-- Todos -->
-          <div v-if="Array.isArray(b.todo) && b.todo.length" class="agent__todos">
-            <div v-for="t in b.todo.slice(0,3)" :key="t.content" class="todo">
-              <span class="todo__box" :class="(t.done || String(t.status||'').toLowerCase()==='completed') && 'todo__box--done'"></span>
-              <span class="todo__text">{{ t.content }}</span>
-            </div>
-            <div class="todo__progress" v-if="b.todoProgress">{{ b.todoProgress.done }}/{{ b.todoProgress.total }} done</div>
-          </div>
-        </div>
-      </div>
-    </aside>
-    <main class="main">
-      <Timeline :items="filteredItems" @openInspector="openInspector" />
-    </main>
-    <Inspector :open="inspectorOpen" :item="inspectorItem" @close="inspectorOpen=false" />
-    <BlueprintsModal :open="bpModalOpen" :items="blueprints" @close="bpModalOpen=false" @refresh="loadBlueprints" @view="viewBlueprint" @remove="handleRemoveBlueprint" @create="handleCreateBlueprint" />
-    <BlueprintDetail v-if="bpDetailOpen" :name="bpDetailName" :data="bpDetail" @close="bpDetailOpen=false" />
-    <IssueTrackerModal :open="issuesModalOpen" :items="issues" :active-bot="store.activeBot" :bots="botNames" @close="issuesModalOpen=false" @refresh="loadIssues" />
-  </div>
+                  <!-- Position & Game Mode -->
+                  <n-descriptions :column="2" size="small" style="margin-top: 12px;">
+                    <n-descriptions-item label="Position">
+                      <n-text code v-if="b.position">
+                        {{ Math.floor(b.position.x) }}, {{ Math.floor(b.position.y) }}, {{ Math.floor(b.position.z) }}
+                      </n-text>
+                      <n-text depth="3" v-else>Unknown</n-text>
+                    </n-descriptions-item>
+                    <n-descriptions-item label="Mode">
+                      <n-tag size="small">{{ b.gameMode || 'unknown' }}</n-tag>
+                    </n-descriptions-item>
+                  </n-descriptions>
+
+                  <!-- Inventory -->
+                  <SidebarInventory />
+
+                  <!-- Actions -->
+                  <n-space :size="8" style="margin-top: 12px;">
+                    <n-button size="small" @click.stop="bpModalOpen = true" secondary>
+                      {{ blueprints.length }} Blueprint{{ blueprints.length !== 1 ? 's' : '' }}
+                    </n-button>
+                    <n-button size="small" @click.stop="openIssuesModal" secondary>
+                      {{ openIssuesCount }} Issue{{ openIssuesCount !== 1 ? 's' : '' }}
+                    </n-button>
+                    <n-popconfirm @positive-click="resetActiveBot">
+                      <template #trigger>
+                        <n-button size="small" type="error" :loading="resetting" @click.stop>
+                          Reset
+                        </n-button>
+                      </template>
+                      Reset bot "{{ store.activeBot }}"?
+                    </n-popconfirm>
+                  </n-space>
+                </div>
+
+                <!-- Todos (always show if exist) -->
+                <div v-if="Array.isArray(b.todo) && b.todo.length">
+                  <n-divider style="margin: 8px 0;" />
+                  <n-space vertical :size="4">
+                    <n-checkbox
+                      v-for="t in b.todo.slice(0, 3)"
+                      :key="t.content"
+                      :checked="t.done || String(t.status || '').toLowerCase() === 'completed'"
+                      disabled
+                      size="small"
+                    >
+                      <n-text :depth="3" :size="12">{{ t.content }}</n-text>
+                    </n-checkbox>
+                    <n-text v-if="b.todoProgress" depth="3" :size="11">
+                      {{ b.todoProgress.done }}/{{ b.todoProgress.total }} done
+                    </n-text>
+                  </n-space>
+                </div>
+              </n-space>
+            </n-card>
+          </n-space>
+        </n-space>
+      </n-layout-sider>
+
+      <!-- Main Content -->
+      <n-layout :native-scrollbar="false">
+        <n-layout-header bordered class="header">
+          <n-space justify="space-between" align="center">
+            <n-h2 style="margin: 0;">Activity Timeline</n-h2>
+            <n-space :size="12">
+              <n-radio-group v-model:value="store.viewMode" @update:value="setViewMode" size="small">
+                <n-radio-button value="single">Active Bot</n-radio-button>
+                <n-radio-button value="all">All Bots</n-radio-button>
+              </n-radio-group>
+            </n-space>
+          </n-space>
+        </n-layout-header>
+
+        <n-layout-content :native-scrollbar="false" content-style="padding: 24px;">
+          <Timeline :items="filteredItems" @openInspector="openInspector" />
+        </n-layout-content>
+      </n-layout>
+    </n-layout>
+
+    <!-- Modals -->
+    <Inspector :open="inspectorOpen" :item="inspectorItem" @close="inspectorOpen = false" />
+    <BlueprintsModal
+      :open="bpModalOpen"
+      :items="blueprints"
+      @close="bpModalOpen = false"
+      @refresh="loadBlueprints"
+      @view="viewBlueprint"
+      @remove="handleRemoveBlueprint"
+      @create="handleCreateBlueprint"
+    />
+    <BlueprintDetail
+      v-if="bpDetailOpen"
+      :name="bpDetailName"
+      :data="bpDetail"
+      @close="bpDetailOpen = false"
+    />
+    <IssueTrackerModal
+      :open="issuesModalOpen"
+      :items="issues"
+      :active-bot="store.activeBot"
+      :bots="botNames"
+      @close="issuesModalOpen = false"
+      @refresh="loadIssues"
+    />
+    </n-message-provider>
+  </n-config-provider>
 </template>
 
 <script setup lang="ts">
 import { computed, inject, onMounted, ref, watch } from 'vue';
+import { darkTheme } from 'naive-ui';
+import { themeOverrides } from './theme';
 import type { store as Store } from './main';
 import Timeline from './components/Timeline.vue';
 import Inspector from './components/Inspector.vue';
@@ -60,32 +187,34 @@ import IssueTrackerModal from './components/IssueTrackerModal.vue';
 import SidebarInventory from './components/SidebarInventory.vue';
 
 const store = inject<any>('store');
-// Simple client-side de-dup: same type/bot/tool/text/ts
+
+// Simple client-side de-dup
 const seenKeys = new Set<string>();
-function makeKey(e:any){
+function makeKey(e: any) {
   const t = e?.type || '';
   const b = e?.bot_id || '';
   const ts = e?.ts || '';
   const p = e?.payload || {};
   const tool = p.tool_name || '';
-  const text = (p.text || p.message || JSON.stringify(p.input||{})).slice(0,200);
+  const text = (p.text || p.message || JSON.stringify(p.input || {})).slice(0, 200);
   return `${t}|${b}|${tool}|${text}|${ts}`;
 }
-function pushDedup(e:any){
+
+function pushDedup(e: any) {
   const k = makeKey(e);
   if (seenKeys.has(k)) return;
   seenKeys.add(k);
   store.items.push(e);
   if (seenKeys.size > 2000) {
-    // trim to avoid unbounded growth
     const arr = Array.from(seenKeys);
-    for (let i=0;i<500;i++) seenKeys.delete(arr[i]);
+    for (let i = 0; i < 500; i++) seenKeys.delete(arr[i]);
   }
 }
-const bots = computed(()=> store.bots);
-const items = computed(()=> store.items);
-const activeBot = computed(()=> store.activeBot);
-const viewMode = computed(()=> store.viewMode);
+
+const bots = computed(() => store.bots);
+const items = computed(() => store.items);
+const activeBot = computed(() => store.activeBot);
+const viewMode = computed(() => store.viewMode);
 
 const resetting = ref(false);
 const blueprints = ref<any[]>([]);
@@ -98,20 +227,47 @@ const issuesModalOpen = ref(false);
 const inspectorOpen = ref(false);
 const inspectorItem = ref<any>(null);
 const botNames = computed(() => bots.value.map((b: any) => b.name));
-const openIssuesCount = computed(() => issues.value.filter((i: any) => !['resolved', 'closed'].includes(String(i.state))).length);
+const openIssuesCount = computed(() =>
+  issues.value.filter((i: any) => !['resolved', 'closed'].includes(String(i.state))).length
+);
 
-function openInspector(item: any){ inspectorItem.value = item; inspectorOpen.value = true; }
-function setViewMode(mode: 'single'|'all'){ store.viewMode = mode; if (mode==='single' && store.activeBot) loadBotTimeline(store.activeBot); else loadAllTimeline(); }
-function selectBot(name: string){ store.activeBot = name; if (store.viewMode==='single') loadBotTimeline(name); }
+function getStatusType(status: string): 'success' | 'info' | 'warning' | 'error' {
+  if (status === 'connected') return 'success';
+  if (status === 'connecting') return 'info';
+  if (status === 'error') return 'error';
+  return 'warning';
+}
 
-async function loadBots(){
+function getHealthColor(health: number): string {
+  if (health > 15) return '#5cb85c';
+  if (health > 10) return '#f0ad4e';
+  return '#d9534f';
+}
+
+function openInspector(item: any) {
+  inspectorItem.value = item;
+  inspectorOpen.value = true;
+}
+
+function setViewMode(mode: 'single' | 'all') {
+  store.viewMode = mode;
+  if (mode === 'single' && store.activeBot) loadBotTimeline(store.activeBot);
+  else loadAllTimeline();
+}
+
+function selectBot(name: string) {
+  store.activeBot = name;
+  if (store.viewMode === 'single') loadBotTimeline(name);
+}
+
+async function loadBots() {
   const res = await fetch('/api/bots');
   const data = await res.json();
   store.bots = data;
   if (!store.activeBot && data.length) store.activeBot = data[0].name;
 }
 
-async function loadIssues(){
+async function loadIssues() {
   try {
     const query = store.activeBot ? `?bot=${encodeURIComponent(store.activeBot)}` : '';
     const res = await fetch(`/api/issues${query}`);
@@ -122,55 +278,95 @@ async function loadIssues(){
   }
 }
 
-async function loadBotTimeline(botName: string){
+async function loadBotTimeline(botName: string) {
   const res = await fetch(`/api/bots/${encodeURIComponent(botName)}/events?limit=120`);
   const data = await res.json();
   const events = data.events || [];
-  // Get bot ID to properly filter
   const bot = store.bots.find((b: any) => b.name === botName);
   const botId = bot?.id;
-  // reset bot-specific items
   if (botId) {
     store.items = store.items.filter((i: any) => i.bot_id !== botId);
   }
   events.forEach((e: any) => pushDedup(e));
 }
-async function loadAllTimeline(){
-  if (!store.bots || store.bots.length===0) await loadBots();
+
+async function loadAllTimeline() {
+  if (!store.bots || store.bots.length === 0) await loadBots();
   store.items = [];
   const perBot = Math.max(10, Math.floor(300 / Math.max(1, store.bots.length)));
-  await Promise.all(store.bots.map(async (b: any) => {
-    const res = await fetch(`/api/bots/${encodeURIComponent(b.name)}/events?limit=${perBot}`);
-    const data = await res.json();
-    const events = data.events || [];
-    events.forEach((e: any) => store.items.push(e));
-  }));
-}
-async function resetActiveBot(){
-  if (!store.activeBot) return;
-  if (!confirm(`Reset bot "${store.activeBot}"?`)) return;
-  resetting.value = true;
-  try {
-    const res = await fetch(`/api/bots/${encodeURIComponent(store.activeBot)}/reset`, { method: 'POST' });
-    if (!res.ok) throw new Error('reset_failed');
-    setTimeout(()=>{ loadBots(); loadBotTimeline(store.activeBot); }, 1000);
-  } finally { resetting.value = false; }
+  await Promise.all(
+    store.bots.map(async (b: any) => {
+      const res = await fetch(`/api/bots/${encodeURIComponent(b.name)}/events?limit=${perBot}`);
+      const data = await res.json();
+      const events = data.events || [];
+      events.forEach((e: any) => store.items.push(e));
+    })
+  );
 }
 
-const filteredItems = computed(()=> {
+async function resetActiveBot() {
+  if (!store.activeBot) return;
+  resetting.value = true;
+  try {
+    const res = await fetch(`/api/bots/${encodeURIComponent(store.activeBot)}/reset`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error('reset_failed');
+    setTimeout(() => {
+      loadBots();
+      loadBotTimeline(store.activeBot);
+    }, 1000);
+  } finally {
+    resetting.value = false;
+  }
+}
+
+const urlHash = ref('');
+
+const filteredItems = computed(() => {
+  // Check if we have a hash filter (format: #msg-{type}-{timestamp}-{tool})
+  const hash = urlHash.value.slice(1); // Remove '#'
+  if (hash && hash.startsWith('msg-')) {
+    // Parse hash: msg-{type}-{timestamp}-{tool}
+    const parts = hash.split('-');
+    if (parts.length >= 3) {
+      const type = parts[1];
+      const timestamp = parseInt(parts[2], 10);
+      const toolFromHash = parts.length > 3 ? parts.slice(3).join('-') : '';
+
+      // Find the message matching timestamp and type
+      const found = store.items.find((e: any) => {
+        const matchType = String(e?.type || '') === type;
+        const matchTs = e?.ts === timestamp;
+        const eventTool = String(e?.payload?.tool_name || '').replace(/[^a-z0-9]/gi, '_');
+        const matchTool = !toolFromHash || eventTool === toolFromHash;
+        return matchType && matchTs && matchTool;
+      });
+      return found ? [found] : [];
+    }
+  }
+
+  // Normal filtering (no hash)
   const active = store.activeBot;
-  // Get bot ID from bot name
   const activeBot = store.bots.find((b: any) => b.name === active);
   const activeBotId = activeBot?.id;
 
   const prelim = store.items
-    .filter((e: any) => store.viewMode==='all' || e.bot_id===activeBotId)
-    // Hide noisy CraftScript internals from the main timeline; view them in the card's Show Logs instead
-    .filter((e: any) => !(e.type==='tool' && /^(craftscript_step|craftscript_status|craftscript_cancel)$/i.test(String(e?.payload?.tool_name||''))))
-    // Also hide send_chat spam from tools
-    .filter((e: any) => !(e.type==='tool' && /send_chat/i.test(String(e?.payload?.tool_name||''))));
+    .filter((e: any) => store.viewMode === 'all' || e.bot_id === activeBotId)
+    .filter(
+      (e: any) =>
+        !(
+          e.type === 'tool' &&
+          /^(craftscript_step|craftscript_status|craftscript_cancel)$/i.test(
+            String(e?.payload?.tool_name || '')
+          )
+        )
+    )
+    .filter(
+      (e: any) =>
+        !(e.type === 'tool' && /send_chat/i.test(String(e?.payload?.tool_name || '')))
+    );
 
-  // De-duplicate CraftScript Status by job id: keep only the latest event per job
   const seenJobs = new Set<string>();
   const result: any[] = [];
   for (let i = prelim.length - 1; i >= 0; i--) {
@@ -184,7 +380,7 @@ const filteredItems = computed(()=> {
         id = data?.id || data?.job_id || '';
       } catch {}
       if (id) {
-        if (seenJobs.has(id)) continue; // skip older duplicates
+        if (seenJobs.has(id)) continue;
         seenJobs.add(id);
       }
     }
@@ -193,7 +389,7 @@ const filteredItems = computed(()=> {
   return result.reverse();
 });
 
-function connectWebSocket(){
+function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
   ws.onmessage = (ev) => {
@@ -212,74 +408,102 @@ function connectWebSocket(){
 }
 
 onMounted(async () => {
+  // Set initial hash value (important for page load with hash)
+  urlHash.value = window.location.hash;
+
   await loadBots();
-  if (store.activeBot && store.viewMode==='single') await loadBotTimeline(store.activeBot);
+  if (store.activeBot && store.viewMode === 'single') await loadBotTimeline(store.activeBot);
   else await loadAllTimeline();
   connectWebSocket();
   loadBlueprints();
   loadIssues();
+
+  // Listen for hash changes
+  window.addEventListener('hashchange', () => {
+    urlHash.value = window.location.hash;
+  });
 });
 
-watch(() => issuesModalOpen.value, (open) => {
-  if (open) loadIssues();
-});
+watch(
+  () => issuesModalOpen.value,
+  (open) => {
+    if (open) loadIssues();
+  }
+);
 
 watch(() => store.activeBot, () => {
   loadIssues();
 });
 
-async function loadBlueprints(){
-  try { const res = await fetch('/api/blueprints'); blueprints.value = await res.json(); } catch {}
+async function loadBlueprints() {
+  try {
+    const res = await fetch('/api/blueprints');
+    blueprints.value = await res.json();
+  } catch {}
 }
-async function viewBlueprint(name: string){
+
+async function viewBlueprint(name: string) {
   try {
     const res = await fetch(`/api/blueprints/${encodeURIComponent(name)}`);
     const data = await res.json();
-    bpDetail.value = data; bpDetailName.value = name; bpDetailOpen.value = true;
+    bpDetail.value = data;
+    bpDetailName.value = name;
+    bpDetailOpen.value = true;
   } catch {}
 }
-async function handleRemoveBlueprint(name: string){
-  if (!confirm(`Remove blueprint "${name}"?`)) return;
-  const res = await fetch(`/api/blueprints/${encodeURIComponent(name)}`, { method:'DELETE' });
+
+async function handleRemoveBlueprint(name: string) {
+  const res = await fetch(`/api/blueprints/${encodeURIComponent(name)}`, { method: 'DELETE' });
   if (res.ok) loadBlueprints();
 }
-async function handleCreateBlueprint(payload: any){
+
+async function handleCreateBlueprint(payload: any) {
   try {
-    const res = await fetch('/api/blueprints', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
+    const res = await fetch('/api/blueprints', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
     if (!res.ok) throw new Error('create_failed');
     loadBlueprints();
-  } catch { alert('Failed to create blueprint'); }
+  } catch {
+    alert('Failed to create blueprint');
+  }
 }
 
-function openIssuesModal(){
+function openIssuesModal() {
   issuesModalOpen.value = true;
   loadIssues();
 }
 </script>
 
 <style scoped>
-.app { display: grid; grid-template-columns: 280px 1fr; height: 100vh; background: #1C1C1C; color: #EAEAEA; }
-.sidebar { background: #202020; border-right: 1px solid #2E2E2E; padding: 16px; overflow: auto; }
-.sidebar__hdr { font-weight: 600; margin-bottom: 8px; }
-.chip { padding: 6px 10px; border-radius: 8px; background: #2A2A2A; border: 1px solid #2E2E2E; color: #EAEAEA; cursor: pointer; }
-.chip--active { background: #2f2f2f; border-color: #E96D2F; }
-.sidebar__list { display: flex; flex-direction: column; gap: 6px; }
-.agent { border: 1px solid #2E2E2E; border-radius: 10px; padding: 8px; background: #202020; cursor: pointer; }
-.agent[aria-selected="true"] { outline: 1px solid #E96D2F; }
-.agent__row { display: flex; justify-content: space-between; align-items: center; }
-.agent__badge { font-size: 11px; border: 1px solid #2E2E2E; border-radius: 999px; padding: 2px 8px; }
-.agent__todos { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; color: #B3B3B3; }
-.todo { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-.todo__box { width: 12px; height: 12px; background: #EAEAEA; border: 1px solid #EAEAEA; border-radius: 3px; }
-.todo__box--done { background: #2F4A3C; border-color: #365246; }
-.todo__text { color: #B3B3B3; }
-.todo__progress { font-size: 11px; color: #7A7A7A; }
-.agent__details { margin-top: 8px; padding-top: 8px; border-top: 1px solid #2E2E2E; }
-.agent__info-row { display: flex; gap: 6px; margin-top: 8px; }
-.chip--link { flex: 1; text-align: center; border-color: #E96D2F; color: #E96D2F; }
-.chip--link:hover { background: #2f2f2f; }
-.chip--danger { background: #4A2020; border-color: #6E2E2E; color: #E96D6D; }
-.chip--danger:hover:not(:disabled) { background: #5A2828; border-color: #8E3E3E; }
-.chip--danger:disabled { opacity: 0.5; cursor: not-allowed; }
-.main { overflow: hidden; }
+.app-layout {
+  height: 100vh;
+}
+
+.sidebar {
+  height: 100vh;
+}
+
+.sidebar-content {
+  padding: 20px;
+}
+
+.sidebar-header {
+  margin: 0 0 16px 0;
+}
+
+.bot-card {
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.bot-card-active {
+  border-color: var(--n-border-color-primary);
+}
+
+.header {
+  padding: 16px 24px;
+}
 </style>

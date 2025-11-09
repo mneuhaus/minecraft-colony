@@ -1,20 +1,5 @@
 <template>
-  <MessageBlock
-    eyebrow="CraftScript"
-    title="Block Changes"
-    :tone="tone"
-    padding="lg"
-  >
-    <template #meta>
-      <span class="bc-chip">job {{ jobId }}</span>
-      <span class="bc-chip">{{ totalChanges }} changes</span>
-    </template>
-    <template #actions>
-      <button class="inspector-toggle" @click="$emit('openInspector', item)" title="Open Inspector">
-        🔍
-      </button>
-    </template>
-
+  <div>
     <div v-if="changes.length > 0">
       <div class="bc-entries">
         <div
@@ -52,14 +37,13 @@
     <div v-else class="bc-empty">
       No block changes recorded for this job.
     </div>
-  </MessageBlock>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import MessageBlock from '../../MessageBlock.vue';
 
 const props = defineProps<{ item: any }>();
 defineEmits<{ openInspector: [item: any] }>();
@@ -310,91 +294,91 @@ watch(() => changes.value.length, (newLen) => {
 
 <style scoped>
 .bc-chip {
-  padding: 2px var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-xs);
-  border: 1px solid var(--color-border-subtle);
-  color: var(--color-text-muted);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  opacity: 0.65;
 }
 
 .bc-entries {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
-  margin-bottom: var(--spacing-lg);
+  gap: 4px;
+  margin-bottom: 16px;
 }
 .bc-entry {
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-sm);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 4px 8px;
+  font-size: 14px;
 }
 .bc-entry--destroyed { border-color: rgba(248,113,113,0.4); }
 .bc-entry--placed { border-color: rgba(52,211,153,0.4); }
-.bc-entry-header { display: flex; flex-wrap: wrap; gap: var(--spacing-sm); align-items: center; }
+.bc-entry-header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .bc-action {
   font-weight: 600;
   text-transform: uppercase;
-  font-size: var(--font-xs);
+  font-size: 13px;
 }
 .bc-action[data-action="placed"] { color: var(--color-success); }
 .bc-action[data-action="destroyed"] { color: var(--color-danger); }
-.bc-block { font-family: 'Courier New', monospace; color: var(--color-text-primary); }
-.bc-pos { font-size: var(--font-xs); color: var(--color-text-muted); }
-.bc-cmd { font-size: var(--font-xs); color: var(--color-accent); }
+.bc-block { font-family: 'Courier New', monospace; ; }
+.bc-pos { font-size: 13px; opacity: 0.65; }
+.bc-cmd { font-size: 13px; color: var(--color-accent); }
 
 .bc-viewer {
-  margin-top: var(--spacing-md);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-md);
+  margin-top: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 12px;
   background: rgba(0,0,0,0.2);
 }
 .bc-viewer-header {
   font-weight: 600;
-  margin-bottom: var(--spacing-sm);
+  margin-bottom: 8px;
 }
 .bc-canvas {
   width: 100%;
   height: 260px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   background: #0f1115;
 }
 .bc-controls {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  margin-top: var(--spacing-sm);
+  gap: 8px;
+  margin-top: 8px;
 }
 .bc-btn {
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   background: transparent;
-  color: var(--color-text-primary);
-  border-radius: var(--radius-sm);
-  padding: var(--spacing-xs) var(--spacing-sm);
+  ;
+  border-radius: 6px;
+  padding: 4px 8px;
 }
 .bc-checkbox {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--font-xs);
+  font-size: 13px;
 }
 
 .bc-empty {
   margin: 0;
-  padding: var(--spacing-md);
+  padding: 12px;
   text-align: center;
-  color: var(--color-text-muted);
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-md);
+  opacity: 0.65;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
 }
 
 .inspector-toggle {
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   background: transparent;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-primary);
+  padding: 4px 8px;
+  border-radius: 6px;
+  ;
 }
 </style>

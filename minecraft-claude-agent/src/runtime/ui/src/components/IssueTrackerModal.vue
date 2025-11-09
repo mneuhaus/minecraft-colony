@@ -339,7 +339,7 @@ onMounted(() => {
 }
 
 .sidebar-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-.sidebar-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: #a6a1a1; }
+.sidebar-label { font-size: 13px; text-transform: uppercase; letter-spacing: 0.6px; color: #a6a1a1; }
 
 .issue-item {
   padding: 10px 12px;
@@ -353,9 +353,9 @@ onMounted(() => {
 .issue-item--active { border-color: #e96d2f; box-shadow: 0 0 0 1px rgba(233,109,47,0.35); }
 .issue-item__title { font-weight: 600; color: #EAEAEA; margin-bottom: 4px; }
 .issue-item__meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
-.issue-item__sub { color: #8f8e8e; font-size: 11px; }
+.issue-item__sub { color: #8f8e8e; font-size: 13px; }
 
-.pill { font-size: 10px; padding: 2px 8px; border-radius: 999px; border: 1px solid transparent; text-transform: uppercase; }
+.pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid transparent; text-transform: uppercase; }
 .pill[data-state="open"] { background: rgba(233,109,47,0.15); color: #f48c53; border-color: rgba(233,109,47,0.4); }
 .pill[data-state="triage"] { background: rgba(251,191,36,0.15); color: #FBBF24; }
 .pill[data-state="in_progress"] { background: rgba(251,191,36,0.1); color: #f6d481; }
@@ -367,7 +367,7 @@ onMounted(() => {
 .issue-detail { display: flex; flex-direction: column; gap: 16px; height: 100%; }
 .detail-scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding-right: 6px; }
 .detail-header { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid #302828; padding-bottom: 12px; }
-.detail-sub { color: #b6a9a2; font-size: 12px; margin-top: 4px; }
+.detail-sub { color: #b6a9a2; font-size: 14px; margin-top: 4px; }
 .detail-controls { display: flex; gap: 8px; }
 .detail-description { background: #131111; border: 1px solid #2b2626; border-radius: 10px; padding: 14px; min-height: 140px; }
 .detail-description :deep(p) { margin-bottom: 10px; }
@@ -376,11 +376,11 @@ onMounted(() => {
 .detail-comments { background: #131111; border: 1px solid #2b2626; border-radius: 10px; padding: 14px; }
 .comment { border-bottom: 1px solid #2b2626; padding: 10px 0; }
 .comment:last-child { border-bottom: none; }
-.comment-meta { font-size: 11px; color: #8a8585; margin-bottom: 6px; }
-.comment-body { font-size: 13px; }
+.comment-meta { font-size: 13px; color: #8a8585; margin-bottom: 6px; }
+.comment-body { font-size: 14px; }
 .comment-body :deep(p) { margin-bottom: 6px; }
-.comment-body :deep(h1), .comment-body :deep(h2), .comment-body :deep(h3) { margin: 12px 0 6px; font-weight: 600; font-size: 14px; }
-.comments-empty { font-size: 13px; color: #7A7A7A; margin-bottom: 8px; }
+.comment-body :deep(h1), .comment-body :deep(h2), .comment-body :deep(h3) { margin: 12px 0 6px; font-weight: 600; font-size: 15px; }
+.comments-empty { font-size: 14px; color: #7A7A7A; margin-bottom: 8px; }
 .detail-actions { margin-top: 10px; display: flex; justify-content: flex-end; }
 .detail-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; height: 100%; color: #7A7A7A; }
 .empty-icon { font-size: 42px; }
@@ -389,5 +389,5 @@ onMounted(() => {
 .btn { border: 1px solid #2E2E2E; background: #232020; color: #EAEAEA; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
 .btn-create { background: #e96d2f; border-color: #e96d2f; color: #fff; font-weight: 600; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.input, textarea.input { width: 100%; background: #111; border: 1px solid #2E2E2E; border-radius: 8px; padding: 6px 10px; color: #fff; font-size: 13px; }
+.input, textarea.input { width: 100%; background: #111; border: 1px solid #2E2E2E; border-radius: 8px; padding: 6px 10px; color: #fff; font-size: 14px; }
 </style>

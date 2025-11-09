@@ -1,25 +1,14 @@
 <template>
-  <MessageBlock
-    eyebrow="Todo"
-    title="TodoWrite"
-    :tone="todos.length ? 'info' : 'neutral'"
-    padding="md"
-  >
-    <template #meta>
-      <span class="todo-chip">{{ doneCount }} / {{ todos.length }} completed</span>
-    </template>
     <ul class="todo-list">
       <li v-for="(t, i) in todos" :key="i" class="todo-row">
         <span class="todo-check">{{ done(t) ? '☑' : '☐' }}</span>
         <span class="todo-text">{{ text(t) }}</span>
       </li>
     </ul>
-  </MessageBlock>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import MessageBlock from '../../MessageBlock.vue';
 const props = defineProps<{ item: any }>();
 const payload = computed(()=> props.item.payload || (props.item.data ? { params_summary: props.item.data } : {}) );
 
@@ -54,21 +43,21 @@ const doneCount = computed(()=> todos.value.filter(done).length);
 </script>
 
 <style scoped>
-.todo-chip { padding: 2px var(--spacing-sm); border-radius: var(--radius-sm); border: 1px solid var(--color-border-subtle); font-size: var(--font-xs); }
+.todo-chip { padding: 2px 8px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.06); font-size: 13px; }
 .todo-list {
   list-style: none;
   padding: 0;
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
+  gap: 4px;
 }
 .todo-row {
   display: flex;
-  gap: var(--spacing-sm);
+  gap: 8px;
   align-items: flex-start;
-  color: var(--color-text-primary);
-  font-size: var(--font-sm);
+  ;
+  font-size: 14px;
 }
 .todo-check {
   width: 20px;
@@ -76,5 +65,5 @@ const doneCount = computed(()=> todos.value.filter(done).length);
   text-align: center;
   color: var(--color-accent);
 }
-.todo-text { color: var(--color-text-secondary); }
+.todo-text { opacity: 0.85; }
 </style>

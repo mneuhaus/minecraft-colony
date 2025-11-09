@@ -1,19 +1,19 @@
 <template>
-  <MessageBlock
-    eyebrow="Blueprint"
-    title="Blueprint"
-    :tone="issues.length ? 'warning' : 'info'"
-    padding="lg"
-    :shadow="true"
-  >
-    <template #meta>
-      <span v-if="bp" class="bp-chip">{{ bp.name }}</span>
-      <span class="bp-chip">{{ voxCount }} vox</span>
-      <span class="bp-chip" v-if="issues.length">{{ issues.length }} issues</span>
-    </template>
-    <template #actions>
-      <button class="view-toggle" @click="toggleView">{{ show3D ? '📊 List' : '🎮 3D' }}</button>
-    </template>
+  <div>
+    <div class="bp-header">
+      <p class="tool-hint">3D blueprint visualization showing voxel structure and block composition.</p>
+      <n-button size="tiny" @click="toggleView" class="view-toggle">
+        <template #icon>
+          <n-icon v-if="show3D">
+            <List />
+          </n-icon>
+          <n-icon v-else>
+            <Cube />
+          </n-icon>
+        </template>
+        {{ show3D ? 'List' : '3D View' }}
+      </n-button>
+    </div>
 
     <div class="bp-meta" v-if="bp">
       <div class="bp-row"><span class="bp-k">description</span><span class="bp-v">{{ bp.description || '—' }}</span></div>
@@ -33,14 +33,15 @@
       </div>
       <div v-else class="bp-empty">No voxels</div>
     </div>
-  </MessageBlock>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { NButton, NIcon } from 'naive-ui';
+import { List, Cube } from '@vicons/ionicons5';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import MessageBlock from '../../MessageBlock.vue';
 
 const props = defineProps<{ item: any }>();
 
@@ -143,30 +144,38 @@ function toggleView() {
 </script>
 
 <style scoped>
+.bp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
 .view-toggle {
-  border: 1px solid var(--color-border);
-  background: transparent;
-  color: var(--color-text-primary);
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+.tool-hint {
+  opacity: 0.65;
+  font-size: 14px;
+  margin-bottom: 0;
 }
 .bp-chip {
-  padding: 2px var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-subtle);
-  font-size: var(--font-xs);
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
-.bp-meta { display: grid; grid-template-columns: auto 1fr; gap: var(--spacing-xs) var(--spacing-md); margin-bottom: var(--spacing-sm); }
+.bp-meta { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin-bottom: 8px; }
 .bp-row { display: contents; }
-.bp-k { color: var(--color-text-muted); font-size: var(--font-xs); text-transform: uppercase; }
-.bp-v { color: var(--color-text-primary); font-size: var(--font-sm); }
+.bp-k { opacity: 0.65; font-size: 13px; text-transform: uppercase; }
+.bp-v { ; font-size: 14px; }
 
 .bp-3d-container {
-  margin-top: var(--spacing-md);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  margin-top: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
   overflow: hidden;
 }
 .bp-canvas {
@@ -176,23 +185,23 @@ function toggleView() {
 }
 .bp-3d-controls {
   background: rgba(255,255,255,0.02);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-xs);
-  color: var(--color-text-muted);
+  padding: 4px 8px;
+  font-size: 13px;
+  opacity: 0.65;
 }
 .bp-summary {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  margin-top: var(--spacing-md);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  margin-top: 12px;
 }
 .summary-row {
   display: grid;
   grid-template-columns: 1fr 60px;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-bottom: 1px solid var(--color-border-subtle);
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 .summary-row:last-child { border-bottom: none; }
-.summary-id { color: var(--color-text-primary); font-size: var(--font-sm); }
+.summary-id { ; font-size: 14px; }
 .summary-count { text-align: right; font-family: 'Monaco','Courier New',monospace; }
-.bp-empty { color: var(--color-text-muted); font-size: var(--font-sm); margin-top: var(--spacing-md); }
+.bp-empty { opacity: 0.65; font-size: 14px; margin-top: 12px; }
 </style>

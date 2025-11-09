@@ -1,16 +1,9 @@
 <template>
-  <MessageBlock
-    :eyebrow="directionLabel"
-    :title="from"
-    :tone="direction === 'in' ? 'info' : 'neutral'"
-  >
-    <div class="chat-text" v-html="safeText"></div>
-  </MessageBlock>
+  <div class="chat-text" v-html="safeText"></div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import MessageBlock from '../MessageBlock.vue';
 const props = defineProps<{ item: any }>();
 function escapeHtml(s: string){ return String(s).replace(/[&<>\"]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[m])); }
 
@@ -56,8 +49,7 @@ const directionLabel = computed(() => direction.value === 'in' ? 'Player' : 'Bot
 
 <style scoped>
 .chat-text {
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-  font-size: var(--font-md);
+  line-height: 1.6;
+  opacity: 0.9;
 }
 </style>

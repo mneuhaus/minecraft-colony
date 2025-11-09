@@ -1,21 +1,5 @@
 <template>
-  <MessageBlock
-    title="Block Info"
-    eyebrow="Spatial"
-    :tone="blockData ? 'info' : 'neutral'"
-    :collapsible="true"
-    :default-collapsed="true"
-    padding="md"
-  >
-    <template #meta>
-      <span v-if="position" class="block-chip">({{ position.x }}, {{ position.y }}, {{ position.z }})</span>
-    </template>
-    <template #actions>
-      <button class="inspector-toggle" @click="$emit('openInspector', item)" title="Open Inspector">
-        🔍
-      </button>
-    </template>
-
+  <div>
     <div class="block-row" v-if="position">
       <span class="block-key">position</span>
       <span class="block-val">({{ position.x }}, {{ position.y }}, {{ position.z }})</span>
@@ -40,12 +24,11 @@
         </div>
       </div>
     </div>
-  </MessageBlock>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import MessageBlock from '../../MessageBlock.vue';
 
 const props = defineProps<{ item: any }>();
 defineEmits<{ openInspector: [item: any] }>();
@@ -68,33 +51,33 @@ const blockData = computed(()=> raw.value);
 
 <style scoped>
 .block-chip {
-  padding: 2px var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-subtle);
-  font-size: var(--font-xs);
-  color: var(--color-text-muted);
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+  opacity: 0.65;
 }
 .block-row {
   display: flex;
-  gap: var(--spacing-sm);
+  gap: 8px;
   align-items: baseline;
-  margin-bottom: var(--spacing-sm);
+  margin-bottom: 8px;
 }
 .block-key {
-  color: var(--color-text-muted);
-  font-size: var(--font-xs);
+  opacity: 0.65;
+  font-size: 13px;
   text-transform: uppercase;
 }
 .block-val {
   color: var(--color-accent);
-  font-size: var(--font-sm);
+  font-size: 14px;
   font-family: 'Monaco','Courier New',monospace;
   font-weight: 600;
 }
-.block-info { margin-top: var(--spacing-sm); padding-top: var(--spacing-sm); border-top: 1px solid var(--color-border-subtle); }
-.info-row { display: flex; gap: var(--spacing-sm); align-items: flex-start; margin-bottom: var(--spacing-xs); font-size: var(--font-sm); }
-.info-label { color: var(--color-text-muted); min-width: 80px; text-transform: uppercase; font-size: var(--font-xs); }
-.info-val { color: var(--color-text-primary); font-family: 'Monaco','Courier New',monospace; }
+.block-info { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.info-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 4px; font-size: 14px; }
+.info-label { opacity: 0.65; min-width: 80px; text-transform: uppercase; font-size: 13px; }
+.info-val { ; font-family: 'Monaco','Courier New',monospace; }
 .block-id { color: var(--color-success); font-weight: 600; }
 .props-grid { display: flex; flex-direction: column; gap: 4px; flex: 1; }
 .prop-item {
@@ -103,18 +86,18 @@ const blockData = computed(()=> raw.value);
   align-items: center;
   padding: 2px 6px;
   background: rgba(255,255,255,0.02);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-xs);
+  border-radius: 6px;
+  font-size: 13px;
 }
 .prop-key { color: var(--color-warning); font-family: 'Monaco','Courier New',monospace; font-weight: 600; }
-.prop-val { color: var(--color-text-primary); font-family: 'Monaco','Courier New',monospace; }
+.prop-val { ; font-family: 'Monaco','Courier New',monospace; }
 
 .inspector-toggle {
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   background: transparent;
-  color: var(--color-text-primary);
-  padding: 2px var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-sm);
+  ;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 14px;
 }
 </style>

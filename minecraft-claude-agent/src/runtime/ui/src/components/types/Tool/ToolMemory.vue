@@ -1,16 +1,15 @@
 <template>
-  <MessageBlock
-    :eyebrow="isUpdateMemory ? 'Memory' : 'Context'"
-    :title="isUpdateMemory ? 'Memory Update' : 'Memory Retrieved'"
-    :tone="isUpdateMemory ? (hasDiff ? 'warning' : 'info') : 'neutral'"
-    padding="lg"
-    :shadow="true"
-  >
-    <template #actions>
-      <button v-if="isUpdateMemory" @click="toggleView" class="view-toggle">
-        {{ showDiff ? 'Show Full Memory' : 'Show Diff' }}
-      </button>
-    </template>
+  <div>
+    <div v-if="isUpdateMemory && hasDiff" class="mem-header">
+      <n-button size="tiny" @click="toggleView">
+        <template #icon>
+          <n-icon>
+            <GitCompare />
+          </n-icon>
+        </template>
+        {{ showDiff ? 'Show Full' : 'Show Diff' }}
+      </n-button>
+    </div>
 
     <div v-if="isUpdateMemory">
       <div v-if="showDiff && hasDiff" class="diff-view">
@@ -28,13 +27,14 @@
     <div v-else class="memory-get">
       <div class="markdown-content" v-html="renderedMarkdown"></div>
     </div>
-  </MessageBlock>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { NButton, NIcon } from 'naive-ui';
+import { GitCompare } from '@vicons/ionicons5';
 import { marked } from 'marked';
-import MessageBlock from '../../MessageBlock.vue';
 
 const props = defineProps<{
   item: any;
@@ -97,29 +97,20 @@ function toggleView() {
 </script>
 
 <style scoped>
-.view-toggle {
-  padding: 4px 12px;
-  background: rgba(155, 89, 182, 0.2);
-  border: 1px solid #9b59b6;
-  border-radius: var(--radius-sm);
-  color: #9b59b6;
-  cursor: pointer;
-  font-size: var(--font-sm);
-  transition: all 0.2s;
-}
-
-.view-toggle:hover {
-  background: rgba(155, 89, 182, 0.3);
+.mem-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
 }
 
 .diff-view {
   font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
-  font-size: var(--font-sm);
+  font-size: 14px;
   line-height: 1.6;
   overflow-x: auto;
   background: rgba(0, 0, 0, 0.3);
-  padding: var(--spacing-sm);
-  border-radius: var(--radius-md);
+  padding: 8px;
+  border-radius: 10px;
 }
 
 .diff-line {
@@ -164,9 +155,9 @@ function toggleView() {
 }
 
 .markdown-content {
-  font-size: var(--font-sm);
+  font-size: 14px;
   line-height: 1.6;
-  color: var(--color-text-primary);
+  ;
 }
 
 .markdown-content :deep(h1),
@@ -181,8 +172,8 @@ function toggleView() {
 
 .markdown-content :deep(h1) { font-size: var(--font-xl); }
 .markdown-content :deep(h2) { font-size: 15px; }
-.markdown-content :deep(h3) { font-size: 14px; }
-.markdown-content :deep(h4) { font-size: 13px; }
+.markdown-content :deep(h3) { font-size: 15px; }
+.markdown-content :deep(h4) { font-size: 14px; }
 
 .markdown-content :deep(p) {
   margin: 8px 0;
@@ -203,7 +194,7 @@ function toggleView() {
   padding: 2px 6px;
   border-radius: 3px;
   font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
-  font-size: 12px;
+  font-size: 14px;
   color: #e8b86d;
 }
 
@@ -235,7 +226,7 @@ function toggleView() {
 
 .memory-get h3 {
   margin: 0 0 12px 0;
-  font-size: 14px;
+  font-size: 15px;
   color: #9b59b6;
   font-weight: 600;
 }

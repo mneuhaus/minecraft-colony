@@ -1,16 +1,9 @@
 <template>
-  <MessageBlock
-    eyebrow="Tool Output"
-    title="Generic Tool"
-    padding="md"
-  >
     <pre class="tool-output"><code>{{ pretty(obj) }}</code></pre>
-  </MessageBlock>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import MessageBlock from '../../MessageBlock.vue';
 const props = defineProps<{ item: any }>();
 const payload = computed(()=> props.item.payload || {});
 const obj = computed(()=> {
@@ -26,11 +19,11 @@ function pretty(o: any){ try { return JSON.stringify(o, null, 2); } catch { retu
 .tool-output {
   margin: 0;
   background: var(--color-bg-muted);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-sm);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 8px;
   font-family: 'Monaco','Courier New',monospace;
-  font-size: var(--font-sm);
+  font-size: 14px;
   overflow-x: auto;
 }
 </style>

@@ -97,7 +97,6 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import MessageBlock from '../../MessageBlock.vue';
 
 const props = defineProps<{ item: any }>();
 
@@ -186,63 +185,63 @@ async function viewTrace() {
 
 <style scoped>
 .log-status {
-  padding: 2px var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-xs);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 13px;
   font-weight: 600;
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 .status-completed { color: var(--color-success); border-color: rgba(52,211,153,0.4); }
 .status-failed { color: var(--color-danger); border-color: rgba(248,113,113,0.4); }
 .status-running { color: var(--color-accent); border-color: rgba(74,158,255,0.4); }
-.status-canceled { color: var(--color-text-muted); }
+.status-canceled { opacity: 0.65; }
 .trace-btn {
   background: var(--color-accent-soft);
   border: 1px solid rgba(74,158,255,0.4);
   color: var(--color-accent);
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
   padding: 4px 10px;
-  font-size: var(--font-sm);
+  font-size: 14px;
 }
 
 .log-meta {
   display: flex;
-  gap: var(--spacing-lg);
-  margin-bottom: var(--spacing-md);
-  font-size: var(--font-sm);
+  gap: 16px;
+  margin-bottom: 12px;
+  font-size: 14px;
 }
 .meta-row { display: flex; flex-direction: column; gap: 2px; }
 .meta-k {
   text-transform: uppercase;
-  font-size: var(--font-xs);
-  color: var(--color-text-muted);
+  font-size: 13px;
+  opacity: 0.65;
   letter-spacing: 0.5px;
 }
 .meta-v {
   font-weight: 600;
-  color: var(--color-text-primary);
+  ;
 }
 
 .log-error {
   display: flex;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm);
-  border-radius: var(--radius-md);
+  gap: 8px;
+  padding: 8px;
+  border-radius: 10px;
   border: 1px solid rgba(248,113,113,0.4);
   background: rgba(248,113,113,0.12);
-  margin-bottom: var(--spacing-md);
+  margin-bottom: 12px;
 }
 .error-title { font-weight: 600; color: var(--color-danger); }
 
 .log-entries {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
+  gap: 8px;
 }
 .log-entry {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 8px 12px;
   background: rgba(17,17,17,0.4);
 }
 .log-entry--status { border-color: rgba(74,158,255,0.3); }
@@ -252,30 +251,30 @@ async function viewTrace() {
 .entry-header {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  margin-bottom: var(--spacing-xs);
-  font-size: var(--font-sm);
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 14px;
 }
 .entry-icon { font-size: 14px; }
 .entry-kind {
   font-weight: 600;
-  color: var(--color-text-primary);
+  ;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 .entry-time {
   margin-left: auto;
-  font-size: var(--font-xs);
-  color: var(--color-text-muted);
+  font-size: 13px;
+  opacity: 0.65;
   font-family: 'Courier New', monospace;
 }
 
-.entry-body { font-size: var(--font-sm); line-height: 1.4; }
+.entry-body { font-size: 14px; line-height: 1.4; }
 .entry-status .status-state { font-weight: 600; color: var(--color-accent); }
 .entry-status .status-error { color: var(--color-danger); }
-.step-command { font-weight: 600; color: var(--color-text-primary); margin-bottom: 4px; }
-.step-meta { display: flex; gap: var(--spacing-sm); color: var(--color-text-muted); font-size: var(--font-xs); }
+.step-command { font-weight: 600; ; margin-bottom: 4px; }
+.step-meta { display: flex; gap: 8px; opacity: 0.65; font-size: 13px; }
 .step-error { color: var(--color-danger); margin-top: 4px; }
-.entry-trace { font-family: 'Courier New', monospace; font-size: var(--font-sm); }
-.log-empty { color: var(--color-text-muted); font-style: italic; margin-top: var(--spacing-sm); }
+.entry-trace { font-family: 'Courier New', monospace; font-size: 14px; }
+.log-empty { opacity: 0.65; font-style: italic; margin-top: 8px; }
 </style>

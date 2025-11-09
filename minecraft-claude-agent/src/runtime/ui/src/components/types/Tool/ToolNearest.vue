@@ -1,15 +1,5 @@
 <template>
-  <MessageBlock
-    eyebrow="Spatial"
-    title="Nearest"
-    :tone="rows.length ? 'info' : 'neutral'"
-    padding="md"
-  >
-    <template #meta>
-      <span class="query-chip">query {{ query }}</span>
-      <span class="query-chip" v-if="rows.length">{{ rows.length }} match{{ rows.length === 1 ? '' : 'es' }}</span>
-    </template>
-
+  <div>
     <table v-if="rows.length" class="nearest-table">
       <thead>
         <tr>
@@ -27,12 +17,11 @@
       </tbody>
     </table>
     <div v-else class="query-val">No matches for query</div>
-  </MessageBlock>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import MessageBlock from '../../MessageBlock.vue';
 const props = defineProps<{ item: any }>();
 const p = computed(()=> props.item.payload?.params_summary ?? props.item.payload?.input ?? {});
 const out = computed(()=> props.item.payload?.output);
@@ -47,36 +36,36 @@ const rows = computed(()=> Array.isArray(out.value) ? out.value.map((m: any, i: 
 
 <style scoped>
 .query-chip {
-  padding: 2px var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-subtle);
-  font-size: var(--font-xs);
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 .query-val {
-  color: var(--color-text-muted);
-  font-size: var(--font-sm);
+  opacity: 0.65;
+  font-size: 14px;
   font-family: 'Monaco', 'Courier New', monospace;
 }
 .nearest-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: var(--spacing-sm);
-  font-size: var(--font-sm);
+  margin-top: 8px;
+  font-size: 14px;
 }
 .nearest-table th {
   text-align: left;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  color: var(--color-text-muted);
+  padding: 4px 8px;
+  opacity: 0.65;
   font-weight: 600;
-  border-bottom: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   text-transform: uppercase;
-  font-size: var(--font-xs);
+  font-size: 13px;
 }
 .nearest-table td {
-  padding: var(--spacing-xs) var(--spacing-sm);
-  color: var(--color-text-primary);
+  padding: 4px 8px;
+  ;
 }
 .td-dist,
 .td-world {

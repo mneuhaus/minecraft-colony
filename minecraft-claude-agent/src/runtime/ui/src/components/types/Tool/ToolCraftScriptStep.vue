@@ -1,14 +1,4 @@
 <template>
-  <MessageBlock
-    eyebrow="CraftScript Step"
-    :title="result.op || 'step'"
-    :tone="result.ok ? 'success' : 'danger'"
-    padding="sm"
-  >
-    <template #meta>
-      <span class="duration-chip">{{ result.ms }} ms</span>
-    </template>
-
     <div class="step-body">
       <div class="step-icon" :class="{ success: result.ok, failed: !result.ok }">
         {{ result.ok ? '✓' : '✗' }}
@@ -31,12 +21,10 @@
         </div>
       </div>
     </div>
-  </MessageBlock>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import MessageBlock from '../../MessageBlock.vue';
 
 const props = defineProps<{ item: any }>();
 
@@ -65,16 +53,16 @@ function formatValue(value: any): string {
 
 <style scoped>
 .duration-chip {
-  font-size: var(--font-xs);
-  color: var(--color-text-muted);
-  padding: 2px var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-subtle);
+  font-size: 13px;
+  opacity: 0.65;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .step-body {
   display: flex;
-  gap: var(--spacing-md);
+  gap: 12px;
   align-items: flex-start;
 }
 
@@ -85,7 +73,7 @@ function formatValue(value: any): string {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   border: 1px solid transparent;
 }
@@ -105,40 +93,40 @@ function formatValue(value: any): string {
 .step-content {
   flex: 1;
   min-width: 0;
-  font-size: var(--font-sm);
+  font-size: 14px;
 }
 
 .step-notes {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-sm);
+  gap: 4px;
+  padding: 8px;
   background: rgba(255, 255, 255, 0.02);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .note-item {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: var(--spacing-sm);
+  gap: 8px;
 }
 
 .note-key {
-  color: var(--color-text-muted);
+  opacity: 0.65;
   font-weight: 500;
   text-transform: capitalize;
 }
 
 .note-value {
-  color: var(--color-text-primary);
+  ;
   font-family: 'Courier New', monospace;
 }
 
 .step-error {
-  padding: var(--spacing-sm);
+  padding: 8px;
   background: rgba(248, 113, 113, 0.1);
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
   border: 1px solid rgba(248, 113, 113, 0.4);
 }
 
@@ -154,7 +142,7 @@ function formatValue(value: any): string {
 }
 
 .error-location {
-  color: var(--color-text-muted);
-  font-size: var(--font-xs);
+  opacity: 0.65;
+  font-size: 13px;
 }
 </style>

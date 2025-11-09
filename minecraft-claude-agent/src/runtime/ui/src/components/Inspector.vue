@@ -92,7 +92,7 @@ const highlightedJson = computed(() => {
 .inspector__json pre {
   margin: 0;
   font-family: 'Monaco', 'Courier New', monospace;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.5;
 }
 .inspector__json code {

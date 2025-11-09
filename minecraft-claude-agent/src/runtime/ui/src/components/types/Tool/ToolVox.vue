@@ -1,25 +1,21 @@
 <template>
-  <MessageBlock
-    eyebrow="Spatial"
-    title="Vox Snapshot"
-    :tone="tone"
-    padding="lg"
-    :shadow="true"
-  >
-    <template #meta>
-      <span class="vox-chip">radius {{ radius }}</span>
-      <span class="vox-chip" v-if="grep.length">filter: {{ grep.join(', ') }}</span>
-      <span class="vox-chip">blocks {{ blockCount }}</span>
-    </template>
-    <template #actions>
-      <button class="view-toggle" @click="toggleView">
-        {{ show3D ? '📊 List' : '🎮 3D' }}
-      </button>
-    </template>
-
-    <p class="tool-hint">
-      3D voxel snapshot of the nearby world for precise navigation. Shows exact block IDs and positions around the bot.
-    </p>
+  <div>
+    <div class="vox-header">
+      <p class="tool-hint">
+        3D voxel snapshot of the nearby world for precise navigation. Shows exact block IDs and positions around the bot.
+      </p>
+      <n-button size="tiny" @click="toggleView" class="view-toggle">
+        <template #icon>
+          <n-icon v-if="show3D">
+            <List />
+          </n-icon>
+          <n-icon v-else>
+            <Cube />
+          </n-icon>
+        </template>
+        {{ show3D ? 'List' : '3D View' }}
+      </n-button>
+    </div>
 
     <div class="vox-row">
       <span class="vox-key">radius</span>
@@ -58,14 +54,15 @@
       <span class="hazards-label">Hazards</span>
       <span class="hazards-list">{{ hazards.join(', ') }}</span>
     </div>
-  </MessageBlock>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, onMounted, watch, onBeforeUnmount } from 'vue';
+import { NButton, NIcon } from 'naive-ui';
+import { List, Cube } from '@vicons/ionicons5';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import MessageBlock from '../../MessageBlock.vue';
 
 const props = defineProps<{ item: any }>();
 const show3D = ref(false); // Default to list view
@@ -159,13 +156,17 @@ function init3DViewer() {
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
 
-  // Lights
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  // Lights - brighter ambient + multiple directional lights for better illumination
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
   scene.add(ambientLight);
 
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  directionalLight.position.set(10, 10, 10);
-  scene.add(directionalLight);
+  const directionalLight1 = new THREE.DirectionalLight(0xffffff, 1.0);
+  directionalLight1.position.set(10, 10, 10);
+  scene.add(directionalLight1);
+
+  const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+  directionalLight2.position.set(-10, 5, -10);
+  scene.add(directionalLight2);
 
   // Add voxels (world coordinates → center relative to origin)
   const voxels = Array.isArray(raw.value?.voxels) ? raw.value.voxels : [];
@@ -190,7 +191,15 @@ function init3DViewer() {
 
   for (const v of voxels) {
     const geometry = new THREE.BoxGeometry(0.9, 0.9, 0.9);
-    const material = new THREE.MeshLambertMaterial({ color: getBlockColor(String(v.id)) });
+    const blockColor = getBlockColor(String(v.id));
+    // Use MeshStandardMaterial for better color vibrancy with metalness and emissive glow
+    const material = new THREE.MeshStandardMaterial({
+      color: blockColor,
+      emissive: blockColor,
+      emissiveIntensity: 0.3,
+      metalness: 0.2,
+      roughness: 0.6
+    });
     const cube = new THREE.Mesh(geometry, material);
     const rx = v.x - origin.x;
     const ry = v.y - origin.y;
@@ -198,7 +207,7 @@ function init3DViewer() {
     cube.position.set(rx, ry, rz);
 
     const edges = new THREE.EdgesGeometry(geometry);
-    const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.2, transparent: true }));
+    const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.3, transparent: true }));
     cube.add(line);
 
     scene.add(cube);
@@ -262,38 +271,41 @@ function toggleView() {
 </script>
 
 <style scoped>
+.vox-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
 .view-toggle {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: transparent;
-  color: var(--color-text-primary);
+  flex-shrink: 0;
 }
 .tool-hint {
-  color: var(--color-text-muted);
-  font-size: var(--font-sm);
-  margin-bottom: var(--spacing-sm);
+  opacity: 0.65;
+  font-size: 14px;
+  margin-bottom: 8px;
 }
 .vox-chip {
-  padding: 2px var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-xs);
-  border: 1px solid var(--color-border-subtle);
-  color: var(--color-text-muted);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  opacity: 0.65;
 }
 .vox-row {
   display: flex;
-  gap: var(--spacing-sm);
+  gap: 8px;
   align-items: baseline;
-  margin-bottom: var(--spacing-sm);
+  margin-bottom: 8px;
 }
-.vox-key { color: var(--color-text-muted); font-size: var(--font-xs); text-transform: uppercase; }
-.vox-val { color: var(--color-text-primary); font-size: var(--font-sm); font-family: 'Monaco','Courier New',monospace; }
+.vox-key { opacity: 0.65; font-size: 13px; text-transform: uppercase; }
+.vox-val { ; font-size: 14px; font-family: 'Monaco','Courier New',monospace; }
 
 .vox-3d-container {
-  margin-top: var(--spacing-md);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  margin-top: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
   overflow: hidden;
 }
 .vox-canvas {
@@ -303,29 +315,29 @@ function toggleView() {
 }
 .vox-3d-controls {
   background: rgba(255,255,255,0.02);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-top: 1px solid var(--color-border-subtle);
+  padding: 4px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
-.control-hint { font-size: var(--font-xs); color: var(--color-text-muted); }
+.control-hint { font-size: 13px; opacity: 0.65; }
 
 .vox-blocks {
-  margin-top: var(--spacing-md);
-  padding-top: var(--spacing-sm);
-  border-top: 1px solid var(--color-border-subtle);
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 .blocks-header {
   display: flex;
-  gap: var(--spacing-xs);
+  gap: 4px;
   align-items: baseline;
-  margin-bottom: var(--spacing-xs);
+  margin-bottom: 4px;
 }
-.blocks-label { color: var(--color-accent); font-size: var(--font-xs); font-weight: 600; }
-.blocks-count { color: var(--color-text-muted); font-size: var(--font-xs); }
+.blocks-label { color: var(--color-accent); font-size: 13px; font-weight: 600; }
+.blocks-count { opacity: 0.65; font-size: 13px; }
 .blocks-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--spacing-xs);
-  font-size: var(--font-xs);
+  gap: 4px;
+  font-size: 13px;
 }
 .block-item {
   display: flex;
@@ -333,19 +345,19 @@ function toggleView() {
   align-items: center;
   padding: 2px 6px;
   background: rgba(255,255,255,0.02);
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
 }
 .block-sel { color: var(--color-accent); font-family: 'Monaco','Courier New',monospace; font-weight: 600; }
-.block-id { color: var(--color-text-primary); font-family: 'Monaco','Courier New',monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.block-more { grid-column: 1 / -1; justify-content: center; color: var(--color-text-muted); font-style: italic; }
+.block-id { ; font-family: 'Monaco','Courier New',monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.block-more { grid-column: 1 / -1; justify-content: center; opacity: 0.65; font-style: italic; }
 
 .vox-hazards {
   display: flex;
-  gap: var(--spacing-sm);
-  margin-top: var(--spacing-md);
-  padding-top: var(--spacing-sm);
-  border-top: 1px solid var(--color-border-subtle);
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
-.hazards-label { color: var(--color-warning); font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; }
-.hazards-list { color: var(--color-text-primary); font-size: var(--font-sm); }
+.hazards-label { color: var(--color-warning); font-size: 13px; font-weight: 600; text-transform: uppercase; }
+.hazards-list { ; font-size: 14px; }
 </style>

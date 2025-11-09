@@ -1,15 +1,5 @@
 <template>
-  <MessageBlock
-    eyebrow="CraftScript"
-    :title="toolTitle"
-    :tone="tone"
-    padding="md"
-    :shadow="true"
-  >
-    <template #meta>
-      <span class="tool-status" :class="statusClass">{{ statusText }}</span>
-    </template>
-
+  <div>
     <div class="fn-meta" v-if="fn">
       <div class="fn-row"><span class="fn-k">name</span><span class="fn-v">{{ fn.name }}</span></div>
       <div class="fn-row" v-if="fn.description"><span class="fn-k">description</span><span class="fn-v">{{ fn.description }}</span></div>
@@ -28,18 +18,30 @@
     </div>
 
     <div class="fn-body-section" v-if="body && !hasDiff">
-      <button class="fn-body-toggle" @click="showBody = !showBody">
-        {{ showBody ? '▼' : '▶' }} Function Body
-      </button>
+      <n-button size="tiny" text @click="showBody = !showBody" class="fn-toggle">
+        <template #icon>
+          <n-icon>
+            <ChevronDown v-if="showBody" />
+            <ChevronForward v-else />
+          </n-icon>
+        </template>
+        Function Body
+      </n-button>
       <div v-if="showBody" class="fn-body">
         <pre class="fn-body__code"><code class="language-javascript hljs" v-html="highlightedBody"></code></pre>
       </div>
     </div>
 
     <div class="fn-diff-section" v-if="hasDiff">
-      <button class="fn-diff-toggle" @click="showDiff = !showDiff">
-        {{ showDiff ? '▼' : '▶' }} Changes (v{{ previousVersion }} → v{{ fn.version }})
-      </button>
+      <n-button size="tiny" text @click="showDiff = !showDiff" class="fn-toggle">
+        <template #icon>
+          <n-icon>
+            <ChevronDown v-if="showDiff" />
+            <ChevronForward v-else />
+          </n-icon>
+        </template>
+        Changes (v{{ previousVersion }} → v{{ fn.version }})
+      </n-button>
       <div v-if="showDiff" class="fn-diff">
         <div class="diff-side">
           <div class="diff-header diff-header--old">v{{ previousVersion }} (Previous)</div>
@@ -86,12 +88,13 @@
       <span class="error-icon">⚠️</span>
       <span class="error-text">{{ error }}</span>
     </div>
-  </MessageBlock>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import MessageBlock from '../../MessageBlock.vue';
+import { NButton, NIcon } from 'naive-ui';
+import { ChevronDown, ChevronForward } from '@vicons/ionicons5';
 import hljs from 'highlight.js/lib/core';
 import javascript from 'highlight.js/lib/languages/javascript';
 import 'highlight.js/styles/github-dark-dimmed.css';
@@ -306,43 +309,43 @@ function formatDate(ts: number): string {
 </script>
 
 <style scoped>
-.tool-status { font-size: var(--font-md); font-weight: 600; }
+.tool-status { font-size: 14px; font-weight: 600; }
 .status-success { color: var(--color-success); }
 .status-error { color: var(--color-danger); }
 
 .fn-meta {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: var(--spacing-xs) var(--spacing-md);
-  margin-bottom: var(--spacing-md);
-  padding: var(--spacing-sm);
+  gap: 4px 12px;
+  margin-bottom: 12px;
+  padding: 8px;
   background: rgba(255, 255, 255, 0.02);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 .fn-row { display: contents; }
 .fn-k {
-  color: var(--color-text-muted);
-  font-size: var(--font-xs);
+  opacity: 0.65;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 .fn-v {
-  color: var(--color-text-primary);
-  font-size: var(--font-sm);
+  ;
+  font-size: 14px;
   font-family: 'Monaco','Courier New',monospace;
 }
 
 .fn-args {
-  margin-bottom: var(--spacing-md);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
   overflow: hidden;
 }
 .fn-args-header {
   background: var(--color-accent-soft);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-xs);
+  padding: 4px 8px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--color-accent);
   text-transform: uppercase;
@@ -351,55 +354,48 @@ function formatDate(ts: number): string {
 .arg-row {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-top: 1px solid var(--color-border);
-  font-size: var(--font-sm);
+  gap: 8px;
+  padding: 4px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 14px;
 }
-.arg-name { font-weight: 600; color: var(--color-text-primary); }
-.arg-type { color: var(--color-text-muted); font-size: var(--font-xs); text-transform: uppercase; }
-.arg-optional { color: var(--color-accent); font-size: var(--font-xs); }
-.arg-default { color: var(--color-text-secondary); font-family: 'Monaco','Courier New',monospace; }
+.arg-name { font-weight: 600; ; }
+.arg-type { opacity: 0.65; font-size: 13px; text-transform: uppercase; }
+.arg-optional { color: var(--color-accent); font-size: 13px; }
+.arg-default { opacity: 0.85; font-family: 'Monaco','Courier New',monospace; }
 
-.fn-body-section { margin-bottom: var(--spacing-md); }
-.fn-body-toggle,
-.fn-diff-toggle {
-  background: none;
-  border: none;
-  color: var(--color-accent);
-  font-size: var(--font-sm);
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0;
+.fn-body-section { margin-bottom: 12px; }
+.fn-toggle {
+  margin-bottom: 8px;
 }
 .fn-body {
-  margin-top: var(--spacing-xs);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  margin-top: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
   background: var(--color-bg-muted);
   overflow: auto;
 }
-.fn-body__code { margin: 0; padding: var(--spacing-sm); font-size: var(--font-sm); }
+.fn-body__code { margin: 0; padding: 8px; font-size: 14px; }
 
-.fn-diff-section { margin-top: var(--spacing-lg); }
+.fn-diff-section { margin-top: 16px; }
 .fn-diff {
-  margin-top: var(--spacing-xs);
+  margin-top: 4px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--spacing-md);
-  font-size: var(--font-xs);
+  gap: 12px;
+  font-size: 13px;
 }
 .diff-side {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
   overflow: hidden;
 }
 .diff-header {
-  padding: var(--spacing-xs) var(--spacing-sm);
+  padding: 4px 8px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-size: var(--font-xs);
+  font-size: 13px;
 }
 .diff-header--old { background: rgba(248,113,113,0.12); color: var(--color-danger); }
 .diff-header--new { background: var(--color-accent-soft); color: var(--color-accent); }
@@ -412,7 +408,7 @@ function formatDate(ts: number): string {
 .diff-ln {
   font-size: 10px;
   font-family: 'Monaco','Courier New',monospace;
-  color: var(--color-text-muted);
+  opacity: 0.65;
   padding: 0 6px;
   border-right: 1px solid rgba(255,255,255,0.04);
 }
@@ -426,47 +422,47 @@ function formatDate(ts: number): string {
 .is-add { background: rgba(52,211,153,0.08); }
 
 .fn-list, .fn-versions {
-  margin-top: var(--spacing-lg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  margin-top: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
 }
 .fn-list-header,
 .fn-versions-header {
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: 8px 12px;
   font-weight: 600;
   background: rgba(255,255,255,0.02);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 .fn-list-item {
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: 8px 12px;
   border-bottom: 1px solid rgba(255,255,255,0.04);
   display: grid;
   grid-template-columns: 1fr 2fr auto;
-  gap: var(--spacing-sm);
-  font-size: var(--font-sm);
+  gap: 8px;
+  font-size: 14px;
 }
-.fn-list-name { font-weight: 600; color: var(--color-text-primary); }
-.fn-list-desc { color: var(--color-text-secondary); }
-.fn-list-version { color: var(--color-text-muted); font-family: 'Monaco','Courier New',monospace; }
+.fn-list-name { font-weight: 600; ; }
+.fn-list-desc { opacity: 0.85; }
+.fn-list-version { opacity: 0.65; font-family: 'Monaco','Courier New',monospace; }
 
 .version-row {
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: 8px 12px;
   border-bottom: 1px solid rgba(255,255,255,0.04);
   display: flex;
-  gap: var(--spacing-md);
+  gap: 12px;
 }
 .version-num { font-family: 'Monaco','Courier New',monospace; color: var(--color-accent); }
-.version-summary { font-weight: 500; color: var(--color-text-primary); }
-.version-meta { font-size: var(--font-xs); color: var(--color-text-muted); }
+.version-summary { font-weight: 500; ; }
+.version-meta { font-size: 13px; opacity: 0.65; }
 
 .fn-error {
-  margin-top: var(--spacing-lg);
+  margin-top: 16px;
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
+  gap: 8px;
+  padding: 8px 12px;
   border: 1px solid rgba(248,113,113,0.6);
-  border-radius: var(--radius-md);
+  border-radius: 10px;
   background: rgba(248,113,113,0.12);
   color: #fca5a5;
 }

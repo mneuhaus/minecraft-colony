@@ -1,21 +1,5 @@
 <template>
-  <MessageBlock
-    eyebrow="Spatial"
-    title="Look At Map"
-    :tone="tone"
-    padding="lg"
-  >
-    <template #meta>
-      <span class="map-chip" v-if="gridInfo">{{ gridInfo }}</span>
-      <span class="map-chip" v-if="radius">radius {{ radius }}</span>
-      <span class="map-chip" v-if="zoom && zoom > 1">zoom {{ zoom }}x</span>
-    </template>
-    <template #actions>
-      <button class="map-btn" @click="flipVertical = !flipVertical">
-        {{ flipVertical ? 'Flip N/S' : 'Reset Orientation' }}
-      </button>
-    </template>
-
+  <div>
     <div class="tool-hint">
       2D top-down map for quick orientation. Each cell summarizes a zoom block; ▲ / • / ▼ show relative height against the bot.
     </div>
@@ -87,12 +71,11 @@
         <span class="stat-val">{{ heightStats.min }} to {{ heightStats.max }}</span>
       </div>
     </div>
-  </MessageBlock>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import MessageBlock from '../../MessageBlock.vue';
 
 const props = defineProps<{ item: any }>();
 
@@ -354,41 +337,41 @@ const gridCells = computed(() => {
 
 <style scoped>
 .tool-hint {
-  color: var(--color-text-muted);
-  font-size: var(--font-sm);
-  margin-bottom: var(--spacing-sm);
+  opacity: 0.65;
+  font-size: 14px;
+  margin-bottom: 8px;
 }
 .map-chip {
-  padding: 2px var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-subtle);
-  font-size: var(--font-xs);
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 .map-btn {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 4px 8px;
   background: transparent;
-  color: var(--color-text-primary);
+  ;
 }
 .map-params {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--spacing-sm);
-  margin-bottom: var(--spacing-md);
+  gap: 8px;
+  margin-bottom: 12px;
 }
-.param-row { display: flex; gap: var(--spacing-xs); align-items: baseline; font-size: var(--font-sm); }
-.param-label { color: var(--color-text-muted); text-transform: uppercase; font-size: var(--font-xs); }
-.param-val { color: var(--color-text-primary); font-family: 'Monaco','Courier New',monospace; }
+.param-row { display: flex; gap: 4px; align-items: baseline; font-size: 14px; }
+.param-label { opacity: 0.65; text-transform: uppercase; font-size: 13px; }
+.param-val { ; font-family: 'Monaco','Courier New',monospace; }
 
-.map-grid-container { border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--spacing-md); background: rgba(0,0,0,0.15); }
-.map-orientation { text-align: center; margin-bottom: var(--spacing-sm); color: var(--color-text-muted); font-size: var(--font-xs); }
+.map-grid-container { border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 12px; background: rgba(0,0,0,0.15); }
+.map-orientation { text-align: center; margin-bottom: 8px; opacity: 0.65; font-size: 13px; }
 .map-grid {
   display: grid;
   gap: 1px;
-  margin-bottom: var(--spacing-sm);
+  margin-bottom: 8px;
 }
 .map-cell {
   position: relative;
@@ -401,19 +384,19 @@ const gridCells = computed(() => {
 }
 .map-cell--bot { border-color: var(--color-accent); }
 .map-cell--match { outline: 1px solid var(--color-accent); }
-.cell-height { font-size: var(--font-xs); color: var(--color-text-muted); }
+.cell-height { font-size: 13px; opacity: 0.65; }
 .cell-mosaic { width: 100%; height: 100%; display: grid; grid-template-columns: repeat(2, 1fr); }
 .mosaic-tile { width: 100%; height: 100%; }
 
-.map-legend { display: flex; gap: var(--spacing-sm); font-size: var(--font-xs); color: var(--color-text-muted); }
-.legend-symbol { font-weight: 600; color: var(--color-text-primary); }
+.map-legend { display: flex; gap: 8px; font-size: 13px; opacity: 0.65; }
+.legend-symbol { font-weight: 600; ; }
 
-.map-summary { margin-top: var(--spacing-md); }
-.blocks-list { display: flex; flex-wrap: wrap; gap: var(--spacing-xs); margin-top: var(--spacing-xs); }
-.block-tag { padding: 2px 6px; border-radius: var(--radius-sm); border: 1px solid var(--color-border-subtle); font-size: var(--font-xs); }
+.map-summary { margin-top: 12px; }
+.blocks-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.block-tag { padding: 2px 6px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.06); font-size: 13px; }
 
-.map-stats { margin-top: var(--spacing-md); }
-.stat-row { display: flex; gap: var(--spacing-xs); font-size: var(--font-sm); }
-.stat-label { color: var(--color-text-muted); }
-.stat-val { color: var(--color-text-primary); }
+.map-stats { margin-top: 12px; }
+.stat-row { display: flex; gap: 4px; font-size: 14px; }
+.stat-label { opacity: 0.65; }
+.stat-val { ; }
 </style>

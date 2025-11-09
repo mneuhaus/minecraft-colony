@@ -121,10 +121,10 @@ function formatItemName(name: string): string {
 
 <style scoped>
 .inv-chip {
-  padding: 2px var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-subtle);
-  font-size: var(--font-xs);
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -133,21 +133,21 @@ function formatItemName(name: string): string {
   grid-template-columns: repeat(9, minmax(16px, 1fr));
   gap: 4px;
   background: var(--color-bg-muted);
-  padding: var(--spacing-sm);
-  border-radius: var(--radius-lg);
-  margin-top: var(--spacing-md);
+  padding: 8px;
+  border-radius: 12px;
+  margin-top: 12px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
 }
 .inventory-slot {
   aspect-ratio: 1;
   background: linear-gradient(135deg, #2b2f38 0%, #1a1d24 100%);
   border: 1px solid #0f1115;
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform var(--transition-base);
+  transition: transform 0.2s ease;
 }
 .inventory-slot.filled {
   border-color: rgba(255,255,255,0.1);
@@ -164,7 +164,7 @@ function formatItemName(name: string): string {
   position: absolute;
   bottom: 3px;
   right: 4px;
-  font-size: var(--font-xs);
+  font-size: 13px;
   font-weight: 600;
 }
 .item-tooltip {
@@ -173,17 +173,17 @@ function formatItemName(name: string): string {
   left: 50%;
   transform: translateX(-50%);
   background: rgba(0,0,0,0.8);
-  color: var(--color-text-primary);
+  ;
   padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-xs);
+  border-radius: 6px;
+  font-size: 13px;
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
 }
 .inventory-slot:hover .item-tooltip { opacity: 1; }
 
-.empty-inventory { text-align: center; color: var(--color-text-muted); padding: var(--spacing-lg); }
-.empty-icon { font-size: 32px; margin-bottom: var(--spacing-sm); }
-.empty-text { font-size: var(--font-sm); text-transform: uppercase; letter-spacing: 0.05em; }
+.empty-inventory { text-align: center; opacity: 0.65; padding: 16px; }
+.empty-icon { font-size: 32px; margin-bottom: 8px; }
+.empty-text { font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; }
 </style>

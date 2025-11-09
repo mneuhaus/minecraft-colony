@@ -249,12 +249,12 @@ watch(() => props.open, (isOpen) => {
 
 .bp-item__vox {
   color: #B3B3B3;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .sidebar-empty {
   color: #7A7A7A;
-  font-size: 13px;
+  font-size: 14px;
   text-align: center;
   padding: 24px 12px;
   font-style: italic;
@@ -290,7 +290,7 @@ watch(() => props.open, (isOpen) => {
 .detail-desc {
   margin: 0;
   color: #B3B3B3;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .detail-actions {
@@ -315,7 +315,7 @@ watch(() => props.open, (isOpen) => {
 .meta-item {
   display: flex;
   gap: 8px;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .meta-label {
@@ -354,7 +354,7 @@ watch(() => props.open, (isOpen) => {
   border: 1px solid #2E2E2E;
   color: #EAEAEA;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   transition: all 0.2s;
 }
@@ -405,7 +405,7 @@ watch(() => props.open, (isOpen) => {
   color: #EAEAEA;
   border: 1px solid #2E2E2E;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 14px;
   outline: none;
   transition: border-color 0.2s;
 }

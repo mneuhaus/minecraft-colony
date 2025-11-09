@@ -1,21 +1,37 @@
 <template>
-  <MessageBlock
-    eyebrow="CraftScript"
-    title="Script"
-    :tone="tone"
-    padding="lg"
-    :shadow="true"
-  >
-    <template #meta>
-      <span v-if="activeJobId" class="cs-chip cs-chip--muted">job {{ activeJobId }}</span>
-      <span class="cs-chip" :class="[`cs-chip--${status.state || 'unknown'}`]">{{ status.state }}</span>
-      <span class="cs-chip cs-chip--muted">{{ lineCount }} lines</span>
-    </template>
-    <template #actions>
-      <button class="cs-btn" :disabled="running" @click="runAgain">{{ running ? 'Running…' : 'Run Again' }}</button>
-      <button class="cs-btn" @click="showLogs = !showLogs">{{ showLogs ? 'Hide Logs' : 'Show Logs' }}</button>
-      <button class="cs-btn" :disabled="!activeJobId" @click="toggleTrace">{{ showTrace ? 'Hide Trace' : 'View Trace' }}</button>
-    </template>
+  <div>
+    <div class="cs-header">
+      <div class="cs-meta">
+        <span class="cs-chip" :class="`cs-chip--${tone}`">{{ status.state.toUpperCase() }}</span>
+        <span class="cs-chip cs-chip--muted">{{ lineCount }} lines</span>
+      </div>
+      <div class="cs-actions">
+        <n-button size="tiny" :disabled="running" @click="runAgain">
+          <template #icon>
+            <n-icon>
+              <Play />
+            </n-icon>
+          </template>
+          {{ running ? 'Running…' : 'Run Again' }}
+        </n-button>
+        <n-button size="tiny" @click="showLogs = !showLogs">
+          <template #icon>
+            <n-icon>
+              <Terminal />
+            </n-icon>
+          </template>
+          {{ showLogs ? 'Hide Logs' : 'Show Logs' }}
+        </n-button>
+        <n-button size="tiny" @click="toggleTrace" :disabled="!activeJobId">
+          <template #icon>
+            <n-icon>
+              <Eye />
+            </n-icon>
+          </template>
+          {{ showTrace ? 'Hide Trace' : 'View Trace' }}
+        </n-button>
+      </div>
+    </div>
 
     <pre class="tool-output"><code class="language-javascript hljs" v-html="highlightedCode"></code></pre>
 
@@ -54,12 +70,13 @@
         </div>
       </div>
     </section>
-  </MessageBlock>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, inject, ref } from 'vue';
-import MessageBlock from '../../MessageBlock.vue';
+import { NButton, NIcon } from 'naive-ui';
+import { Terminal, Eye, Play } from '@vicons/ionicons5';
 import hljs from 'highlight.js/lib/core';
 import javascript from 'highlight.js/lib/languages/javascript';
 import 'highlight.js/styles/github-dark-dimmed.css';
@@ -302,99 +319,118 @@ function fmtTs(ts:number){
 </script>
 
 <style scoped>
-.cs-btn {
-  border: 1px solid var(--color-border);
-  background: transparent;
-  color: var(--color-text-primary);
-  font-size: var(--font-sm);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  transition: border-color var(--transition-base), color var(--transition-base);
+.cs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  gap: 12px;
 }
-.cs-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
-.cs-btn:not([disabled]):hover { border-color: var(--color-accent); color: var(--color-accent); }
+.cs-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.cs-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
 
 .cs-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-xs);
-  border: 1px solid var(--color-border-subtle);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
-.cs-chip--muted { color: var(--color-text-muted); }
+.cs-chip--muted { opacity: 0.65; }
 .cs-chip--completed { border-color: rgba(52,211,153,0.4); color: var(--color-success); }
 .cs-chip--failed { border-color: rgba(248,113,113,0.4); color: var(--color-danger); }
 .cs-chip--running { border-color: rgba(74,158,255,0.4); color: var(--color-accent); }
 
 .tool-output {
-  margin-top: var(--spacing-md);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  margin-top: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
   background: var(--color-bg-muted);
-  padding: var(--spacing-sm);
-  font-size: var(--font-sm);
+  padding: 8px;
+  font-size: 14px;
   max-height: 420px;
   overflow: auto;
 }
 
 .cs-panel {
-  margin-top: var(--spacing-lg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  margin-top: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
   background: rgba(255,255,255,0.01);
-  padding: var(--spacing-md);
+  padding: 12px;
 }
 .cs-panel__header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--spacing-sm);
+  margin-bottom: 8px;
   font-weight: 600;
 }
-.cs-panel__meta { font-size: var(--font-xs); color: var(--color-text-muted); }
-.cs-panel__empty { margin: 0; color: var(--color-text-muted); font-style: italic; }
+.cs-panel__meta { font-size: 13px; opacity: 0.65; }
+.cs-panel__empty { margin: 0; opacity: 0.65; font-style: italic; }
 
 .cs-logs__list {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
+  gap: 4px;
 }
 .cs-log {
   display: grid;
   grid-template-columns: auto auto 1fr;
-  gap: var(--spacing-sm);
-  font-size: var(--font-sm);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-subtle);
+  gap: 8px;
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255,255,255,0.02);
 }
-.cs-log__time { font-family: 'Courier New', monospace; color: var(--color-text-muted); }
-.cs-log__kind { text-transform: uppercase; font-size: var(--font-xs); font-weight: 600; color: var(--color-accent); }
-.cs-log__msg { color: var(--color-text-primary); }
+.cs-log__time { font-family: 'Courier New', monospace; opacity: 0.65; }
+.cs-log__kind {
+  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 600;
+}
+/* Color-code different log kinds */
+.cs-log__kind[data-kind='ok'],
+.cs-log__kind[data-kind='OK'] { color: #5cb85c; }
+.cs-log__kind[data-kind='fail'],
+.cs-log__kind[data-kind='FAIL'] { color: #d9534f; }
+.cs-log__kind[data-kind='trace'],
+.cs-log__kind[data-kind='log'] { color: #9b59b6; }
+.cs-log__kind[data-kind='status'] { color: #4a9eff; }
+.cs-log__kind[data-kind='MOVEMENT'] { color: #f0ad4e; }
+.cs-log__msg { ; }
 
 .cs-trace__list {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
+  gap: 4px;
 }
 .cs-trace-item {
   display: grid;
   grid-template-columns: auto 1fr auto auto;
-  gap: var(--spacing-sm);
+  gap: 8px;
   align-items: center;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-sm);
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  font-size: 14px;
 }
 .cs-trace-item__action[data-action='placed'] { color: var(--color-success); }
 .cs-trace-item__action[data-action='destroyed'] { color: var(--color-danger); }
 .cs-trace-item__block { font-family: 'Courier New', monospace; }
-.cs-trace-item__pos { color: var(--color-text-muted); font-size: var(--font-xs); }
-.cs-trace-item__cmd { color: var(--color-accent); font-size: var(--font-xs); }
+.cs-trace-item__pos { opacity: 0.65; font-size: 13px; }
+.cs-trace-item__cmd { color: var(--color-accent); font-size: 13px; }
 </style>

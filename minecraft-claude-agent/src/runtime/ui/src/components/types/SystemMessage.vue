@@ -1,16 +1,9 @@
 <template>
-  <MessageBlock
-    eyebrow="System"
-    title="Notification"
-    :tone="tone"
-  >
-    <p class="system-text">{{ message }}</p>
-  </MessageBlock>
+  <p class="system-text">{{ message }}</p>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import MessageBlock from '../MessageBlock.vue';
 
 const props = defineProps<{ item: any }>();
 
@@ -27,8 +20,7 @@ const message = computed(() => props.item.payload?.message || '');
 
 <style scoped>
 .system-text {
-  color: var(--color-text-secondary);
-  font-size: var(--font-md);
-  line-height: 1.5;
+  line-height: 1.6;
+  opacity: 0.9;
 }
 </style>

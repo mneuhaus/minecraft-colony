@@ -66,9 +66,9 @@ watch(activeBot, ()=> load());
 <style scoped>
 .sidebar-inventory { margin-top: 12px; padding: 10px; border: 1px solid #2E2E2E; border-radius: 10px; background: #181818; }
 .inv__hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
-.inv__title { color:#FFB86C; font-weight:600; font-size:13px; }
+.inv__title { color:#FFB86C; font-weight:600; font-size:14px; }
 .inv__stats { display:flex; gap:6px; }
-.chip { padding: 2px 6px; border:1px solid #2E2E2E; border-radius:6px; font-size:10px; color:#B3B3B3; }
+.chip { padding: 2px 6px; border:1px solid #2E2E2E; border-radius:6px; font-size:12px; color:#B3B3B3; }
 .inv-grid { display:grid; grid-template-columns:repeat(9,1fr); gap:2px; background:#0f0f0f; padding:4px; border-radius:6px; }
 .inv-slot { aspect-ratio:1; background:#2b2b2b; border:1px solid #3a3a3a; border-radius:3px; display:flex; align-items:center; justify-content:center; position:relative; }
 .inv-slot--filled { background:#3a3a3a; border-color:#4a4a4a; }
