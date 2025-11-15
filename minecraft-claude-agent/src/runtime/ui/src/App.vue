@@ -190,21 +190,40 @@ const store = inject<any>('store');
 
 // Simple client-side de-dup
 const seenKeys = new Set<string>();
+
+function normalizeEvent(e: any) {
+  if (!e || typeof e !== 'object') return e;
+  if (e.type === 'chat') {
+    const existing = e.payload || {};
+    const payload = {
+      from: existing.from ?? e.from,
+      text: existing.text ?? e.text ?? '',
+      direction: existing.direction ?? e.direction ?? (existing.from ? 'out' : 'in'),
+      channel: existing.channel ?? e.channel ?? 'chat',
+    };
+    return { ...e, payload };
+  }
+  return e;
+}
+
 function makeKey(e: any) {
-  const t = e?.type || '';
-  const b = e?.bot_id || '';
-  const ts = e?.ts || '';
-  const p = e?.payload || {};
+  const normalized = normalizeEvent(e);
+  const t = normalized?.type ?? e?.type ?? '';
+  const b = normalized?.bot_id ?? e?.bot_id ?? '';
+  const ts = normalized?.ts ?? e?.ts ?? '';
+  const p = normalized?.payload || {};
   const tool = p.tool_name || '';
   const text = (p.text || p.message || JSON.stringify(p.input || {})).slice(0, 200);
   return `${t}|${b}|${tool}|${text}|${ts}`;
 }
 
 function pushDedup(e: any) {
-  const k = makeKey(e);
+  const normalized = normalizeEvent(e);
+  if (!normalized) return;
+  const k = makeKey(normalized);
   if (seenKeys.has(k)) return;
   seenKeys.add(k);
-  store.items.push(e);
+  store.items.push(normalized);
   if (seenKeys.size > 2000) {
     const arr = Array.from(seenKeys);
     for (let i = 0; i < 500; i++) seenKeys.delete(arr[i]);

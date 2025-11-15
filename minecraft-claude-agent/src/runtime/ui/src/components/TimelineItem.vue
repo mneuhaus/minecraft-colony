@@ -127,16 +127,26 @@ const isExpanded = computed({
 
 const time = computed(() => new Date(props.item.ts || Date.now()).toLocaleTimeString());
 
+const chatPayload = computed(() => {
+  if (props.item.type !== 'chat') return null;
+  const payload = props.item.payload || {};
+  return {
+    text: payload.text ?? props.item.text ?? '',
+    from: payload.from ?? props.item.from ?? null,
+    direction: payload.direction ?? props.item.direction ?? 'out',
+  };
+});
+
 const messageTitle = computed(() => {
   const t = props.item.type;
 
   if (t === 'chat') {
-    const dir = props.item.payload?.direction;
+    const dir = chatPayload.value?.direction;
     // Extract username from message or use from/direction
-    const rawText = props.item.payload?.text || '';
+    const rawText = chatPayload.value?.text || '';
     const match = rawText.match(/^([^:]+):/);
     if (match) return match[1].trim();
-    return dir === 'in' ? 'Player' : 'Bot';
+    return chatPayload.value?.from || (dir === 'in' ? 'Player' : 'Bot');
   }
 
   if (t === 'tool') {
@@ -160,8 +170,8 @@ const messageTitle = computed(() => {
 
 const cardClass = computed(() => {
   let cls = `tl-card--${props.item.type}`;
-  if (props.item.type === 'chat' && props.item.payload?.direction) {
-    cls += ` tl-card--chat-${props.item.payload.direction}`;
+  if (props.item.type === 'chat' && chatPayload.value?.direction) {
+    cls += ` tl-card--chat-${chatPayload.value.direction}`;
   }
   if (props.item.outcome) {
     cls += ` tl-card--${props.item.outcome}`;
@@ -173,7 +183,7 @@ const cardBorderColor = computed(() => {
   const t = props.item.type;
 
   if (t === 'chat') {
-    const dir = props.item.payload?.direction;
+    const dir = chatPayload.value?.direction;
     // Player messages (incoming) = Green/Success
     if (dir === 'in') return '#5cb85c';
     // Bot messages (outgoing) = Blue/Info
@@ -206,7 +216,7 @@ const cardBorderColor = computed(() => {
 const wrapperClass = computed(() => {
   const t = props.item.type;
   if (t === 'chat') {
-    const dir = props.item.payload?.direction;
+    const dir = chatPayload.value?.direction;
     // Player messages on the right (like chat apps)
     return dir === 'in' ? 'tl-wrapper--right' : 'tl-wrapper--left';
   }
