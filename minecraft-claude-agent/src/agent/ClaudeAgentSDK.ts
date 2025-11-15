@@ -9,17 +9,24 @@ import fs from 'fs';
 import path from 'path';
 import { Hono } from 'hono';
 import { createAdaptorServer } from '@hono/node-server';
+import { onCraftscriptEvent, type CraftscriptEvent } from './craftscriptJobs.js';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
 
+interface PendingMessage {
+  username: string;
+  message: string;
+  force?: boolean;
+}
+
 export class ClaudeAgentSDK {
   private mcpServer: any;
   private conversationHistory: Message[] = [];
   private isProcessing = false;
-  private readonly model = 'claude-sonnet-4-5-20250929';
+  private readonly model: string;
   private readonly botName: string;
   private readonly botNameLower: string;
   private readonly atBotName: string;
@@ -32,6 +39,9 @@ export class ClaudeAgentSDK {
   private readonly backstory?: string;
   private activityWriter: ActivityWriter;
   private memoryStore: SqlMemoryStore;
+  private pendingMessages: PendingMessage[] = [];
+  private currentAbortController: AbortController | null = null;
+  private abortReason: string | null = null;
   public getActivityWriter(){ return this.activityWriter; }
   public getMemoryStore(){ return this.memoryStore; }
   public getSessionId(){ return this.currentSessionId; }
@@ -41,6 +51,9 @@ export class ClaudeAgentSDK {
     private minecraftBot: MinecraftBot,
     backstory?: string
   ) {
+    // Set model from config or use default
+    this.model = this.config.anthropic.model || 'claude-sonnet-4-5-20250929';
+
     logger.info('Claude Agent SDK initialized', {
       model: this.model,
     });
@@ -51,9 +64,77 @@ export class ClaudeAgentSDK {
 
     // Initialize activity tracking
     this.activityWriter = new ActivityWriter(this.botName);
-    
+
     // Initialize memory store
     this.memoryStore = new SqlMemoryStore(this.botName);
+  }
+
+  private enqueuePlayerMessage(username: string, message: string): void {
+    this.pendingMessages.push({ username, message });
+    if (this.isProcessing) {
+      this.requestAbort('player_interrupt');
+      return;
+    }
+    this.processMessageQueue();
+  }
+
+  private enqueueSystemInterrupt(message: string): void {
+    this.pendingMessages.unshift({ username: 'SYSTEM', message, force: true });
+    if (this.isProcessing) {
+      this.requestAbort('system_interrupt');
+      return;
+    }
+    this.processMessageQueue();
+  }
+
+  private processMessageQueue(): void {
+    if (this.isProcessing) return;
+    const next = this.pendingMessages.shift();
+    if (!next) return;
+    this.handleChatMessage(next.username, next.message, 0, next.force ?? false).catch((error: any) => {
+      logger.error('Failed to process queued message', { error: error?.message || error });
+    });
+  }
+
+  private requestAbort(reason: string): void {
+    if (this.currentAbortController && !this.currentAbortController.signal.aborted) {
+      this.abortReason = reason;
+      logger.info('Interrupting current Claude run', { reason });
+      this.currentAbortController.abort();
+    }
+  }
+
+  private handleCraftscriptInterrupt(event: CraftscriptEvent): void {
+    const errorType = event.error?.type || 'unknown_error';
+    const errorMessage = event.error?.message || 'Unbekannter Fehler';
+    const line = event.error?.line ?? event.error?.notes?.line;
+    const column = event.error?.column ?? event.error?.notes?.column;
+    const positionInfo = typeof line === 'number' ? `Zeile ${line}${typeof column === 'number' ? `:${column}` : ''}` : '';
+    const detail = positionInfo ? `${errorType}, ${positionInfo}` : errorType;
+    const summary = `HALT STOP – CraftScript ${event.id} fehlgeschlagen (${detail}): ${errorMessage}`.slice(0, 280);
+    this.activityWriter.addActivity({
+      type: 'error',
+      message: summary,
+      speaker: 'SYSTEM',
+      role: 'system',
+      details: { job_id: event.id, error: event.error }
+    });
+    const interruptChat = (process.env.CRAFTSCRIPT_ERROR_INTERRUPT_CHAT ?? 'false').toLowerCase() !== 'false';
+    if (interruptChat) {
+      this.enqueueSystemInterrupt(summary);
+    }
+  }
+
+  private isAbortError(error: any): boolean {
+    if (!error) return false;
+    if (error.name === 'AbortError') return true;
+    const message = String(error.message || error);
+    return message.toLowerCase().includes('aborterror') || message.toLowerCase().includes('operation aborted');
+  }
+
+  private stripCodeBlocks(text: string): string {
+    if (!text) return '';
+    return text.replace(/```[\s\S]*?```/g, '').replace(/`[^`]*`/g, '');
   }
 
   /**
@@ -81,6 +162,14 @@ export class ClaudeAgentSDK {
             manifest: this.mcpServer?.manifest,
           });
           try { this.startControlServerIfEnabled(); } catch (e: any) { logger.warn('Control server not started', { error: String(e?.message||e) }); }
+          try {
+            onCraftscriptEvent((event) => {
+              if (event.botName && event.botName !== this.botName) return;
+              if (event.state === 'failed') this.handleCraftscriptInterrupt(event);
+            });
+          } catch (eventError: any) {
+            logger.warn('Failed to subscribe to CraftScript events', { error: eventError?.message || eventError });
+          }
           // Do not preload skills: Agent SDK exposes a Skill tool for lazy loading.
           // We keep startup lightweight; skills are discovered/loaded only when used.
           resolve();
@@ -91,17 +180,9 @@ export class ClaudeAgentSDK {
       });
     });
 
-    this.minecraftBot.on('chat', async (data: { username: string; message: string }) => {
+    this.minecraftBot.on('chat', (data: { username: string; message: string }) => {
       this.recordChatActivity(data.username, data.message);
-
-      // Only respond if not currently processing
-      if (this.isProcessing) {
-        logger.debug('Already processing, skipping chat event');
-        return;
-      }
-
-      // Process the chat message
-      await this.handleChatMessage(data.username, data.message);
+      this.enqueuePlayerMessage(data.username, data.message);
     });
 
     this.minecraftBot.on('lowHealth', async (data: { health: number; food: number }) => {
@@ -179,6 +260,10 @@ export class ClaudeAgentSDK {
         return c.json({ error: e?.message || String(e) }, 500);
       }
     });
+    app.post('/control/abort', async (c) => {
+      this.requestAbort('control_server_abort');
+      return c.json({ ok: true, aborted: Boolean(this.currentAbortController) });
+    });
 
     try {
       const server = createAdaptorServer({ fetch: app.fetch, port, hostname: '127.0.0.1' });
@@ -195,20 +280,28 @@ export class ClaudeAgentSDK {
   /**
    * Handle a chat message from a player
    */
-  private async handleChatMessage(username: string, message: string, retryCount = 0): Promise<void> {
-    const shouldProcess = this.shouldHandleMessage(message);
+  private async handleChatMessage(username: string, message: string, retryCount = 0, force = false, isRoot = true): Promise<void> {
+    const shouldProcess = force || this.shouldHandleMessage(message);
     if (!shouldProcess) {
       logger.debug('Ignoring chat message not directed at this bot', {
         botName: this.botName,
         username,
         message,
       });
+      if (isRoot) {
+        this.processMessageQueue();
+      }
       return;
     }
 
     const cleanedMessage = this.removeBotMention(message);
 
-    this.isProcessing = true;
+    const abortController = isRoot ? new AbortController() : this.currentAbortController ?? new AbortController();
+    if (isRoot) {
+      this.isProcessing = true;
+      this.currentAbortController = abortController;
+      this.abortReason = null;
+    }
     const timer = startTimer('Claude chat response');
 
     const toolsUsed = new Set<string>();
@@ -336,6 +429,13 @@ export class ClaudeAgentSDK {
             base.ANTHROPIC_API_KEY = process.env.CLAUDE_PROXY_KEY || 'sk-dummy';
             logger.info('Using Claude proxy', { base_url: proxyUrl });
           } else {
+            // Use custom base URL if configured (e.g., for Kimi/Moonshot)
+            if (this.config.anthropic.baseUrl) {
+              base.ANTHROPIC_API_BASE_URL = this.config.anthropic.baseUrl;
+              base.ANTHROPIC_BASE_URL = this.config.anthropic.baseUrl;
+              base.ANTHROPIC_API_URL = this.config.anthropic.baseUrl;
+              logger.info('Using custom Anthropic base URL', { base_url: this.config.anthropic.baseUrl });
+            }
             if (this.config.anthropic.apiKey) base.ANTHROPIC_API_KEY = this.config.anthropic.apiKey;
             if (this.config.anthropic.authToken) base.ANTHROPIC_AUTH_TOKEN = this.config.anthropic.authToken;
           }
@@ -353,11 +453,14 @@ export class ClaudeAgentSDK {
           forkSession: Boolean(options.forkSession),
         });
       }
+      options.abortController = abortController;
 
-      for await (const sdkMessage of query({
-        prompt,
-        options,
-      })) {
+      let aborted = false;
+      try {
+        for await (const sdkMessage of query({
+          prompt,
+          options,
+        })) {
         messageCount++;
         logger.debug('Received SDK message', {
           type: sdkMessage.type,
@@ -462,6 +565,18 @@ export class ClaudeAgentSDK {
             finalResponse = `Sorry, I encountered an error: ${errors}`;
           }
         }
+        }
+      } catch (error: any) {
+        if (this.isAbortError(error) || abortController.signal.aborted) {
+          aborted = true;
+          logger.info('Claude run aborted', { reason: this.abortReason || 'unknown' });
+        } else {
+          throw error;
+        }
+      }
+
+      if (aborted) {
+        return;
       }
 
       // Add final assistant response to history
@@ -520,11 +635,12 @@ export class ClaudeAgentSDK {
         tools_used: Array.from(toolsUsed),
       });
 
-      // Send Claude's response to chat
+      // Send Claude's response to chat (without code blocks)
       if (finalResponse && finalResponse.trim().length > 0) {
-        // Use rate-limited chat to avoid spam kicks
-        this.minecraftBot.chat(finalResponse);
-        // Persist assistant message to SQL for chat history
+        const sanitized = this.stripCodeBlocks(finalResponse).trim();
+        if (sanitized.length > 0) {
+          this.minecraftBot.chat(sanitized);
+        }
         try { if (this.currentSessionId) this.memoryStore.addMessage(this.currentSessionId, 'assistant', finalResponse, undefined); } catch {}
       }
     } catch (error: any) {
@@ -564,7 +680,7 @@ export class ClaudeAgentSDK {
         // Small backoff
         await new Promise((r) => setTimeout(r, 300));
         try {
-          await this.handleChatMessage(username, message, retryCount + 1);
+          await this.handleChatMessage(username, message, retryCount + 1, force, false);
           return; // handled by recovery
         } catch (e: any) {
           logger.error('Recovery pass also failed', { error: e?.message || String(e) });
@@ -574,7 +690,14 @@ export class ClaudeAgentSDK {
       // Final fallback: brief apology without technical details
       this.minecraftBot.chat('Ich bin auf ein Problem gestoßen und versuche es beim nächsten Schritt anders.');
     } finally {
-      this.isProcessing = false;
+      if (isRoot) {
+        this.isProcessing = false;
+        if (this.currentAbortController === abortController) {
+          this.currentAbortController = null;
+        }
+        this.abortReason = null;
+        this.processMessageQueue();
+      }
     }
   }
 

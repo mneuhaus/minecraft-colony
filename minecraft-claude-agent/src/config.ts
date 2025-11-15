@@ -8,6 +8,9 @@ export interface Config {
   anthropic: {
     apiKey?: string;
     authToken?: string;
+    baseUrl?: string;
+    model?: string;
+    smallFastModel?: string;
   };
   minecraft: {
     host: string;
@@ -56,6 +59,9 @@ function loadConfig(): Config {
     anthropic: {
       apiKey: anthropicApiKey,
       authToken: anthropicAuthToken,
+      baseUrl: process.env.ANTHROPIC_BASE_URL,
+      model: process.env.ANTHROPIC_MODEL,
+      smallFastModel: process.env.ANTHROPIC_SMALL_FAST_MODEL,
     },
     minecraft: {
       host: mcHost,

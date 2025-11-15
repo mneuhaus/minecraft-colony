@@ -1,12 +1,12 @@
 ---
-name: Hausbau v2 — Eingelassenes Fundament, Schichtbau, Außentreppe
-description: "Verwenden, wenn der Bot ein rechteckiges Haus mit eingelassenem Fundament bauen soll: Wände schichtweise von der Wandkrone hochziehen, temporäre Außentreppe für Zugang, strikte Reichweiten‑/Belegungsregeln. Geeignet für Größen ~4–10 Blöcke Seitenlänge. Voraussetzung: freier Bauplatz + Material (Boden/Wand/Treppe) im Inventar."
+name: Hausbau v2 — Eingelassenes Fundament, Säulenlauf, Außentreppe
+description: "Verwenden, wenn der Bot ein rechteckiges Haus mit eingelassenem Fundament bauen soll: Wände spaltenweise hochziehen, indem er auf der letzten Säule steht (\"Säulenlauf\", wie reale Spieler). Temporäre Außentreppe für Zugang, strikte Reichweiten‑/Belegungsregeln. Geeignet für Größen ~4–10 Blöcke Seitenlänge. Voraussetzung: freier Bauplatz + Material (Boden/Wand/Treppe) im Inventar."
 allowed-tools: place_block, use_item_on_block, move_to_position, look_at, dig_block, equip_item, craft_item, find_block, find_entity, get_position, list_inventory
 ---
 
 # SKILL: house_building_v2
 
-**Ziel:** Ein rechteckiges Minecraft‑Haus bauen, mit **eingelassenem Fundament**, **Wände schichtweise** aufmauern (der Bot läuft auf der Wandkrone mit) und **temporären Außentreppen**, um später wieder hochzukommen.
+**Ziel:** Ein rechteckiges Minecraft‑Haus bauen, mit **eingelassenem Fundament**, **Wände spaltenweise aufmauern** (der Bot läuft auf den fertigen Säulen, wie beim „Säulenlauf“) und **temporären Außentreppen**, um später wieder hochzukommen.
 
 **Notation:** Weltkoordinaten (x, y, z) mit optionalen relativen Schritten (dx, dy, dz) entlang des Perimeters. Alle Positionsangaben sind absolute Minecraft‑Koordinaten.
 
@@ -35,7 +35,7 @@ allowed-tools: place_block, use_item_on_block, move_to_position, look_at, dig_bl
 1. **Vermessen & Plan**
 2. **Ausheben (in Boden einlassen)**
 3. **Fundament legen (Boden und Ring)**
-4. **Wände schichtweise hochziehen (auf der Wandkrone laufen)**
+4. **Wände spaltenweise hochziehen (Säulenlauf auf der Wandkrone)**
 5. **Temporäre Außentreppe** anbringen (für späteren Zugang)
 6. **Innenboden / Decke / Dach (optional)**
 7. **Aufräumen** (temporäres raus)
@@ -71,7 +71,31 @@ MACRO EXCAVATE_RECT(p0, width, length) {
     }
   }
 }
+
+# Freiformvariante mit expliziten Koordinaten (x/z-Bereiche + Zielhöhe)
+**CraftScript-Funktion `excavate_range(name, from_x, to_x, from_z, to_z, target_y)`**
+
+> Persistente `craftscript_function` im Colony-DB-Cache (jetzt registriert): läuft spaltenweise durch den Bereich, `goto`’t jede Säule und bricht Blöcke von oben nach unten bis `target_y`. `break()` bringt automatisch den SAFE_DIG-Effekt (Sand/Gravel-Warnung), hinzu kommen Logs `excavate_range:start|column|done` für das angegebene `name`.
+
+* `name` – freies Label für Log/Diagnose (default: `"excavate_range"`).
+* `from_x` / `to_x` – Grenzen in X (Reihenfolge egal, der Helper sortiert sie).
+* `from_z` / `to_z` – Grenzen in Z.
+* `target_y` – Absolute Tiefe, bis wohin jede Säule abgetragen wird.
+
+**Aufruf im CraftScript:**
+
 ```
+excavate_range(
+  name: "fundament-west",
+  from_x: base_x,
+  to_x: base_x + width - 1,
+  from_z: base_z,
+  to_z: base_z + length - 1,
+  target_y: base_y - 1
+);
+```
+
+Der Helper parkt den Bot knapp oberhalb jeder Säule (`goto(x, stand_y, z, tol:1)`) und läuft dann Block für Block nach unten. Damit entfällt das manuelle Makro und die Aushebung bleibt konsistent dokumentiert.
 
 ### 3.2 Fundament (Boden + Ring)
 
@@ -90,39 +114,64 @@ MACRO LAY_FOUNDATION(p0, width, length, floor_block) {
 }
 ```
 
-### 3.3 Schichtweises Hochmauern (auf der Krone laufen)
+### 3.3 Fundament ausheben & verfüllen
 
-Ziel: jede Schicht **einmal ringsrum**, Bot steht **auf der Wand**, um die nächste Schicht im Gehen zu setzen.
+1. **EXCAVATE_RECT(p0,width,length)** bis `y = surface - 1`.
+2. **FILL** jede Zelle mit dem gewünschten Fundamentblock (`floor_block`) bevor du irgendetwas platzierst oder auf den Seiten läufst. Nur so haben spätere `place()`-Kommandos eine feste Referenz.
+3. Wenn der Untergrund aus Sand/Gravel besteht, fülle erst mit günstigen Blöcken und setze darauf den sichtbaren Terrakotta-Fußboden.
+
+### 3.4 Säulenweise Hochmauern (Säulenlauf)
+
+**Prinzip:**
+1. Nur die **erste Säule** wird mit `build_up()` hochgezogen, damit du einmal auf Wandhöhe kommst.
+2. Danach bleibst du stets auf der fertigen Säule stehen und setzt die nächste Säule **komplett per `place` von oben**: Jede Platzierung klickt die Seitenfläche unter deinen Füßen an, sodass du Block für Block von unten nach oben stapeln kannst, ohne abzusteigen.
+3. Sobald Säule *i+1* fertig ist, springst/läufst du oben hinüber und wiederholst den Vorgang für *i+2*.
+4. Fenster/Türen sägst du zum Schluss mit `break()` in die fertig geschlossene Wand.
 
 ```
-MACRO BUILD_WALLS_LAYERED(p0, width, length, wall_block, wall_height, torch_cadence) {
-  y := 1;                # erste Lage über Fundament (p0.y + y)
+MACRO BUILD_WALLS_COLUMNAR(p0, width, length, wall_block, wall_height, torch_cadence) {
   step := 0;
-  WHILE y <= wall_height {
-    FOR each rim r IN PERIMETER(RECT(p0,width,length)) {
-      target := (r.x, p0.y + y, r.z);   # Blockposition der aktuellen Schicht
+  rimPositions := PERIMETER(RECT(p0,width,length));
+
+  base0 := rimPositions[0];
+  BUILD_COLUMN_AT(base0, wall_block, wall_height);
+  STAND_ON_TOP(base0, wall_height);
+
+  for idx in 1..rimPositions.length-1 {
+    base := rimPositions[idx];
+
+    h := 0;
+    WHILE h < wall_height {
+      target := (base.x, p0.y + h + 1, base.z);
       IF SAFE_PLACE[target] { PLACE wall_block @ target; }
-
-      # Entlang des Randes einen Schritt weiter: (dx, dz) ist der nächste Perimeter‑Schritt
-      next := (r.x + dx, r.y, r.z + dz);
-      # Bei Höhenstufe: erst prüfen, ob Kopf frei ist; sonst Zwischenstufe setzen
-      IF HEAD_CLEAR(next) {
-        MOVE world(next.x, next.y, next.z);
-      } ELSE {
-        PLACE wall_block @ world(next.x, next.y, next.z) FACE up;  # Zwischenstufe
-        MOVE world(next.x, next.y, next.z);
-      }
-
-      # Beleuchtung in Taktung – Fackel außen an der Wand platzieren
-      step := step + 1;
-      IF (step % torch_cadence == 0) { PLACE TORCH @ OUTER_FACE_OF_WALL(target); }
+      h := h + 1;
     }
-    # eine Lage höher auf die neue Krone wechseln (senkrecht +1)
-    MOVE world(CURRENT_X, CURRENT_Y + 1, CURRENT_Z);
-    y := y + 1;
+
+    MOVE world(base.x, p0.y + wall_height, base.z);
+
+    step := step + 1;
+    IF (step % torch_cadence == 0) {
+      outer := OUTER_FACE_OF_WALL((base.x, p0.y + wall_height - 1, base.z));
+      IF SAFE_PLACE[outer] { PLACE TORCH @ outer; }
+    }
   }
 }
+
+MACRO BUILD_COLUMN_AT(base, wall_block, wall_height) {
+  h := 0;
+  WHILE h < wall_height {
+    target := (base.x, base.y + h + 1, base.z);
+    IF SAFE_PLACE[target] { PLACE wall_block @ target; }
+    h := h + 1;
+  }
+}
+
+MACRO STAND_ON_TOP(base, height) {
+  MOVE world(base.x, base.y + height, base.z);
+}
 ```
+
+> Ergebnis: Der Bot verlässt die Wandkrone nie, behält seine Referenzblöcke direkt vor sich und kann jede neue Säule im „Vorbeigehen“ hochziehen.
 
 ### 3.4 Temporäre Außentreppe (externe Zugangstreppe)
 
@@ -155,6 +204,21 @@ MACRO CLEAR_TEMP_STAIR(outside_anchor, height) {
 
 ---
 
+### 3.6 Dachplatten von oben setzen (seitliches Anklicken)
+
+Bei Flachdächern oder einfachen Decken gilt: **Bleib auf dem zuletzt gesetzten Dachblock stehen** und setze den nächsten Block, indem du die Seitenfläche deines Standblocks anklickst. Mineflayer erlaubt so frei schwebende Platzierungen – genauso wie ein Spieler, der ein Dach „über den Abgrund“ erweitert.
+
+**Workflow:**
+1. Starte an einer Kante. `place(roof_block, current.x + dx, current.y, current.z + dz)` während du auf `(current.x, current.y, current.z)` stehst. Der Referenzklick erfolgt automatisch auf der Seitenfläche unter den Füßen.
+2. `move` auf den neuen Block, wiederhole Schritt 1. Damit liegt immer ein Referenzblock hinter dir.
+3. Für Innenflächen: zuerst einen Rand schließen, dann diagonal Bahn für Bahn ausfüllen – stets auf dem zuletzt gesetzten Block stehen bleiben.
+4. **Keine Diagonalen:** Du brauchst immer eine Nord/Süd/Ost/West-Seitenfläche. Gibt es nur Luft diagonal, schlägt `place` mit `invalid_face` fehl – vorher einen Block unterhalb setzen oder eine Stütze bauen.
+5. Muss die Höhe wechseln (z. B. Dachstufe): erst `build_up()` oder `step_down()` an der gewünschten Stelle, danach wie oben weitermachen.
+
+So braucht es keine Hilfsstützen mehr; du nutzt exakt die Technik, mit der echte Spieler Dachflächen bauen.
+
+---
+
 ## 4) Intent → Plan (Beispielprogramm)
 
 **Intent:** `BUILD_HOUSE` mit `{ width:7, length:9, wall_height:3, floor_block:COBBLE, wall_block:OAK_PLANKS, stair_block:COBBLE, torch_cadence:7 }`.
@@ -168,11 +232,11 @@ MARK start_corner;
 # 2) Ausheben
 EXCAVATE_RECT(start_corner, 7, 9);
 
-# 3) Fundament legen
-LAY_FOUNDATION(start_corner, 7, 9, COBBLESTONE);
+# 3) Fundament planieren (einfüllen)
+LAY_FOUNDATION(start_corner, 7, 9, COBBLESTONE)  # fülle die Aushebung, damit spätere place-Kommandos eine Referenz haben.
 
 # 4) Wände schichtweise mitlaufen
-BUILD_WALLS_LAYERED(start_corner, 7, 9, OAK_PLANKS, 3, 7);
+BUILD_WALLS_COLUMNAR(start_corner, 7, 9, OAK_PLANKS, 3, 7);
 
 # 5) Temporäre Außentreppe an der Südwand (Beispiel)
 TURN FACE S;
@@ -211,6 +275,30 @@ Für die **Mauer‑Kante**:
   * Lava: **Stein** (oder Schüttung) platziert, bis keine Quelle mehr benachbart ist.
 * **Materialprüfung vor Start** (aus `plan_summary`):
   `floor_block ≈ width*length`, `wall_block ≈ 2*(width+length)*wall_height`, `stair_block ≈ wall_height`.
+
+---
+
+## 7) Fenster & Türen nachrüsten
+
+1. **Fensterhöhe bestimmen** (z. B. mittlere zwei Blöcke einer Säule). Für jede gewünschte Öffnung:
+   * `MOVE` auf sichere Position, `break(x, y, z)` für die betroffenen Wandblöcke.
+   * Optional `PLACE glass_pane @ ...` oder freilassen.
+2. **Türen setzen**:
+   * `break` die 2×1‑Öffnung am gewünschten Eingang.
+   * `place("door_block", door_base_x, door_base_y, door_base_z)` – achte auf die Blickrichtung (z. B. `face:"south"`).
+3. Wiederhole für alle Seiten, symmetrisch, falls gewünscht.
+
+---
+
+## 8) Abschluss‑Checkliste (Symmetrie & Aufräumen)
+
+1. **Symmetrie prüfen**: Wände und Fenster auf allen Seiten identisch? `MOVE` einmal außen herum, vergleiche Perimeter.
+2. **Materialreste**:
+   * Temporäre Außentreppen oder Säulen entfernen (`CLEAR_TEMP_STAIR`, `break scaffold`).
+   * Boden innen fegen (`pick up` gedroppte Items).
+3. **Inventar & Logs**:
+   * Falls überschüssige Blocks im Wegpunkt lagern müssen → `deposit` in nahe Kiste.
+4. **Fertigmeldung**: In Chat/Dashboard kurz bestätigen („Haus fertig, 51/51 Blöcke, alle Scaffold entfernt“).
 
 ---
 

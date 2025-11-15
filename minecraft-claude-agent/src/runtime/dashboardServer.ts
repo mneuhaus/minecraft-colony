@@ -838,13 +838,20 @@ export function startDashboardServer(botManager: BotManager, port: number = 4242
   });
 
   botManager.on('bot:message', (data) => {
+    const dir = data.role === 'user' ? 'in' : 'out';
+    const from = dir === 'in' ? 'player' : `bot_${data.botId}`;
+    const ts = Date.now();
     broadcast({
+      id: `chat-${ts}-${Math.random().toString(36).slice(2, 7)}`,
       type: 'chat',
       bot_id: data.botId,
-      ts: Date.now(),
-      from: data.role === 'user' ? 'player' : `bot_${data.botId}`,
-      text: data.content,
-      direction: data.role === 'user' ? 'in' : 'out'
+      ts,
+      payload: {
+        from,
+        text: data.content,
+        channel: 'chat',
+        direction: dir
+      }
     });
   });
 

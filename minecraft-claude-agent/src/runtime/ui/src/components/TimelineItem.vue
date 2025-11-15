@@ -82,9 +82,14 @@ import SystemMessage from './types/SystemMessage.vue';
 import SkillMessage from './types/SkillMessage.vue';
 import ToolCard from './types/Tool/ToolCard.vue';
 
-const props = defineProps<{ item: any }>();
+const props = defineProps<{ item: any; expandedState: Record<string, boolean> }>();
 const message = useMessage();
 const isHighlighted = ref(false);
+
+// Generate unique key for this item
+const itemKey = computed(() => {
+  return props.item.id || `${props.item.type}-${props.item.ts}`;
+});
 
 // Determine if this item should be expanded by default
 const shouldExpandByDefault = computed(() => {
@@ -105,7 +110,20 @@ const shouldExpandByDefault = computed(() => {
   return false;
 });
 
-const isExpanded = ref(shouldExpandByDefault.value);
+// Use persistent expanded state from parent, initialize if not set
+const isExpanded = computed({
+  get: () => {
+    const key = itemKey.value;
+    // If state not set yet, initialize with default
+    if (!(key in props.expandedState)) {
+      props.expandedState[key] = shouldExpandByDefault.value;
+    }
+    return props.expandedState[key];
+  },
+  set: (value: boolean) => {
+    props.expandedState[itemKey.value] = value;
+  }
+});
 
 const time = computed(() => new Date(props.item.ts || Date.now()).toLocaleTimeString());
 

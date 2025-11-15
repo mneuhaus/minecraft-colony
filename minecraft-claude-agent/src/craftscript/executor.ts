@@ -27,6 +27,43 @@ import { parse as parseCraft } from './parser.js';
 
 const { goals } = pathfinderPkg as any;
 
+const AUTO_REPLACE_BLOCKS = new Set<string>([
+  'dirt',
+  'grass_block',
+  'coarse_dirt',
+  'podzol',
+  'rooted_dirt',
+  'stone',
+  'cobblestone',
+  'granite',
+  'diorite',
+  'andesite',
+  'sand',
+  'red_sand',
+  'gravel',
+  'terracotta',
+  'white_terracotta',
+  'orange_terracotta',
+  'light_gray_terracotta',
+  'brown_terracotta',
+  'black_terracotta',
+  'yellow_terracotta',
+  'blue_terracotta',
+  'glass',
+  'glass_pane',
+  'oak_planks',
+  'spruce_planks',
+  'birch_planks',
+  'jungle_planks',
+  'acacia_planks',
+  'dark_oak_planks',
+  'crimson_planks',
+  'warped_planks',
+  'bamboo_planks'
+]);
+
+const AUTO_REPLACE_SUFFIXES = ['_terracotta', '_planks', '_concrete', '_wool', '_glass', '_pane'];
+
 export class CraftscriptExecutor {
   private bot: Bot;
   private ops = 0;
@@ -258,11 +295,18 @@ export class CraftscriptExecutor {
         const above1 = this.bot.blockAt(worldPos.offset(0, 1, 0));
         const above2 = this.bot.blockAt(worldPos.offset(0, 2, 0));
         const grav = (b: any) => b && (b.name.includes('gravel') || b.name.includes('sand'));
-        if (grav(above1) || grav(above2)) return this.fail('invariant_violation', 'gravity_block_overhead', cmd);
+        if (grav(above1) || grav(above2)) {
+          const vox = this.sampleVoxAround(new Vec3(worldPos.x, worldPos.y, worldPos.z));
+          return this.fail('unsafe_gravity', 'Cannot break block because gravel/sand overhead would fall. Clear above first.', cmd, { target: [worldPos.x, worldPos.y, worldPos.z], vox });
+        }
         const target = this.bot.blockAt(worldPos);
-        if (!target || target.name === 'air') return this.fail('no_target', 'no block to dig', cmd);
-        if (this.bot.entity.position.distanceTo(worldPos) > 4.5) return this.fail('out_of_reach', 'target beyond reach (4.5)', cmd);
+        const samplePos = new Vec3(worldPos.x, worldPos.y, worldPos.z);
+        const vox = this.sampleVoxAround(samplePos);
+        if (!target || target.name === 'air') return this.fail('no_target', 'no block to dig', cmd, { target: [worldPos.x, worldPos.y, worldPos.z], vox });
+        const dist = this.bot.entity.position.distanceTo(worldPos);
+        if (dist > 4.5) return this.fail('mining_out_of_reach', `Target block (${worldPos.x},${worldPos.y},${worldPos.z}) is ${dist.toFixed(2)} blocks away. Move within 4 blocks before breaking.`, cmd, { target: [worldPos.x, worldPos.y, worldPos.z], vox });
         try {
+          await this.equipBestToolFor(target);
           await this.safeDigBlock(target, name);
           return this.ok(name, t0, { world: [worldPos.x, worldPos.y, worldPos.z], id: target.name });
         } catch (e: any) {
@@ -281,30 +325,84 @@ export class CraftscriptExecutor {
         }
 
         const named = this.namedArgs(cmd.args.slice(namedStartIdx));
-        const face = (named.face && this.exprToString(named.face)) || 'up';
-        // Equip
+        const targetPos = new Vec3(worldPos.x, worldPos.y, worldPos.z);
+        const targetVox = this.sampleVoxAround(targetPos);
+        const explicitFace = named.face ? this.exprToString(named.face) : null;
         const itemName = id.replace('minecraft:', '');
+        if (!explicitFace && this.isStandingOnBlock(targetPos)) {
+          return this.executeBuildUp(itemName, cmd, 'place', t0, { auto_build_up: true, world: [worldPos.x, worldPos.y + 1, worldPos.z] });
+        }
+        let faceVector = explicitFace ? faceToVec(explicitFace) : null;
         const item = this.bot.inventory.items().find((i) => i.name === itemName);
         if (!item) return this.fail('unavailable', `no ${id} in inventory`, cmd);
         await this.bot.equip(item, 'hand');
         // place against reference block: in Mineflayer, placement occurs at reference.position + faceVector.
         // To place at worldPos, choose the block at worldPos - faceVector as the reference.
-        const faceVector = faceToVec(face);
-        const reference = this.bot.blockAt(worldPos.minus(faceVector));
-        if (!reference || reference.name === 'air') return this.fail('blocked', 'no reference to place against', cmd);
-        if (this.bot.entity.position.distanceTo(reference.position) > 4.5) return this.fail('out_of_reach', 'reference beyond reach (4.5)', cmd);
-        // Target cell must be empty
-        const occupied = this.bot.blockAt(worldPos);
+        let invalidDiag = false;
+        if (faceVector) {
+          const refBlock = this.bot.blockAt(targetPos.minus(faceVector));
+          if (!refBlock || refBlock.name === 'air') faceVector = null;
+          else if ((faceVector.x !== 0 && (Math.round(targetPos.z) !== Math.round(this.bot.entity.position.z)))) {
+            faceVector = null;
+            invalidDiag = true;
+          } else if ((faceVector.z !== 0 && (Math.round(targetPos.x) !== Math.round(this.bot.entity.position.x)))) {
+            faceVector = null;
+            invalidDiag = true;
+          }
+        }
+        if (!faceVector) {
+          const inferred = this.inferFaceVector(targetPos);
+          if (!inferred) {
+            if (invalidDiag) {
+              return this.fail('diagonal_placement_blocked', `Cannot place diagonally at (${worldPos.x},${worldPos.y},${worldPos.z}); stand on a north/south/east/west neighbor.`, cmd, { target: [worldPos.x, worldPos.y, worldPos.z], vox: targetVox });
+            }
+            return this.fail('unsupported_surface', `Cannot place at (${worldPos.x},${worldPos.y},${worldPos.z}) because there is no solid reference block adjacent; add support first.`, cmd, { target: [worldPos.x, worldPos.y, worldPos.z], vox: targetVox });
+          }
+          faceVector = inferred;
+        }
+        const reference = this.bot.blockAt(targetPos.minus(faceVector));
+        if (!reference || reference.name === 'air') return this.fail('unsupported_surface', `Cannot place at (${worldPos.x},${worldPos.y},${worldPos.z}) because there is no solid reference block adjacent.`, cmd, { target: [worldPos.x, worldPos.y, worldPos.z], vox: targetVox });
+
+        await this.ensurePlacementAccess(reference, targetPos);
+        if (this.bot.entity.position.distanceTo(reference.position) > 4.5 || this.bot.entity.position.distanceTo(targetPos) > 4.5) {
+          return this.fail('out_of_reach', `Cannot place at (${worldPos.x},${worldPos.y},${worldPos.z}) because the target/reference is farther than 4.5 blocks; walk closer first.`, cmd, { target: [worldPos.x, worldPos.y, worldPos.z], vox: targetVox });
+        }
+
+        await this.facePlacementTarget(targetPos);
+
+        // Target cell must be empty (or auto-replaced)
+        let occupied = this.bot.blockAt(worldPos);
+        const faceName = explicitFace || this.faceNameFromVector(faceVector);
+        if (occupied && occupied.name === itemName) {
+          return this.ok('place', t0, { id, world: [worldPos.x, worldPos.y, worldPos.z], face: faceName, already_present: true });
+        }
+        if (occupied && occupied.name !== 'air') {
+          if (this.canAutoReplaceBlock(occupied.name)) {
+            this.trace('place_replace', { cmd: 'place', removing: occupied.name, target: [worldPos.x, worldPos.y, worldPos.z], desired: itemName });
+            const previousName = occupied.name;
+            try {
+              await this.ensurePlacementAccess(occupied ?? reference, targetPos);
+              await this.safeDigBlock(occupied, 'place_replace');
+              occupied = this.bot.blockAt(worldPos);
+            } catch (e: any) {
+              return this.fail('blocked', e?.message || 'failed to clear target', cmd, { target: [worldPos.x, worldPos.y, worldPos.z], id: previousName });
+            }
+          } else {
+            return this.fail('occupied', `target not empty: minecraft:${occupied.name}`, cmd, { target: [worldPos.x, worldPos.y, worldPos.z], id: occupied.name });
+          }
+        }
+
+        occupied = this.bot.blockAt(worldPos);
         if (occupied && occupied.name !== 'air') {
           return this.fail('occupied', `target not empty: minecraft:${occupied.name}`, cmd, { target: [worldPos.x, worldPos.y, worldPos.z], id: occupied.name });
         }
         try {
           await this.safePlaceBlock(reference, faceVector, 'place');
-          return this.ok('place', t0, { id, world: [worldPos.x, worldPos.y, worldPos.z], face });
+          return this.ok('place', t0, { id, world: [worldPos.x, worldPos.y, worldPos.z], face: faceName });
         } catch (e: any) {
           const msg = String(e?.message || 'place_failed');
           const code = /timeout/i.test(msg) ? 'place_timeout' : 'runtime_error';
-          return this.fail(code, msg, cmd, { id, world: [worldPos.x, worldPos.y, worldPos.z], face });
+          return this.fail(code, msg, cmd, { id, world: [worldPos.x, worldPos.y, worldPos.z], face: faceName, vox: targetVox });
         }
       }
       if (name === 'equip') {
@@ -315,102 +413,8 @@ export class CraftscriptExecutor {
         return this.ok('equip', t0, { id });
       }
       if (name === 'build_up') {
-        // Build one block upward by jumping and placing beneath
-        // Optional block ID argument, otherwise uses any available building material
         const blockId = cmd.args[0] ? this.requireString(cmd.args[0]).value.replace('minecraft:', '') : null;
-
-        // Find suitable building material
-        let buildingMaterial;
-        if (blockId) {
-          buildingMaterial = this.bot.inventory.items().find((i) => i.name === blockId);
-          if (!buildingMaterial) return this.fail('unavailable', `no ${blockId} in inventory`, cmd);
-        } else {
-          buildingMaterial = this.bot.inventory.items().find(item =>
-            item.name.includes('dirt') ||
-            item.name.includes('cobblestone') ||
-            item.name.includes('stone') ||
-            item.name.includes('planks') ||
-            item.name.includes('log')
-          );
-          if (!buildingMaterial) return this.fail('unavailable', 'no building blocks (dirt/cobblestone/stone/planks/log)', cmd);
-        }
-
-        const startY = this.bot.entity.position.y;
-
-        try {
-          // Equip building material
-          await this.bot.equip(buildingMaterial, 'hand');
-
-          // Reference is the block directly under current feet
-          const referenceBlock = this.bot.blockAt(this.bot.entity.position.offset(0, -1, 0));
-          if (!referenceBlock) return this.fail('blocked', 'no reference block beneath', cmd);
-
-          // Face down to make placement more reliable
-          await this.bot.look(0, Math.PI / 2, true);
-
-          // Set a jump target height and attempt placement once we are high enough
-          const jumpY = Math.floor(this.bot.entity.position.y) + 1.0;
-          let tryCount = 0;
-          let placed = false;
-          let lastError: any = null;
-
-          const placeIfHighEnough = async () => {
-            if (this.bot.entity.position.y > jumpY && !placed) {
-              try {
-                await this.bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
-                placed = true;
-                this.bot.setControlState('jump', false);
-                (this.bot as any).removeListener('move', placeIfHighEnough);
-              } catch (err: any) {
-                lastError = err;
-                tryCount++;
-                if (tryCount > 10) {
-                  this.bot.setControlState('jump', false);
-                  (this.bot as any).removeListener('move', placeIfHighEnough);
-                }
-              }
-            }
-          };
-
-          // Start jump and attach listener
-          this.bot.setControlState('jump', true);
-          (this.bot as any).on('move', placeIfHighEnough);
-
-          // Wait until either placed or retries exhausted
-          await new Promise<void>((resolve) => {
-            const check = () => {
-              if (placed || tryCount > 10) resolve();
-              else setTimeout(check, 50);
-            };
-            setTimeout(check, 50);
-          });
-
-          // Ensure jump is off and listener removed
-          this.bot.setControlState('jump', false);
-          try { (this.bot as any).removeListener('move', placeIfHighEnough); } catch {}
-
-          if (!placed) {
-            // Diagnose state at failure
-            const targetPos = referenceBlock.position.offset(0, 1, 0);
-            const tgt = this.bot.blockAt(targetPos);
-            const reason = tgt && tgt.name !== 'air' ? 'occupied' : (/timeout|timed out/i.test(String(lastError?.message)) ? 'place_timeout' : 'place_failed');
-            return this.fail(reason, String(lastError?.message || `build_up_failed (${reason})`), cmd, {
-              ref_id: referenceBlock.name,
-              target: [targetPos.x, targetPos.y, targetPos.z],
-              target_id: tgt?.name || 'air',
-              held: buildingMaterial.name,
-              try_count: tryCount,
-              jumpY,
-            });
-          }
-
-          const finalY = this.bot.entity.position.y;
-          const heightGained = Math.floor(finalY - startY);
-          return this.ok('build_up', t0, { block: buildingMaterial.name, height_gained: heightGained, y: Math.floor(finalY) });
-        } catch (e: any) {
-          this.bot.setControlState('jump', false);
-          return this.fail('runtime_error', e?.message || 'build_up_failed', cmd);
-        }
+        return this.executeBuildUp(blockId, cmd, 'build_up', t0);
       }
       if (name === 'pickup_blocks') {
         // Pickup dropped items within radius
@@ -617,34 +621,43 @@ export class CraftscriptExecutor {
         const item = mcData.itemsByName[itemId];
         if (!item) return this.fail('invalid_arg', `unknown item: ${itemId}`, cmd);
 
-        const recipes = this.bot.recipesFor(item.id, null, 1, null);
-        if (!recipes || recipes.length === 0) {
-          return this.fail('no_recipe', `no recipe for ${itemId}`, cmd);
+        const inventoryRecipes = (this.bot.recipesAll(item.id, null, null) ?? []) as any[];
+        const tableCapableRecipes = (this.bot.recipesAll(item.id, null, {} as any) ?? []) as any[];
+        const tableOnlyRecipes = tableCapableRecipes.filter((r) => r.requiresTable);
+
+        let craftingTable: ReturnType<Bot['blockAt']> | null = null;
+        let recipe = this.selectCraftableRecipe(inventoryRecipes, count);
+
+        if (!recipe && tableOnlyRecipes.length > 0) {
+          craftingTable = this.bot.findBlock({
+            matching: mcData.blocksByName.crafting_table.id,
+            maxDistance: 32,
+          });
+          if (!craftingTable) {
+            return this.fail('no_crafting_table', `recipe requires crafting table but none found within 32 blocks`, cmd);
+          }
+          recipe = this.selectCraftableRecipe(tableOnlyRecipes, count);
         }
 
-        const recipe = recipes[0];
-        let craftingTable = null;
-
-        // Check if crafting table needed
-        if (recipe.inShape) {
-          const shapeHeight = recipe.inShape.length;
-          const shapeWidth = recipe.inShape[0]?.length || 0;
-          if (shapeHeight > 2 || shapeWidth > 2) {
-            craftingTable = this.bot.findBlock({
-              matching: mcData.blocksByName.crafting_table.id,
-              maxDistance: 32,
-            });
-            if (!craftingTable) {
-              return this.fail('no_crafting_table', 'recipe requires crafting table', cmd);
-            }
+        if (!recipe) {
+          if (inventoryRecipes.length === 0 && tableCapableRecipes.length === 0) {
+            return this.fail('no_recipe', `no recipe for ${itemId}`, cmd);
           }
+          return this.fail('missing_ingredients', `missing required ingredients for ${itemId}`, cmd);
         }
 
         try {
+          // Check if bot has craft method
+          if (typeof this.bot.craft !== 'function') {
+            return this.fail('craft_unavailable', 'bot.craft() method not available - craft plugin may not be loaded', cmd);
+          }
+
           let crafted = 0;
           for (let i = 0; i < count; i++) {
-            await this.bot.craft(recipe, 1, craftingTable || undefined);
+            await this.bot.craft(recipe, 1, craftingTable ? craftingTable : undefined);
             crafted++;
+            // Small delay between crafts to ensure inventory updates
+            if (i < count - 1) await new Promise(r => setTimeout(r, 100));
           }
           return this.ok('craft', t0, { item: itemId, count: crafted, used_table: !!craftingTable });
         } catch (e: any) {
@@ -1260,6 +1273,210 @@ export class CraftscriptExecutor {
     // Log the block change
     this.logBlockChange('destroyed', pos.x, pos.y, pos.z, blockId, null, command);
   }
+
+  private async ensurePlacementAccess(reference: any, targetPos: Vec3): Promise<void> {
+    const refPos = reference?.position ?? targetPos;
+    const dist = this.bot.entity.position.distanceTo(targetPos);
+    if (dist <= 4) return;
+    try {
+      await this.bot.pathfinder.goto(new goals.GoalNear(refPos.x, refPos.y, refPos.z, 1));
+    } catch (e: any) {
+      this.trace('place_path_fail', { target: [targetPos.x, targetPos.y, targetPos.z], error: e?.message });
+    }
+  }
+
+  private async facePlacementTarget(targetPos: Vec3): Promise<void> {
+    try {
+      const aim = new Vec3(targetPos.x + 0.5, targetPos.y + 0.5, targetPos.z + 0.5);
+      await this.bot.lookAt(aim, true);
+    } catch (e: any) {
+      this.trace('place_look_fail', { target: [targetPos.x, targetPos.y, targetPos.z], error: e?.message });
+    }
+  }
+
+  private canAutoReplaceBlock(blockName: string): boolean {
+    if (!blockName) return false;
+    if (AUTO_REPLACE_BLOCKS.has(blockName)) return true;
+    return AUTO_REPLACE_SUFFIXES.some((suffix) => blockName.endsWith(suffix));
+  }
+
+  private sampleVoxAround(pos: Vec3, radius = 1) {
+    const center = new Vec3(Math.floor(pos.x), Math.floor(pos.y), Math.floor(pos.z));
+    const voxels: Array<{ x: number; y: number; z: number; id: string }> = [];
+    for (let dx = -radius; dx <= radius; dx++) {
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dz = -radius; dz <= radius; dz++) {
+          const p = center.offset(dx, dy, dz);
+          const block = this.bot.blockAt(p);
+          voxels.push({
+            x: p.x,
+            y: p.y,
+            z: p.z,
+            id: block?.name || 'air'
+          });
+        }
+      }
+    }
+    return {
+      window: { radius, shape: [radius * 2 + 1, radius * 2 + 1, radius * 2 + 1], origin: { x: center.x, y: center.y, z: center.z } },
+      voxels
+    };
+  }
+
+  private inferFaceVector(target: Vec3): Vec3 | null {
+    const bias: Vec3[] = [];
+    const feet = this.bot.entity?.position;
+    if (feet) {
+      const dx = Math.sign(Math.round(target.x) - Math.round(feet.x));
+      const dz = Math.sign(Math.round(target.z) - Math.round(feet.z));
+      if (dx !== 0) bias.push(new Vec3(dx, 0, 0));
+      if (dz !== 0) bias.push(new Vec3(0, 0, dz));
+    }
+    const base = [
+      new Vec3(0, 1, 0),  // default: block below target
+      new Vec3(0, -1, 0),
+      new Vec3(1, 0, 0),
+      new Vec3(-1, 0, 0),
+      new Vec3(0, 0, 1),
+      new Vec3(0, 0, -1)
+    ];
+    const candidates: Vec3[] = [];
+    const pushUnique = (vec: Vec3) => {
+      if (!candidates.some((c) => c.x === vec.x && c.y === vec.y && c.z === vec.z)) candidates.push(vec);
+    };
+    bias.forEach(pushUnique);
+    base.forEach(pushUnique);
+
+    for (const dir of candidates) {
+      const reference = this.bot.blockAt(target.minus(dir));
+      if (reference && reference.name !== 'air') return dir;
+    }
+    return null;
+  }
+
+  private faceNameFromVector(vec: Vec3): string {
+    if (vec.x === 0 && vec.y === 1 && vec.z === 0) return 'up';
+    if (vec.x === 0 && vec.y === -1 && vec.z === 0) return 'down';
+    if (vec.x === 1 && vec.y === 0 && vec.z === 0) return 'east';
+    if (vec.x === -1 && vec.y === 0 && vec.z === 0) return 'west';
+    if (vec.x === 0 && vec.y === 0 && vec.z === 1) return 'south';
+    if (vec.x === 0 && vec.y === 0 && vec.z === -1) return 'north';
+    return 'unknown';
+  }
+
+  private isStandingOnBlock(target: Vec3): boolean {
+    const feet = this.bot.entity?.position;
+    if (!feet) return false;
+    return Math.floor(feet.x) === target.x &&
+      Math.floor(feet.y - 1) === target.y &&
+      Math.floor(feet.z) === target.z;
+  }
+
+  private async equipBestToolFor(block: any): Promise<void> {
+    if (!block) return;
+    const harvest = block.harvestTools || block._properties?.harvestTools;
+    if (!harvest || Object.keys(harvest).length === 0) return;
+    const current = this.bot.heldItem;
+    if (current && harvest[current.type]) return;
+    const candidate = this.bot.inventory.items().find((item) => harvest[item.type]);
+    if (!candidate) return;
+    try {
+      await this.bot.equip(candidate, 'hand');
+    } catch {}
+  }
+
+  private async executeBuildUp(blockId: string | null, cmd: CommandStmt, opName: string, startedAt: number, extra?: Record<string, any>): Promise<CraftscriptResult> {
+    let buildingMaterial;
+    if (blockId) {
+      buildingMaterial = this.bot.inventory.items().find((i) => i.name === blockId);
+      if (!buildingMaterial) return this.fail('unavailable', `no ${blockId} in inventory`, cmd);
+    } else {
+      buildingMaterial = this.bot.inventory.items().find(item =>
+        item.name.includes('dirt') ||
+        item.name.includes('cobblestone') ||
+        item.name.includes('stone') ||
+        item.name.includes('planks') ||
+        item.name.includes('log')
+      );
+      if (!buildingMaterial) return this.fail('unavailable', 'no building blocks (dirt/cobblestone/stone/planks/log)', cmd);
+    }
+
+    const startY = this.bot.entity.position.y;
+
+    try {
+      await this.bot.equip(buildingMaterial, 'hand');
+      const referenceBlock = this.bot.blockAt(this.bot.entity.position.offset(0, -1, 0));
+      if (!referenceBlock || referenceBlock.name === 'air') return this.fail('blocked', 'no reference block beneath', cmd);
+
+      await this.bot.look(0, Math.PI / 2, true);
+      const jumpY = Math.floor(this.bot.entity.position.y) + 1.0;
+      let tryCount = 0;
+      let placed = false;
+      let lastError: any = null;
+
+      const placeIfHighEnough = async () => {
+        if (this.bot.entity.position.y > jumpY && !placed) {
+          try {
+            await this.bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
+            placed = true;
+            this.bot.setControlState('jump', false);
+            (this.bot as any).removeListener('move', placeIfHighEnough);
+          } catch (err: any) {
+            lastError = err;
+            tryCount++;
+            if (tryCount > 10) {
+              this.bot.setControlState('jump', false);
+              (this.bot as any).removeListener('move', placeIfHighEnough);
+            }
+          }
+        }
+      };
+
+      this.bot.setControlState('jump', true);
+      (this.bot as any).on('move', placeIfHighEnough);
+
+      await new Promise<void>((resolve) => {
+        const check = () => {
+          if (placed || tryCount > 10) resolve();
+          else setTimeout(check, 50);
+        };
+        check();
+      });
+
+      this.bot.setControlState('jump', false);
+      try { (this.bot as any).removeListener('move', placeIfHighEnough); } catch {}
+
+      if (!placed) {
+        const targetPos = referenceBlock.position.offset(0, 1, 0);
+        const tgt = this.bot.blockAt(targetPos);
+        const reason = tgt && tgt.name !== 'air'
+          ? 'occupied'
+          : (/timeout|timed out/i.test(String(lastError?.message)) ? 'place_timeout' : 'place_failed');
+        return this.fail(reason, String(lastError?.message || `${opName}_failed (${reason})`), cmd, {
+          ref_id: referenceBlock.name,
+          target: [targetPos.x, targetPos.y, targetPos.z],
+          target_id: tgt?.name || 'air',
+          held: buildingMaterial.name,
+          try_count: tryCount,
+          jumpY,
+          ...(extra || {})
+        });
+      }
+
+      const finalY = this.bot.entity.position.y;
+      const payload: Record<string, any> = {
+        block: buildingMaterial.name,
+        height_gained: Math.floor(finalY - startY),
+        y: Math.floor(finalY),
+        ...(extra || {})
+      };
+      return this.ok(opName, startedAt, payload);
+    } catch (e: any) {
+      this.bot.setControlState('jump', false);
+      return this.fail('runtime_error', e?.message || `${opName}_failed`, cmd);
+    }
+  }
+
   private async openContainerWithRetry(block: any, retries = 3): Promise<any> {
     let lastErr: any = null;
     for (let i = 0; i < retries; i++) {
@@ -1392,6 +1609,24 @@ export class CraftscriptExecutor {
     } catch {
       return null;
     }
+  }
+
+  private canCraftRecipe(recipe: any, craftsNeeded: number): boolean {
+    if (!recipe?.delta) return true;
+    for (const delta of recipe.delta as any[]) {
+      if (!delta || typeof delta !== 'object' || delta.count >= 0) continue;
+      const required = -delta.count * craftsNeeded;
+      const available = this.bot.inventory.count(delta.id, delta.metadata ?? null);
+      if (available < required) return false;
+    }
+    return true;
+  }
+
+  private selectCraftableRecipe(recipes: any[], craftsNeeded: number): any | null {
+    for (const recipe of recipes) {
+      if (this.canCraftRecipe(recipe, craftsNeeded)) return recipe;
+    }
+    return null;
   }
 }
 

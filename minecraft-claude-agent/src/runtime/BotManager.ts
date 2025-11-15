@@ -368,9 +368,12 @@ export class BotManager extends EventEmitter {
         username: config.username,
         version: env.MC_VERSION || '1.21.1',
       },
-      claude: {
+      anthropic: {
         apiKey: env.ANTHROPIC_API_KEY || '',
-        model: env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
+        authToken: env.ANTHROPIC_AUTH_TOKEN,
+        baseUrl: env.ANTHROPIC_BASE_URL,
+        model: env.ANTHROPIC_MODEL,
+        smallFastModel: env.ANTHROPIC_SMALL_FAST_MODEL,
       },
       dashboardUrl: env.DASHBOARD_URL,
       viewerPort: config.viewer_port || undefined,
@@ -402,12 +405,31 @@ export class BotManager extends EventEmitter {
     minecraftBot.on('end', () => {
       logger.info(`[${config.name}] Bot disconnected from Minecraft server`);
 
+      // Don't set to error if we're intentionally stopping
       if (instance.status === 'running') {
-        instance.status = 'error';
-        instance.error = 'Disconnected from server';
+        // MinecraftBot will handle auto-reconnect, so just emit disconnected
+        logger.info(`[${config.name}] MinecraftBot will attempt auto-reconnect`);
       }
 
       this.emit('bot:disconnected', { name: config.name, botId });
+    });
+
+    // Handle reconnection failures
+    minecraftBot.on('reconnectFailed', () => {
+      logger.error(`[${config.name}] Failed to reconnect after max attempts`);
+      instance.status = 'error';
+      instance.error = 'Reconnection failed after max attempts';
+      this.emit('bot:error', { name: config.name, botId, error: 'Reconnection failed' });
+    });
+
+    // Handle successful reconnections
+    minecraftBot.on('ready', () => {
+      logger.info(`[${config.name}] Bot (re)connected successfully`);
+      if (instance.status !== 'running') {
+        instance.status = 'running';
+        instance.error = undefined;
+      }
+      this.emit('bot:connected', { name: config.name, botId });
     });
 
     // Handle spawn events

@@ -357,7 +357,7 @@ const filteredItems = computed(() => {
       (e: any) =>
         !(
           e.type === 'tool' &&
-          /^(craftscript_step|craftscript_status|craftscript_cancel)$/i.test(
+          /^(craftscript_step|craftscript_status|craftscript_cancel|craftscript_trace)$/i.test(
             String(e?.payload?.tool_name || '')
           )
         )

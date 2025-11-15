@@ -1,105 +1,235 @@
 <template>
-  <div v-if="open" class="modal-overlay" @click="$emit('close')">
-    <div class="modal-content issues-modal" @click.stop>
-      <div class="modal-header">
-        <h2>Issues</h2>
-        <div class="modal-actions">
-          <button class="btn" @click="refresh">Refresh</button>
-          <button class="modal-close" @click="$emit('close')">×</button>
-        </div>
-      </div>
-      <div class="modal-body">
-        <aside class="modal-sidebar">
-          <div class="sidebar-section">
-            <label class="sidebar-label">Filter</label>
-            <select class="input" v-model="stateFilter">
-              <option value="all">All states</option>
-              <option v-for="state in states" :key="state" :value="state">{{ formatState(state) }}</option>
-            </select>
+  <n-modal
+    v-model:show="isOpen"
+    preset="card"
+    title="Issues"
+    :style="{ width: '90%', maxWidth: '1200px', height: '85vh' }"
+    :on-after-leave="() => $emit('close')"
+  >
+    <template #header-extra>
+      <n-space>
+        <n-button @click="refresh" secondary>
+          <template #icon>
+            <n-icon><RefreshOutline /></n-icon>
+          </template>
+          Refresh
+        </n-button>
+      </n-space>
+    </template>
+
+    <n-layout has-sider style="height: calc(85vh - 120px)">
+      <n-layout-sider
+        bordered
+        :width="320"
+        :native-scrollbar="false"
+        style="background: var(--n-color)"
+      >
+        <n-scrollbar style="max-height: 100%">
+          <n-space vertical :size="12" style="padding: 14px">
+            <!-- Filter Section -->
+            <n-card size="small" embedded>
+              <n-space vertical :size="8">
+                <n-text depth="3" style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px">Filter</n-text>
+                <n-select
+                  v-model:value="stateFilter"
+                  :options="filterOptions"
+                  size="small"
+                />
+              </n-space>
+            </n-card>
+
+            <!-- New Issue Section -->
+            <n-card size="small" embedded>
+              <n-space vertical :size="8">
+                <n-text depth="3" style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px">New Issue</n-text>
+                <n-input
+                  v-model:value="newTitle"
+                  placeholder="Title"
+                  size="small"
+                />
+                <n-input
+                  v-model:value="newDescription"
+                  type="textarea"
+                  placeholder="Description (markdown)"
+                  :rows="3"
+                  size="small"
+                />
+                <n-select
+                  v-model:value="newSeverity"
+                  :options="severityOptions"
+                  size="small"
+                />
+                <n-select
+                  v-model:value="newIssueBot"
+                  :options="botOptions"
+                  size="small"
+                />
+                <n-button
+                  type="warning"
+                  :disabled="!canCreate"
+                  @click="createIssue"
+                  block
+                  size="small"
+                >
+                  Create
+                </n-button>
+              </n-space>
+            </n-card>
+
+            <!-- Issue List -->
+            <n-card size="small" embedded style="flex: 1">
+              <n-scrollbar style="max-height: 400px">
+                <n-space vertical :size="8">
+                  <n-card
+                    v-for="issue in filteredIssues"
+                    :key="issue.id"
+                    size="small"
+                    :class="{ 'issue-active': issue.id === selectedIssueId }"
+                    @click="selectIssue(issue.id)"
+                    hoverable
+                    embedded
+                    style="cursor: pointer"
+                  >
+                    <n-space vertical :size="4">
+                      <n-text strong>{{ issue.title }}</n-text>
+                      <n-space :size="6">
+                        <n-tag :type="getStateType(issue.state)" size="small">
+                          {{ formatState(issue.state) }}
+                        </n-tag>
+                        <n-tag :type="getSeverityType(issue.severity)" size="small">
+                          {{ issue.severity }}
+                        </n-tag>
+                      </n-space>
+                      <n-text depth="3" style="font-size: 13px">
+                        {{ issue.bot_name || '—' }} • {{ formatTimestamp(issue.updated_at) }}
+                      </n-text>
+                    </n-space>
+                  </n-card>
+                  <n-empty v-if="!filteredIssues.length" description="No issues" size="small" />
+                </n-space>
+              </n-scrollbar>
+            </n-card>
+          </n-space>
+        </n-scrollbar>
+      </n-layout-sider>
+
+      <n-layout-content :native-scrollbar="false" style="padding: 16px 20px">
+        <n-scrollbar style="max-height: 100%">
+          <div v-if="detail">
+            <!-- Header -->
+            <n-space vertical :size="12">
+              <n-card embedded>
+                <n-space justify="space-between" align="start">
+                  <n-space vertical :size="4">
+                    <n-h3 style="margin: 0">{{ detail.issue.title }}</n-h3>
+                    <n-text depth="3">
+                      {{ detail.issue.bot_name || 'Unassigned' }} • Created {{ formatTimestamp(detail.issue.created_at) }}
+                    </n-text>
+                  </n-space>
+                  <n-space :size="8">
+                    <n-select
+                      v-model:value="localState"
+                      :options="stateOptions"
+                      @update:value="updateState"
+                      style="width: 140px"
+                      size="small"
+                    />
+                    <n-select
+                      v-model:value="localAssignment"
+                      :options="assignmentOptions"
+                      @update:value="assign"
+                      placeholder="Assign…"
+                      style="width: 140px"
+                      size="small"
+                    />
+                    <n-button
+                      :disabled="!activeBot"
+                      @click="assignCurrentBot"
+                      size="small"
+                      secondary
+                    >
+                      Assign to {{ activeBot || 'bot' }}
+                    </n-button>
+                  </n-space>
+                </n-space>
+              </n-card>
+
+              <!-- Description -->
+              <n-card title="Bug Description" embedded>
+                <div class="markdown-content" v-html="renderedDescription"></div>
+              </n-card>
+
+              <!-- Comments -->
+              <n-card title="Comments" embedded>
+                <n-space vertical :size="12">
+                  <n-empty v-if="!detail.comments.length" description="No comments yet" size="small" />
+                  <div v-for="comment in detail.comments" :key="comment.id">
+                    <n-card size="small" embedded>
+                      <template #header>
+                        <n-text depth="3" style="font-size: 13px">
+                          {{ comment.author || 'system' }} • {{ formatTimestamp(comment.created_at) }}
+                        </n-text>
+                      </template>
+                      <div class="markdown-content" v-html="renderMarkdown(comment.body)"></div>
+                    </n-card>
+                  </div>
+                  <n-space vertical :size="8">
+                    <n-input
+                      v-model:value="newComment"
+                      type="textarea"
+                      placeholder="Add comment (markdown)"
+                      :rows="3"
+                    />
+                    <n-space justify="end">
+                      <n-button
+                        :disabled="!newComment.trim()"
+                        @click="addComment"
+                        type="primary"
+                      >
+                        Comment
+                      </n-button>
+                    </n-space>
+                  </n-space>
+                </n-space>
+              </n-card>
+            </n-space>
           </div>
-          <div class="sidebar-section">
-            <label class="sidebar-label">New Issue</label>
-            <input class="input" placeholder="Title" v-model="newTitle" />
-            <textarea class="input" rows="3" placeholder="Description (markdown)" v-model="newDescription"></textarea>
-            <select class="input" v-model="newSeverity">
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-              <option value="high">High</option>
-              <option value="critical">Critical</option>
-            </select>
-            <select class="input" v-model="newIssueBot">
-              <option :value="''">Any bot</option>
-              <option v-for="bot in bots" :key="bot" :value="bot">{{ bot }}</option>
-            </select>
-            <button class="btn btn-create" :disabled="!canCreate" @click="createIssue">Create</button>
-          </div>
-          <div class="sidebar-list">
-            <div
-              v-for="issue in filteredIssues"
-              :key="issue.id"
-              class="issue-item"
-              :class="{ 'issue-item--active': issue.id === selectedIssueId }"
-              @click="selectIssue(issue.id)"
-            >
-              <div class="issue-item__title">{{ issue.title }}</div>
-              <div class="issue-item__meta">
-                <span class="pill" :data-state="issue.state">{{ formatState(issue.state) }}</span>
-                <span class="pill" :data-severity="issue.severity">{{ issue.severity }}</span>
-              </div>
-              <div class="issue-item__sub">{{ issue.bot_name || '—' }} • {{ formatTimestamp(issue.updated_at) }}</div>
-            </div>
-            <div v-if="!filteredIssues.length" class="sidebar-empty">No issues</div>
-          </div>
-        </aside>
-        <main class="modal-main">
-          <div v-if="detail" class="issue-detail">
-            <header class="detail-header">
-              <div>
-                <h3>{{ detail.issue.title }}</h3>
-                <p class="detail-sub">{{ detail.issue.bot_name || 'Unassigned' }} • Created {{ formatTimestamp(detail.issue.created_at) }}</p>
-              </div>
-              <div class="detail-controls">
-                <select class="input" v-model="localState" @change="updateState">
-                  <option v-for="state in states" :key="state" :value="state">{{ formatState(state) }}</option>
-                </select>
-                <select class="input" v-model="localAssignment" @change="assign">
-                  <option value="">Assign…</option>
-                  <option value="system">System</option>
-                  <option value="none">Unassigned</option>
-                  <option v-for="bot in bots" :key="`assign-${bot}`" :value="bot">{{ bot }}</option>
-                </select>
-                <button class="btn" @click="assignCurrentBot" :disabled="!activeBot">Assign to {{ activeBot || 'bot' }}</button>
-              </div>
-            </header>
-            <div class="detail-scroll">
-              <section class="detail-description" v-html="renderedDescription"></section>
-              <section class="detail-comments">
-                <h4>Comments</h4>
-                <div v-if="!detail.comments.length" class="comments-empty">No comments yet.</div>
-                <div v-for="comment in detail.comments" :key="comment.id" class="comment">
-                  <div class="comment-meta">{{ comment.author || 'system' }} • {{ formatTimestamp(comment.created_at) }}</div>
-                  <div class="comment-body" v-html="renderMarkdown(comment.body)"></div>
-                </div>
-                <textarea class="input" rows="3" placeholder="Add comment (markdown)" v-model="newComment"></textarea>
-                <div class="detail-actions">
-                  <button class="btn" :disabled="!newComment.trim()" @click="addComment">Comment</button>
-                </div>
-              </section>
-            </div>
-          </div>
-          <div v-else class="detail-empty">
-            <div class="empty-icon">🐞</div>
-            <div class="empty-text">Select an issue to view details</div>
-          </div>
-        </main>
-      </div>
-    </div>
-  </div>
+          <n-empty
+            v-else
+            description="Select an issue to view details"
+            style="margin-top: 100px"
+          >
+            <template #icon>
+              <n-text style="font-size: 48px">🐞</n-text>
+            </template>
+          </n-empty>
+        </n-scrollbar>
+      </n-layout-content>
+    </n-layout>
+  </n-modal>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { marked } from 'marked';
+import {
+  NModal,
+  NLayout,
+  NLayoutSider,
+  NLayoutContent,
+  NCard,
+  NSpace,
+  NButton,
+  NInput,
+  NSelect,
+  NTag,
+  NText,
+  NH3,
+  NEmpty,
+  NScrollbar,
+  NIcon
+} from 'naive-ui';
+import { RefreshOutline } from '@vicons/ionicons5';
 
 const props = defineProps<{
   open: boolean;
@@ -111,6 +241,7 @@ const props = defineProps<{
 const emits = defineEmits(['close', 'refresh']);
 
 const states = ['open', 'triage', 'in_progress', 'testing', 'resolved', 'closed'];
+const isOpen = ref(false);
 const stateFilter = ref('all');
 const selectedIssueId = ref<number | null>(null);
 const detail = ref<any>(null);
@@ -131,10 +262,36 @@ const filteredIssues = computed(() => {
   return issues.value.filter((i) => i.state === stateFilter.value);
 });
 
+const filterOptions = computed(() => [
+  { label: 'All states', value: 'all' },
+  ...states.map(s => ({ label: formatState(s), value: s }))
+]);
+
+const severityOptions = [
+  { label: 'Low', value: 'low' },
+  { label: 'Medium', value: 'medium' },
+  { label: 'High', value: 'high' },
+  { label: 'Critical', value: 'critical' }
+];
+
+const botOptions = computed(() => [
+  { label: 'Any bot', value: '' },
+  ...bots.value.map(b => ({ label: b, value: b }))
+]);
+
+const stateOptions = states.map(s => ({ label: formatState(s), value: s }));
+
+const assignmentOptions = computed(() => [
+  { label: 'System', value: 'system' },
+  { label: 'Unassigned', value: 'none' },
+  ...bots.value.map(b => ({ label: b, value: b }))
+]);
+
 const renderedDescription = computed(() => detail.value ? renderMarkdown(detail.value.issue.description) : '');
 const canCreate = computed(() => newTitle.value.trim().length >= 5 && newDescription.value.trim().length >= 10);
 
 watch(() => props.open, (open) => {
+  isOpen.value = open;
   if (open) {
     if (!issues.value.length) refresh();
     else selectFirst();
@@ -142,6 +299,10 @@ watch(() => props.open, (open) => {
     selectedIssueId.value = null;
     detail.value = null;
   }
+});
+
+watch(isOpen, (open) => {
+  if (!open) emits('close');
 });
 
 watch(issues, () => {
@@ -278,116 +439,68 @@ function renderMarkdown(text: string) {
   return marked.parse(text || '');
 }
 
+function getStateType(state: string): 'default' | 'info' | 'success' | 'warning' | 'error' {
+  switch (state) {
+    case 'open': return 'warning';
+    case 'triage': return 'info';
+    case 'in_progress': return 'info';
+    case 'testing': return 'info';
+    case 'resolved':
+    case 'closed': return 'success';
+    default: return 'default';
+  }
+}
+
+function getSeverityType(severity: string): 'default' | 'info' | 'success' | 'warning' | 'error' {
+  switch (severity) {
+    case 'low': return 'default';
+    case 'medium': return 'info';
+    case 'high': return 'warning';
+    case 'critical': return 'error';
+    default: return 'default';
+  }
+}
+
 onMounted(() => {
   newIssueBot.value = props.activeBot || '';
 });
 </script>
 
-
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.75);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
+.issue-active {
+  border-color: var(--n-border-color-hover) !important;
+  box-shadow: 0 0 0 2px rgba(233, 109, 47, 0.2);
 }
 
-.issues-modal {
-  width: 90%;
-  max-width: 1200px;
-  height: 85vh;
-  border: 1px solid #2E2E2E;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #1d1a1a 0%, #111113 60%);
-  display: flex;
-  flex-direction: column;
+.markdown-content :deep(p) {
+  margin-bottom: 10px;
 }
 
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid #2E2E2E;
+.markdown-content :deep(h1),
+.markdown-content :deep(h2),
+.markdown-content :deep(h3) {
+  margin: 12px 0 6px;
+  font-weight: 600;
 }
 
-.modal-actions { display: flex; gap: 8px; align-items: center; }
-.modal-close { background: none; border: none; color: #EAEAEA; font-size: 28px; cursor: pointer; border-radius: 6px; width: 32px; height: 32px; }
-.modal-close:hover { background: rgba(255,255,255,0.08); }
-
-.modal-body { display: flex; flex: 1; overflow: hidden; }
-
-.modal-sidebar {
-  width: 310px;
-  border-right: 1px solid #2E2E2E;
-  background: #171515;
-  display: flex;
-  flex-direction: column;
-  padding: 14px;
-  gap: 14px;
+.markdown-content :deep(pre) {
+  background: var(--n-color-embedded);
+  padding: 8px;
+  border-radius: 6px;
+  overflow-x: auto;
+  white-space: pre-wrap;
 }
 
-.sidebar-section,
-.sidebar-list {
-  background: #1e1b1b;
-  border: 1px solid #2b2626;
-  border-radius: 10px;
-  padding: 12px;
+.markdown-content :deep(code) {
+  background: var(--n-color-embedded);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
 }
 
-.sidebar-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-.sidebar-label { font-size: 13px; text-transform: uppercase; letter-spacing: 0.6px; color: #a6a1a1; }
-
-.issue-item {
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid #2E2E2E;
-  background: #1d1d1d;
-  cursor: pointer;
-  transition: border-color 0.2s, transform 0.2s;
+.markdown-content :deep(ul),
+.markdown-content :deep(ol) {
+  margin-left: 20px;
+  margin-bottom: 10px;
 }
-.issue-item:hover { border-color: #e96d2f; }
-.issue-item--active { border-color: #e96d2f; box-shadow: 0 0 0 1px rgba(233,109,47,0.35); }
-.issue-item__title { font-weight: 600; color: #EAEAEA; margin-bottom: 4px; }
-.issue-item__meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
-.issue-item__sub { color: #8f8e8e; font-size: 13px; }
-
-.pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid transparent; text-transform: uppercase; }
-.pill[data-state="open"] { background: rgba(233,109,47,0.15); color: #f48c53; border-color: rgba(233,109,47,0.4); }
-.pill[data-state="triage"] { background: rgba(251,191,36,0.15); color: #FBBF24; }
-.pill[data-state="in_progress"] { background: rgba(251,191,36,0.1); color: #f6d481; }
-.pill[data-state="testing"] { background: rgba(96,165,250,0.15); color: #93C5FD; }
-.pill[data-state="resolved"], .pill[data-state="closed"] { background: rgba(74,222,128,0.15); color: #4ADE80; }
-.pill[data-severity="high"], .pill[data-severity="critical"] { background: rgba(248,113,113,0.18); color: #F87171; }
-
-.modal-main { flex: 1; padding: 16px 20px; overflow-y: auto; }
-.issue-detail { display: flex; flex-direction: column; gap: 16px; height: 100%; }
-.detail-scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding-right: 6px; }
-.detail-header { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid #302828; padding-bottom: 12px; }
-.detail-sub { color: #b6a9a2; font-size: 14px; margin-top: 4px; }
-.detail-controls { display: flex; gap: 8px; }
-.detail-description { background: #131111; border: 1px solid #2b2626; border-radius: 10px; padding: 14px; min-height: 140px; }
-.detail-description :deep(p) { margin-bottom: 10px; }
-.detail-description :deep(h1), .detail-description :deep(h2), .detail-description :deep(h3) { margin: 12px 0 6px; font-weight: 600; }
-.detail-description :deep(pre) { background: #0d0d0d; padding: 8px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; }
-.detail-comments { background: #131111; border: 1px solid #2b2626; border-radius: 10px; padding: 14px; }
-.comment { border-bottom: 1px solid #2b2626; padding: 10px 0; }
-.comment:last-child { border-bottom: none; }
-.comment-meta { font-size: 13px; color: #8a8585; margin-bottom: 6px; }
-.comment-body { font-size: 14px; }
-.comment-body :deep(p) { margin-bottom: 6px; }
-.comment-body :deep(h1), .comment-body :deep(h2), .comment-body :deep(h3) { margin: 12px 0 6px; font-weight: 600; font-size: 15px; }
-.comments-empty { font-size: 14px; color: #7A7A7A; margin-bottom: 8px; }
-.detail-actions { margin-top: 10px; display: flex; justify-content: flex-end; }
-.detail-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; height: 100%; color: #7A7A7A; }
-.empty-icon { font-size: 42px; }
-.sidebar-empty { text-align: center; color: #7A7A7A; margin-top: 20px; font-style: italic; }
-
-.btn { border: 1px solid #2E2E2E; background: #232020; color: #EAEAEA; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
-.btn-create { background: #e96d2f; border-color: #e96d2f; color: #fff; font-weight: 600; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.input, textarea.input { width: 100%; background: #111; border: 1px solid #2E2E2E; border-radius: 8px; padding: 6px 10px; color: #fff; font-size: 14px; }
 </style>

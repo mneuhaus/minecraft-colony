@@ -23,6 +23,49 @@ interface Job {
 
 const JOBS = new Map<string, Job>();
 
+export type CraftscriptEvent = {
+  id: string;
+  state: JobState;
+  script: string;
+  error?: any;
+  botName?: string;
+};
+
+type CraftscriptListener = (event: CraftscriptEvent) => void;
+
+const craftscriptListeners = new Set<CraftscriptListener>();
+
+function emitCraftscriptEvent(event: CraftscriptEvent) {
+  for (const listener of craftscriptListeners) {
+    try {
+      listener(event);
+    } catch (error: any) {
+      console.error('[CraftScript] Event listener error:', error?.message || error);
+    }
+  }
+}
+
+export function onCraftscriptEvent(listener: CraftscriptListener): () => void {
+  craftscriptListeners.add(listener);
+  return () => craftscriptListeners.delete(listener);
+}
+
+function craftscriptErrorChatEnabled(): boolean {
+  const env = process.env.CRAFTSCRIPT_ERROR_CHAT_ENABLED ?? process.env.CRAFTSCRIPT_CHAT_ENABLED ?? 'false';
+  return env.toLowerCase() !== 'false';
+}
+
+function chatCraftscriptError(minecraftBot: MinecraftBot, jobId: string, type: string, message: string, line?: number, column?: number) {
+  if (!craftscriptErrorChatEnabled()) return;
+  const location = typeof line === 'number' ? `Zeile ${line}${typeof column === 'number' ? `:${column}` : ''}` : '';
+  const detail = [location?.trim(), message?.trim()].filter(Boolean).join(' – ') || 'Unbekannter Fehler';
+  const prefix = type === 'compile_error' ? 'CraftScript-Syntaxfehler' : 'CraftScript-Fehler';
+  const text = `${prefix} (${jobId}): ${detail}`.slice(0, 240);
+  try {
+    minecraftBot.chat(text);
+  } catch {}
+}
+
 function uid(): string {
   return 'cs_' + Math.random().toString(36).slice(2, 10);
 }
@@ -80,6 +123,8 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
       job.state = 'failed';
       job.error = msg;
       job.endedAt = Date.now();
+      const lineNum = (e?.location?.start?.line ?? e?.location?.line ?? undefined);
+      const columnNum = (e?.location?.start?.column ?? e?.location?.column ?? undefined);
       // Emit a fail step so the dashboard CraftScript card has something to show
       try {
         const step = { ok: false, error: 'compile_error', message: msg, op_index: 0, ts: Date.now() };
@@ -99,8 +144,8 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
           error: {
             type: 'compile_error',
             message: msg,
-            line: (e?.location?.start?.line ?? e?.location?.line ?? undefined),
-            column: (e?.location?.start?.column ?? e?.location?.column ?? undefined),
+            line: lineNum,
+            column: columnNum,
           }
         } as any;
         if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_status', details: { name: 'craftscript_status', tool_name: 'craftscript_status', input: { job_id: job.id }, params_summary: { job_id: job.id }, output: JSON.stringify(status), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
@@ -109,6 +154,19 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
           if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_status', status);
         }
       } catch {}
+      chatCraftscriptError(minecraftBot, job.id, 'compile_error', msg, lineNum, columnNum);
+      emitCraftscriptEvent({
+        id: job.id,
+        state: 'failed',
+        script: job.script,
+        error: {
+          type: 'compile_error',
+          message: msg,
+          line: lineNum,
+          column: columnNum,
+        },
+        botName,
+      });
       return;
     }
     console.log('[CraftScript] Parsed successfully, executing...');
@@ -196,6 +254,7 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
         job.error = r.message || 'craftscript_failed';
         job.endedAt = Date.now();
         // Also emit status for failed jobs
+        let lastStatus: any = null;
         try {
           const st = {
             id: job.id,
@@ -212,12 +271,30 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
               notes: (r as any).notes
             }
           } as any;
+          lastStatus = st;
           if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_status', details: { name: 'craftscript_status', tool_name: 'craftscript_status', input: { job_id: job.id }, params_summary: { job_id: job.id }, output: JSON.stringify(st), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
           if (job.memoryStore) {
             const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
             if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_status', st);
           }
         } catch {}
+        const line = (r as any).loc?.line;
+        const column = (r as any).loc?.column;
+        chatCraftscriptError(minecraftBot, job.id, r.error || 'runtime_error', r.message || 'Unbekannter Fehler', line, column);
+        emitCraftscriptEvent({
+          id: job.id,
+          state: 'failed',
+          script: job.script,
+          error: lastStatus?.error ?? {
+            type: r.error,
+            message: r.message,
+            op: (r as any).op,
+            op_index: r.op_index,
+            line,
+            column
+          },
+          botName
+        });
         return;
       }
       if (JOB_CANCELLED(job)) return;
@@ -235,6 +312,12 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
         if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_status', st);
       }
     } catch {}
+    emitCraftscriptEvent({
+      id: job.id,
+      state: 'completed',
+      script: job.script,
+      botName
+    });
   } catch (e: any) {
     if (job.state === 'canceled') return;
     console.error('[CraftScript] Job failed with exception:', e);
@@ -257,6 +340,14 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
         job.memoryStore.addActivity(sid!, 'tool', 'craftscript_status', st);
       }
     } catch {}
+    chatCraftscriptError(minecraftBot, job.id, 'runtime_error', job.error || 'Unbekannter Fehler');
+    emitCraftscriptEvent({
+      id: job.id,
+      state: 'failed',
+      script: job.script,
+      error: { type: 'runtime_error', message: job.error },
+      botName
+    });
   }
 }
 
