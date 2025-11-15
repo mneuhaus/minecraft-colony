@@ -249,6 +249,7 @@ export function createDashboardApp(botManager: BotManager) {
 
       // Clear all bot data from database
       db.prepare('DELETE FROM messages WHERE bot_id = ?').run(botId);
+      db.prepare('DELETE FROM activities WHERE bot_id = ?').run(botId);
       db.prepare('DELETE FROM tool_calls WHERE bot_id = ?').run(botId);
       db.prepare('DELETE FROM craftscript_jobs WHERE bot_id = ?').run(botId);
       db.prepare('DELETE FROM craftscript_block_changes WHERE bot_id = ?').run(botId);
@@ -486,6 +487,130 @@ export function createDashboardApp(botManager: BotManager) {
       };
 
       return c.json(result);
+    } catch (error: any) {
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
+  app.get('/api/craftscript/:job_id/logs', (c) => {
+    try {
+      const jobId = c.req.param('job_id');
+      const colonyDb = ColonyDatabase.getInstance();
+      const db = colonyDb.getDb();
+      const botQuery = c.req.query('bot');
+      let botId: number | null = null;
+      if (botQuery) {
+        botId = colonyDb.getBotId(String(botQuery));
+        if (!botId) return c.json({ error: 'bot_not_found' }, 404);
+      }
+
+      const snapshot = buildCraftscriptSnapshot(db, jobId, botId);
+      return c.json(snapshot);
+    } catch (error: any) {
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
+  // ============================================================================
+  // Skills API
+  // ============================================================================
+
+  app.get('/api/skills', async (c) => {
+    try {
+      const skillsDir = path.join(process.cwd(), '.claude', 'skills');
+
+      try {
+        await fs.promises.access(skillsDir);
+      } catch {
+        return c.json({ skills: [] });
+      }
+
+      const skills: any[] = [];
+      const entries = await fs.promises.readdir(skillsDir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          const skillPath = path.join(skillsDir, entry.name, 'SKILL.md');
+
+          try {
+            const stat = await fs.promises.stat(skillPath);
+            const content = await fs.promises.readFile(skillPath, 'utf-8');
+
+            // Parse frontmatter
+            const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---/;
+            const match = content.match(frontmatterRegex);
+
+            let name = entry.name;
+            let description = '';
+            let allowedTools: string[] = [];
+
+            if (match) {
+              const yaml = match[1];
+              const nameMatch = yaml.match(/^name:\s*(.+)$/m);
+              const descMatch = yaml.match(/^description:\s*(.+)$/m);
+              const toolsMatch = yaml.match(/^allowed-tools:\s*(.+)$/m);
+
+              if (nameMatch) name = nameMatch[1].trim();
+              if (descMatch) description = descMatch[1].trim();
+              if (toolsMatch) {
+                allowedTools = toolsMatch[1].split(',').map(t => t.trim()).filter(Boolean);
+              }
+            }
+
+            skills.push({
+              name,
+              description,
+              allowedTools,
+              path: skillPath,
+              lastModified: stat.mtimeMs,
+              lastModifiedDate: stat.mtime.toISOString(),
+            });
+          } catch {
+            // Skill file doesn't exist or can't be read
+          }
+        }
+      }
+
+      return c.json({ skills });
+    } catch (error: any) {
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
+  app.get('/api/bots/:name/skills/state', (c) => {
+    try {
+      const name = c.req.param('name');
+      const colonyDb = ColonyDatabase.getInstance();
+      const botId = colonyDb.getBotId(name);
+
+      if (!botId) {
+        return c.json({ error: 'Bot not found' }, 404);
+      }
+
+      const db = colonyDb.getDb();
+
+      // Get last skill usage timestamps from activities
+      const skillActivities = db.prepare(`
+        SELECT description, MAX(timestamp) as last_used
+        FROM activities
+        WHERE bot_id = ? AND type = 'skill'
+        GROUP BY description
+        ORDER BY last_used DESC
+      `).all(botId);
+
+      const skillStates: any[] = [];
+      for (const row of skillActivities as any[]) {
+        const skillName = String(row.description || '');
+        const lastUsedTimestamp = Number(row.last_used) * 1000; // Convert to ms
+
+        skillStates.push({
+          name: skillName,
+          lastUsed: lastUsedTimestamp,
+          lastUsedDate: new Date(lastUsedTimestamp).toISOString(),
+        });
+      }
+
+      return c.json({ skillStates });
     } catch (error: any) {
       return c.json({ error: error.message }, 500);
     }
@@ -743,6 +868,17 @@ export function createDashboardApp(botManager: BotManager) {
     return c.text('Not found', 404);
   });
 
+  // Catch-all route for SPA - serve index.html for all non-API routes
+  // This allows Vue Router to handle client-side routing
+  app.get('/*', (c) => {
+    const indexPath = path.join(uiDistPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      const html = fs.readFileSync(indexPath, 'utf-8');
+      return c.html(html);
+    }
+    return c.text('Dashboard UI not built. Run: bun run dashboard:build', 404);
+  });
+
   return app;
 }
 
@@ -932,4 +1068,191 @@ export function startDashboardServer(botManager: BotManager, port: number = 4242
   });
 
   return { server, wss };
+}
+
+interface ActivityRow {
+  timestamp: number;
+  data?: string;
+  type?: string;
+}
+
+interface BlockChangeRow {
+  action: string;
+  x: number;
+  y: number;
+  z: number;
+  block_id: string;
+  previous_block_id?: string | null;
+  command?: string | null;
+  timestamp: number;
+}
+
+function buildCraftscriptSnapshot(db: any, jobId: string, botId: number | null) {
+  const rows: ActivityRow[] = botId !== null
+    ? db.prepare(`
+        SELECT timestamp, data, type
+        FROM activities
+        WHERE bot_id = ? AND data LIKE ?
+        ORDER BY timestamp ASC
+      `).all(botId, `%${jobId}%`)
+    : db.prepare(`
+        SELECT timestamp, data, type
+        FROM activities
+        WHERE data LIKE ?
+        ORDER BY timestamp ASC
+      `).all(`%${jobId}%`);
+
+  const snapshot = {
+    jobId,
+    script: '',
+    statuses: [] as any[],
+    steps: [] as any[],
+    traces: [] as any[],
+    voxWindows: [] as any[],
+    logs: [] as any[],
+  };
+
+  for (const row of rows) {
+    let data: any = {};
+    if (row.data) {
+      try { data = JSON.parse(String(row.data)); } catch { data = {}; }
+    }
+    const tool = String(data?.name || '').toLowerCase();
+    const ts = (Number(row.timestamp) || 0) * 1000;
+
+    if (tool === 'craftscript_start') {
+      const script = extractScriptFromActivity(data);
+      if (script) snapshot.script = script;
+      snapshot.logs.push({ ts, kind: 'start', data });
+      continue;
+    }
+
+    if (tool === 'craftscript_status') {
+      const payload = parseActivityOutput(data) || {};
+      snapshot.statuses.push({
+        ts,
+        state: payload.state || 'unknown',
+        duration_ms: payload.duration_ms,
+        error: payload.error,
+      });
+      snapshot.logs.push({ ts, kind: 'status', data: payload });
+      ingestVoxRecords(snapshot, payload, ts, 'status');
+      continue;
+    }
+
+    if (tool === 'craftscript_step') {
+      const payload = parseActivityOutput(data) || {};
+      const step = payload.step || payload;
+      snapshot.steps.push({
+        ts,
+        ok: Boolean(step?.ok),
+        summary: step?.ok ? `ok ${step?.op ?? ''}`.trim() : `fail ${step?.error || step?.message || 'error'}`,
+        raw: step,
+      });
+      snapshot.logs.push({ ts, kind: step?.ok ? 'ok' : 'fail', data: step });
+      ingestVoxRecords(snapshot, step, ts, 'step');
+      continue;
+    }
+
+    if (tool === 'craftscript_trace') {
+      const payload = parseActivityOutput(data) || {};
+      const trace = payload.trace || payload;
+      snapshot.traces.push({ ts, kind: String(trace?.kind || 'trace'), data: trace });
+      snapshot.logs.push({ ts, kind: 'trace', data: trace });
+      ingestVoxRecords(snapshot, trace, ts, 'trace');
+      continue;
+    }
+
+    if (tool === 'craftscript_logs') {
+      const payload = parseActivityOutput(data) || {};
+      if (Array.isArray(payload.logs)) {
+        for (const entry of payload.logs) {
+          const entryTs = entry.ts || ts;
+          snapshot.logs.push({ ts: entryTs, kind: entry.kind || 'log', data: entry.data });
+          ingestVoxRecords(snapshot, entry.data, entryTs, 'log');
+        }
+      }
+      if (payload.script && !snapshot.script) snapshot.script = payload.script;
+      continue;
+    }
+
+    if (data?.vox || data?.notes?.vox || data?.vox_path || data?.notes?.vox_path) {
+      ingestVoxRecords(snapshot, parseActivityOutput(data) || data, ts, 'activity');
+    }
+  }
+
+  const changeRows: BlockChangeRow[] = botId !== null
+    ? db.prepare(`
+        SELECT action, x, y, z, block_id, previous_block_id, command, timestamp
+        FROM craftscript_block_changes
+        WHERE job_id = ? AND bot_id = ?
+        ORDER BY timestamp ASC
+      `).all(jobId, botId)
+    : db.prepare(`
+        SELECT action, x, y, z, block_id, previous_block_id, command, timestamp
+        FROM craftscript_block_changes
+        WHERE job_id = ?
+        ORDER BY timestamp ASC
+      `).all(jobId);
+
+  if (changeRows.length > 0) {
+    snapshot.traces.push({
+      ts: Number(changeRows[0].timestamp || 0) * 1000,
+      kind: 'changes',
+      data: {
+        job_id: jobId,
+        total_changes: changeRows.length,
+        changes: changeRows,
+      },
+    });
+  }
+
+  return snapshot;
+}
+
+function parseActivityOutput(data: any) {
+  if (!data) return null;
+  const raw = data.output;
+  if (typeof raw === 'string') {
+    try { return JSON.parse(raw); } catch { return raw; }
+  }
+  return raw ?? null;
+}
+
+function extractScriptFromActivity(data: any): string {
+  if (!data) return '';
+  const candidates = [
+    data?.input?.script,
+    data?.params_summary?.script,
+    data?.params_summary?.input?.script,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate;
+  }
+  const payload = parseActivityOutput(data);
+  if (payload && typeof payload.script === 'string') return payload.script;
+  return '';
+}
+
+function ingestVoxRecords(snapshot: any, data: any, ts: number, source: string) {
+  if (!data) return;
+  const pushEntry = (vox: any, target?: any, label?: string) => {
+    if (!vox) return;
+    snapshot.voxWindows.push({ ts, vox, target, label, source });
+  };
+  const inspectNode = (node: any, labelHint?: string) => {
+    if (!node) return;
+    if (node.vox) {
+      pushEntry(node.vox, node.world || node.target, labelHint || node.label || source);
+    }
+    const path = node.vox_path;
+    if (Array.isArray(path)) {
+      path.forEach((segment: any, idx: number) => {
+        pushEntry(segment.vox, segment.pos || segment.target, segment.label || labelHint || `${source}-path-${idx}`);
+      });
+    }
+    if (node.notes) inspectNode(node.notes, labelHint || 'notes');
+    if (node.debug) inspectNode(node.debug, labelHint || 'debug');
+  };
+  inspectNode(data, data.label || source);
 }

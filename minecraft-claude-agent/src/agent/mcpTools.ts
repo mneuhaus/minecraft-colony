@@ -137,6 +137,68 @@ export function createUnifiedMcpServer(
         return { content: [{ type: 'text', text: JSON.stringify({ x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) }) }] };
       }, context),
       /**
+       * Comprehensive status snapshot combining position, local vox, inventory, nearby players, and nearby items.
+       * @remarks Input: `{}` (none).
+       * @returns JSON with position, vox (3x3x3), inventory, nearby players (within 32 blocks), and nearby items (within 8 blocks).
+       */
+      loggingTool('get_status', 'Get comprehensive bot status including position, 3x3 vox, inventory, nearby players (32 blocks), and nearby items (8 blocks)', {}, async () => {
+        const { get_inventory } = await import('../tools/inventory/get_inventory.js');
+        const { get_vox } = await import('../craftscript/env.js');
+
+        // Get position
+        const p = bot.entity?.position;
+        if (!p) return { content: [{ type: 'text', text: 'Not spawned' }], isError: true };
+        const position = { x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) };
+
+        // Get 3x3x3 vox (radius 1)
+        const vox = await get_vox(bot, 1, false);
+
+        // Get inventory (returns formatted text, not JSON)
+        const inventory = await get_inventory(bot);
+
+        // Get nearby players (within 32 blocks)
+        const players = Object.values(bot.players || {})
+          .filter((player: any) => player.entity && player.username !== bot.username)
+          .map((player: any) => {
+            const pos = player.entity.position;
+            const distance = p.distanceTo(pos);
+            if (distance > 32) return null;
+            return {
+              username: player.username,
+              distance: Math.floor(distance),
+              position: { x: Math.floor(pos.x), y: Math.floor(pos.y), z: Math.floor(pos.z) }
+            };
+          })
+          .filter(Boolean);
+
+        // Get nearby items (within 8 blocks that can be picked up)
+        const nearbyItems = Object.values(bot.entities || {})
+          .filter((entity: any) => {
+            if (entity.type !== 'object' || entity.name !== 'item') return false;
+            const distance = p.distanceTo(entity.position);
+            return distance <= 8;
+          })
+          .map((entity: any) => {
+            const distance = p.distanceTo(entity.position);
+            return {
+              item: entity.metadata?.[8]?.itemId || entity.metadata?.[7]?.itemId || 'unknown',
+              count: entity.metadata?.[8]?.itemCount || entity.metadata?.[7]?.itemCount || 1,
+              distance: Math.floor(distance * 10) / 10,
+              position: { x: Math.floor(entity.position.x), y: Math.floor(entity.position.y), z: Math.floor(entity.position.z) }
+            };
+          });
+
+        const status = {
+          position,
+          vox,
+          inventory,
+          players,
+          items: nearbyItems
+        };
+
+        return { content: [{ type: 'text', text: JSON.stringify(status) }] };
+      }, context),
+      /**
        * Returns every occupied inventory slot with slot index, item id, and count.
        * @remarks Input: `{}` (none). Uses `tools/inventory/get_inventory`.
        * @returns JSON encoded inventory summary for LLM reasoning.
@@ -226,7 +288,7 @@ export function createUnifiedMcpServer(
        * @remarks Input: `{ script: string }` CraftScript source code.
        * @returns `{ job_id, state }` JSON payload once the job is enqueued.
        */
-      loggingTool('craftscript_start', 'Start CraftScript in background; returns job_id', { script: z.string() }, async ({ script }) => {
+      loggingTool('craftscript_start', 'Start CraftScript asynchronously. Response only confirms `{ job_id, state: "queued" }` — ALWAYS poll `craftscript_status` / `craftscript_logs` to learn whether it compiled, failed, or completed.', { script: z.string() }, async ({ script }) => {
         const { createCraftscriptJob } = await import('./craftscriptJobs.js');
         if ((process.env.CRAFTSCRIPT_CHAT_ENABLED ?? 'false').toLowerCase() !== 'false') {
           try {
@@ -244,7 +306,7 @@ export function createUnifiedMcpServer(
        * @remarks Input: `{ job_id: string }`.
        * @returns JSON status including state, last_step, and optional error.
        */
-      loggingTool('craftscript_status', 'Poll CraftScript job status', { job_id: z.string() }, async ({ job_id }) => {
+      loggingTool('craftscript_status', 'Poll CraftScript job status (state + last_step + error). Use this immediately after `craftscript_start` to see if the script compiled, started running, failed, or finished.', { job_id: z.string() }, async ({ job_id }) => {
         const { getCraftscriptStatus } = await import('./craftscriptJobs.js');
         const status = getCraftscriptStatus(job_id);
         return { content: [{ type: 'text', text: JSON.stringify(status || { ok: false, error: 'not_found' }) }] };
@@ -254,8 +316,9 @@ export function createUnifiedMcpServer(
        * @remarks Input: `{ job_id: string, limit?: number }`.
        * @returns JSON object with ordered logs suitable for timeline rendering.
        */
-      loggingTool('craftscript_logs', 'Fetch consolidated CraftScript logs for a job (status + steps + traces)', { job_id: z.string(), limit: z.number().optional() }, async ({ job_id, limit = 300 }) => {
+      loggingTool('craftscript_logs', 'Fetch consolidated CraftScript logs for a job (status + steps + traces). Falls back to the live runtime snapshot when the database has no rows yet so you can still see whether the job is queued, failed, or done.', { job_id: z.string(), limit: z.number().optional() }, async ({ job_id, limit = 300 }) => {
         const { ColonyDatabase } = await import('../database/ColonyDatabase.js');
+        const { getCraftscriptStatus } = await import('./craftscriptJobs.js');
         const colonyDb = ColonyDatabase.getInstance();
         const db = colonyDb.getDb();
         // Resolve bot_id from bot name
@@ -298,6 +361,24 @@ export function createUnifiedMcpServer(
             out.logs.push({ kind: 'trace', ts, data: trace });
             continue;
           }
+        }
+        const attachRuntimeSnapshot = () => {
+          const runtime = getCraftscriptStatus(job_id);
+          if (!runtime) return;
+          const runtimeSnapshot = {
+            id: runtime.id,
+            state: runtime.state,
+            error: runtime.error ?? null,
+            last_step: runtime.lastStep ?? null,
+            started_at: runtime.startedAt ?? null,
+            ended_at: runtime.endedAt ?? null
+          };
+          out.status = out.status ?? runtimeSnapshot.state;
+          if (!out.error && runtimeSnapshot.error) out.error = runtimeSnapshot.error;
+          out.logs.push({ kind: 'runtime_status', ts: Date.now(), data: runtimeSnapshot });
+        };
+        if (!rows.length || !out.status) {
+          attachRuntimeSnapshot();
         }
         return { content: [{ type: 'text', text: JSON.stringify(out) }] };
       }, context),
@@ -772,7 +853,7 @@ export function createUnifiedMcpServer(
     ],
   });
   if (!server.manifest) server.manifest = { name: 'minecraft', tools: [
-    { name: 'send_chat' }, { name: 'get_position' }, { name: 'get_inventory' }, { name: 'get_vox' }, { name: 'affordances' },
+    { name: 'send_chat' }, { name: 'get_position' }, { name: 'get_status' }, { name: 'get_inventory' }, { name: 'get_vox' }, { name: 'affordances' },
     { name: 'nearest' }, { name: 'block_info' }, { name: 'look_at_map' }, { name: 'look_at_map_4' }, { name: 'look_at_map_5' },
     { name: 'craftscript_start' }, { name: 'craftscript_status' }, { name: 'craftscript_cancel' }, { name: 'craftscript_trace' },
     { name: 'create_craftscript_function' }, { name: 'edit_craftscript_function' }, { name: 'delete_craftscript_function' },

@@ -13,6 +13,15 @@
           <n-text strong>{{ messageTitle }}</n-text>
           <n-space :size="8">
             <n-button
+              v-if="hasCraftscriptDetails"
+              size="tiny"
+              quaternary
+              @click="openCraftscriptDetails"
+              title="Open CraftScript details in new window"
+            >
+              View Details
+            </n-button>
+            <n-button
               size="tiny"
               quaternary
               @click="isExpanded = !isExpanded"
@@ -81,6 +90,7 @@ import ChatMessage from './types/ChatMessage.vue';
 import SystemMessage from './types/SystemMessage.vue';
 import SkillMessage from './types/SkillMessage.vue';
 import ToolCard from './types/Tool/ToolCard.vue';
+import ThinkingMessage from './types/ThinkingMessage.vue';
 
 const props = defineProps<{ item: any; expandedState: Record<string, boolean> }>();
 const message = useMessage();
@@ -149,6 +159,10 @@ const messageTitle = computed(() => {
     return chatPayload.value?.from || (dir === 'in' ? 'Player' : 'Bot');
   }
 
+  if (t === 'thinking') {
+    return 'Thinking';
+  }
+
   if (t === 'tool') {
     return props.item.payload?.tool_name || 'Tool';
   }
@@ -158,11 +172,10 @@ const messageTitle = computed(() => {
   }
 
   if (t === 'system') {
-    const level = String(props.item.payload?.level || '').toLowerCase();
-    if (level === 'error') return 'Error';
-    if (level === 'warn') return 'Warning';
-    if (level === 'success') return 'Success';
-    return 'System';
+    // Show the actual message content in the title
+    const message = props.item.payload?.message || '';
+    // Truncate long messages
+    return message.length > 80 ? message.substring(0, 80) + '...' : message;
   }
 
   return 'Message';
@@ -188,6 +201,11 @@ const cardBorderColor = computed(() => {
     if (dir === 'in') return '#5cb85c';
     // Bot messages (outgoing) = Blue/Info
     return '#4a9eff';
+  }
+
+  if (t === 'thinking') {
+    // Thinking = Purple (same as tools but distinct)
+    return '#9b59b6';
   }
 
   if (t === 'tool') {
@@ -229,6 +247,7 @@ const wrapperClass = computed(() => {
 const componentName = computed(() => {
   const t = String(props.item.type || '');
   if (t === 'chat' || t === 'chat-in' || t === 'chat-out') return ChatMessage;
+  if (t === 'thinking') return ThinkingMessage;
   if (t === 'system') return SystemMessage;
   if (t === 'skill') return SkillMessage;
   if (t === 'tool') return ToolCard;
@@ -239,6 +258,48 @@ const hasInspector = computed(() => {
   // Tools and some system messages can be inspected
   return props.item.type === 'tool' || props.item.type === 'system';
 });
+
+const hasCraftscriptDetails = computed(() => {
+  if (props.item.type !== 'tool') return false;
+  const toolName = String(props.item.payload?.tool_name || '').toLowerCase();
+  return /^craftscript_(start|status|step|logs|trace|function)$/.test(toolName);
+});
+
+const craftscriptJobId = computed(() => {
+  if (!hasCraftscriptDetails.value) return null;
+  const payload = props.item.payload || {};
+
+  // Try various locations where job_id might be
+  const candidates = [
+    payload.params_summary?.job_id,
+    payload.input?.job_id,
+    payload.output?.job_id,
+  ];
+
+  // Try parsing output as JSON
+  if (typeof payload.output === 'string') {
+    try {
+      const parsed = JSON.parse(payload.output);
+      candidates.push(parsed.job_id, parsed.id);
+    } catch {}
+  } else if (typeof payload.output === 'object') {
+    candidates.push(payload.output?.job_id, payload.output?.id);
+  }
+
+  for (const candidate of candidates) {
+    if (candidate) return String(candidate);
+  }
+  return null;
+});
+
+function openCraftscriptDetails() {
+  const jobId = craftscriptJobId.value;
+  if (!jobId) return;
+
+  // Open in new window
+  const url = `/craftscript/${encodeURIComponent(jobId)}`;
+  window.open(url, '_blank');
+}
 
 const identityLabel = computed(() => {
   // Show the stable anchor ID format in the footer

@@ -42,6 +42,7 @@ export class ClaudeAgentSDK {
   private pendingMessages: PendingMessage[] = [];
   private currentAbortController: AbortController | null = null;
   private abortReason: string | null = null;
+  private skipMemoryPromptOnce = false;
   public getActivityWriter(){ return this.activityWriter; }
   public getMemoryStore(){ return this.memoryStore; }
   public getSessionId(){ return this.currentSessionId; }
@@ -111,14 +112,10 @@ export class ClaudeAgentSDK {
     const column = event.error?.column ?? event.error?.notes?.column;
     const positionInfo = typeof line === 'number' ? `Zeile ${line}${typeof column === 'number' ? `:${column}` : ''}` : '';
     const detail = positionInfo ? `${errorType}, ${positionInfo}` : errorType;
-    const summary = `HALT STOP – CraftScript ${event.id} fehlgeschlagen (${detail}): ${errorMessage}`.slice(0, 280);
-    this.activityWriter.addActivity({
-      type: 'error',
-      message: summary,
-      speaker: 'SYSTEM',
-      role: 'system',
-      details: { job_id: event.id, error: event.error }
-    });
+    let summary = `HALT STOP – CraftScript ${event.id} fehlgeschlagen (${detail}): ${errorMessage}`;
+    summary += '\nPlease review the CraftScript skill.';
+    summary = summary.slice(0, 320);
+    this.recordSystemActivity('error', summary, { job_id: event.id, error: event.error });
     const interruptChat = (process.env.CRAFTSCRIPT_ERROR_INTERRUPT_CHAT ?? 'false').toLowerCase() !== 'false';
     if (interruptChat) {
       this.enqueueSystemInterrupt(summary);
@@ -296,6 +293,9 @@ export class ClaudeAgentSDK {
 
     const cleanedMessage = this.removeBotMention(message);
 
+    const skipMemoryPrompt = this.skipMemoryPromptOnce;
+    this.skipMemoryPromptOnce = false;
+
     const abortController = isRoot ? new AbortController() : this.currentAbortController ?? new AbortController();
     if (isRoot) {
       this.isProcessing = true;
@@ -305,6 +305,8 @@ export class ClaudeAgentSDK {
     const timer = startTimer('Claude chat response');
 
     const toolsUsed = new Set<string>();
+    let lastSdkErrorText: string | null = null;
+    let requestTooLargeDetected = false;
 
     try {
       // Wait for MCP server to be ready before processing
@@ -339,9 +341,10 @@ export class ClaudeAgentSDK {
       this.debugSnippet('Context snapshot', context);
 
       // Add user message to history
+      const userMessageContent = `${username}: ${cleanedMessage}`;
       this.conversationHistory.push({
         role: 'user',
-        content: `${username}: ${cleanedMessage}`,
+        content: userMessageContent,
       });
 
       // Add to memory store if session exists
@@ -356,7 +359,7 @@ export class ClaudeAgentSDK {
           health: bot.health,
           food: bot.food
         };
-        this.memoryStore.addMessage(this.currentSessionId, 'user', `${username}: ${cleanedMessage}`, context);
+        this.memoryStore.addMessage(this.currentSessionId, 'user', userMessageContent, context);
       }
 
       // Keep only last 10 messages
@@ -369,7 +372,9 @@ export class ClaudeAgentSDK {
 
       // Build prompt from conversation history and memory
       const conversationPrompt = this.formatConversationHistory();
-      const memoryPrompt = this.currentSessionId ? this.memoryStore.getContextualPrompt(this.currentSessionId) : '';
+      const memoryPrompt = skipMemoryPrompt
+        ? ''
+        : (this.currentSessionId ? this.memoryStore.getContextualPrompt(this.currentSessionId) : '');
       
       const prompt = memoryPrompt + (memoryPrompt ? '\n\nCurrent conversation:\n' : '') + conversationPrompt;
       this.debugSnippet('Formatted prompt', prompt);
@@ -380,7 +385,7 @@ export class ClaudeAgentSDK {
 
       // Check if we should resume previous session
       const lastSessionId = this.memoryStore.getLastActiveSessionId();
-      const shouldResume = lastSessionId && !this.currentSessionId;
+      const shouldResume = !skipMemoryPrompt && lastSessionId && !this.currentSessionId;
 
       const permMode = process.env.CLAUDE_PERMISSION_MODE?.trim() || 'bypassPermissions';
       const options: any = {
@@ -388,8 +393,8 @@ export class ClaudeAgentSDK {
         mcpServers: {
           minecraft: this.mcpServer,
         },
-        // Enable skills from .claude/skills/ directory
-        settingSources: ['user', 'project'],
+        // Enable skills from .claude/skills/ directory (project-only, not global user skills)
+        settingSources: ['project'],
         // Permission mode (override via CLAUDE_PERMISSION_MODE): acceptEdits | bypassPermissions | default | plan
         permissionMode: permMode,
         cwd: process.cwd(),
@@ -443,7 +448,7 @@ export class ClaudeAgentSDK {
         })(),
       };
 
-      if (this.currentSessionId) {
+      if (this.currentSessionId && !skipMemoryPrompt) {
         options.resume = this.currentSessionId;
         if (this.forkSessions) {
           options.forkSession = true;
@@ -452,8 +457,24 @@ export class ClaudeAgentSDK {
           sessionId: this.currentSessionId,
           forkSession: Boolean(options.forkSession),
         });
+      } else if (this.currentSessionId && skipMemoryPrompt) {
+        logger.debug('Skipping session resume for recovery run', {
+          sessionId: this.currentSessionId,
+        });
       }
       options.abortController = abortController;
+
+      // Log outgoing SDK request
+      logger.debug('SDK REQUEST', {
+        prompt: prompt.substring(0, 500) + (prompt.length > 500 ? '...' : ''),
+        promptLength: prompt.length,
+        options: {
+          ...options,
+          // Don't log the abort controller or API key
+          abortController: options.abortController ? '[AbortController]' : undefined,
+          anthropicApiKey: options.anthropicApiKey ? '[REDACTED]' : undefined,
+        },
+      });
 
       let aborted = false;
       try {
@@ -462,6 +483,14 @@ export class ClaudeAgentSDK {
           options,
         })) {
         messageCount++;
+
+        // Log raw SDK message for debugging
+        logger.debug('RAW SDK MESSAGE', {
+          type: sdkMessage.type,
+          messageCount,
+          rawMessage: JSON.stringify(sdkMessage, null, 2),
+        });
+
         logger.debug('Received SDK message', {
           type: sdkMessage.type,
           messageCount,
@@ -499,10 +528,14 @@ export class ClaudeAgentSDK {
               this.debugSnippet('Assistant text block', textContent);
               // Detect common provider/billing errors and surface them clearly
               const lc = textContent.toLowerCase();
+              if (this.isRequestTooLargeText(textContent)) {
+                requestTooLargeDetected = true;
+                lastSdkErrorText = textContent;
+              }
               if (lc.includes('credit balance is too low') || lc.includes('insufficient') && lc.includes('credit')) {
                 const msg = 'Anthropic API credits are exhausted ("Credit balance is too low"). Please top up or set a key with available balance.';
                 logger.error('Planner billing error', { message: textContent });
-                this.activityWriter.addActivity({ type: 'error', message: 'Planner billing error', details: { text: textContent }, role: 'system' });
+                this.recordSystemActivity('error', 'Planner billing error', { text: textContent });
                 // Provide a concise user-facing message in chat context
                 finalResponse += `\n\n[System] ${msg}`;
               } else {
@@ -526,6 +559,29 @@ export class ClaudeAgentSDK {
                 // Persist thinking to SQL for history
                 try { if (this.currentSessionId) this.memoryStore.addActivity(this.currentSessionId, 'thinking', thinkingText.trim(), {}); } catch {}
               }
+            } else if (blockType === 'skill') {
+              // Handle skill loading/usage events from Agent SDK
+              const skillName = blockAny.name || blockAny.skill_name || 'unknown';
+              const skillDescription = blockAny.description || '';
+
+              logger.info('Skill loaded/used', { skillName, description: skillDescription });
+
+              this.activityWriter.addActivity({
+                type: 'skill',
+                message: `Loaded skill: ${skillName}`,
+                speaker: this.botName,
+                role: 'bot',
+              });
+
+              // Persist skill usage to SQL for history
+              try {
+                if (this.currentSessionId) {
+                  this.memoryStore.addActivity(this.currentSessionId, 'skill', skillName, {
+                    description: skillDescription,
+                    timestamp: Date.now(),
+                  });
+                }
+              } catch {}
             } else if (blockType === 'tool_use') {
               if (blockAny.name) {
                 toolsUsed.add(blockAny.name);
@@ -534,6 +590,29 @@ export class ClaudeAgentSDK {
                 toolName: blockAny.name,
                 toolInput: blockAny.input,
               });
+
+              // Special handling for Skill tool (provided by SDK, not wrapped by loggingTool)
+              if (blockAny.name === 'Skill' && blockAny.input) {
+                const skillName = blockAny.input.command || blockAny.input.skill_name || blockAny.input.name || 'unknown';
+                logger.info('Skill invoked via Skill tool', { skillName, input: blockAny.input });
+
+                this.activityWriter.addActivity({
+                  type: 'skill',
+                  message: `Used skill: ${skillName}`,
+                  speaker: this.botName,
+                  role: 'bot',
+                });
+
+                // Persist skill usage to SQL for tracking
+                try {
+                  if (this.currentSessionId) {
+                    this.memoryStore.addActivity(this.currentSessionId, 'skill', skillName, {
+                      input: blockAny.input,
+                      timestamp: Date.now(),
+                    });
+                  }
+                } catch {}
+              }
 
               // Tool logging is now handled by loggingTool wrapper in mcpTools.ts
               // This captures both input and output at the MCP server level
@@ -570,9 +649,29 @@ export class ClaudeAgentSDK {
         if (this.isAbortError(error) || abortController.signal.aborted) {
           aborted = true;
           logger.info('Claude run aborted', { reason: this.abortReason || 'unknown' });
+        } else if (this.isRequestTooLargeText(error?.message) || this.isRequestTooLargeText(lastSdkErrorText)) {
+          requestTooLargeDetected = true;
+          if (!lastSdkErrorText && typeof error?.message === 'string') {
+            lastSdkErrorText = error.message;
+          }
+          logger.warn('Claude run reported request too large', {
+            message: lastSdkErrorText || error?.message,
+          });
         } else {
           throw error;
         }
+      }
+
+      if (requestTooLargeDetected) {
+        this.recordSystemActivity('warn', 'Claude prompt exceeded size limit; retrying with trimmed context', {
+          last_error: lastSdkErrorText?.slice(0, 200),
+        });
+        this.removeMostRecentUserMessage(userMessageContent);
+        this.shrinkConversationHistory(4);
+        this.skipMemoryPromptOnce = true;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        await this.handleChatMessage(username, message, retryCount + 1, force, false);
+        return;
       }
 
       if (aborted) {
@@ -647,12 +746,7 @@ export class ClaudeAgentSDK {
       logger.error('Failed to process chat message', { error: error.message, stack: error.stack });
 
       // Record as activity + memory
-      this.activityWriter.addActivity({
-        type: 'warn',
-        message: `Recovery: attempt ${retryCount + 1} failed`,
-        details: { error: error.message },
-        role: 'system',
-      });
+      this.recordSystemActivity('warn', `Recovery: attempt ${retryCount + 1} failed`, { error: error.message });
       // Attach last lines of SDK stderr for diagnosis
       try {
         const errPath = path.resolve('logs', this.botName, 'claude-code-stderr.log');
@@ -660,7 +754,7 @@ export class ClaudeAgentSDK {
           const buf = fs.readFileSync(errPath, 'utf-8');
           const lines = buf.trim().split(/\r?\n/);
           const tail = lines.slice(-10).join('\n');
-          this.activityWriter.addActivity({ type: 'error', message: 'Claude Code stderr (tail)', details: { tail }, role: 'system' });
+          this.recordSystemActivity('error', 'Claude Code stderr (tail)', { tail });
         }
       } catch {}
       appendDiaryEntry(`Chat handling failed for ${username}`, {
@@ -815,6 +909,52 @@ ${chatContext}
     const maxLength = 400;
     const snippet = value.length > maxLength ? `${value.slice(0, maxLength)}…` : value;
     logger.debug(`${label}`, { length: value.length, snippet });
+  }
+
+  private recordSystemActivity(level: 'info' | 'warn' | 'error', message: string, details?: any): void {
+    this.activityWriter.addActivity({
+      type: level,
+      message,
+      speaker: 'SYSTEM',
+      role: 'system',
+      details,
+    });
+    const sessionId = this.currentSessionId || this.memoryStore.getLastActiveSessionId();
+    if (!sessionId) return;
+    try {
+      this.memoryStore.addActivity(sessionId, level, message, details);
+    } catch (error: any) {
+      logger.debug('Failed to persist system activity', { error: error?.message || error });
+    }
+  }
+
+  private isRequestTooLargeText(value?: string | null): boolean {
+    if (!value) return false;
+    const normalized = value.toLowerCase();
+    return normalized.includes('request_too_large') || normalized.includes('request exceeds the maximum size') || normalized.includes('413');
+  }
+
+  private shrinkConversationHistory(limit: number): void {
+    if (limit <= 0) {
+      this.conversationHistory = [];
+      return;
+    }
+    if (this.conversationHistory.length > limit) {
+      this.conversationHistory = this.conversationHistory.slice(-limit);
+    }
+  }
+
+  private removeMostRecentUserMessage(message: string): void {
+    const needle = message.trim();
+    for (let i = this.conversationHistory.length - 1; i >= 0; i -= 1) {
+      const entry = this.conversationHistory[i];
+      if (entry.role !== 'user') continue;
+      const content = entry.content || '';
+      if (content.endsWith(needle)) {
+        this.conversationHistory.splice(i, 1);
+        break;
+      }
+    }
   }
 
   private refreshAllowedTools(): void {

@@ -12,7 +12,7 @@
         class="sidebar"
       >
         <n-space vertical :size="16" class="sidebar-content">
-          <n-h3 prefix="bar" class="sidebar-header">
+          <n-h3 class="sidebar-header">
             Colony Agents
           </n-h3>
 
@@ -81,6 +81,11 @@
 
                   <!-- Inventory -->
                   <SidebarInventory />
+
+                  <!-- Skills -->
+                  <n-collapse arrow-placement="right" style="margin-top: 12px;">
+                    <SidebarSkills />
+                  </n-collapse>
 
                   <!-- Actions -->
                   <n-space :size="8" style="margin-top: 12px;">
@@ -170,13 +175,19 @@
       @close="issuesModalOpen = false"
       @refresh="loadIssues"
     />
+    <CraftscriptModal
+      :open="store.craftModal.open"
+      :job-id="store.craftModal.jobId"
+      :seed="store.craftModal.seed"
+      @close="closeCraftscriptModal"
+    />
     </n-message-provider>
   </n-config-provider>
 </template>
 
 <script setup lang="ts">
-import { computed, inject, onMounted, ref, watch } from 'vue';
-import { darkTheme } from 'naive-ui';
+import { computed, inject, onMounted, provide, ref, watch } from 'vue';
+import { darkTheme, NCollapse } from 'naive-ui';
 import { themeOverrides } from './theme';
 import type { store as Store } from './main';
 import Timeline from './components/Timeline.vue';
@@ -185,8 +196,41 @@ import BlueprintsModal from './components/BlueprintsModal.vue';
 import BlueprintDetail from './components/BlueprintDetail.vue';
 import IssueTrackerModal from './components/IssueTrackerModal.vue';
 import SidebarInventory from './components/SidebarInventory.vue';
+import SidebarSkills from './components/SidebarSkills.vue';
+import CraftscriptModal from './components/CraftscriptModal.vue';
+import { deriveJobIdFromEvent } from './utils/craftscriptJob';
 
 const store = inject<any>('store');
+
+function openCraftscriptModalFromEvent(event: any) {
+  if (!store?.craftModal) return;
+  const jobId = deriveJobIdFromEvent(event);
+  if (!jobId) return;
+  store.craftModal.jobId = jobId;
+  store.craftModal.seed = event || null;
+  store.craftModal.open = true;
+}
+
+function openCraftscriptModalById(jobId: string | null) {
+  if (!store?.craftModal || !jobId) return;
+  store.craftModal.jobId = jobId;
+  store.craftModal.seed = null;
+  store.craftModal.open = true;
+}
+
+function closeCraftscriptModal() {
+  if (!store?.craftModal) return;
+  store.craftModal.open = false;
+  store.craftModal.jobId = null;
+  store.craftModal.seed = null;
+}
+
+provide('craftscriptModal', {
+  state: store?.craftModal,
+  openFromEvent: openCraftscriptModalFromEvent,
+  openById: openCraftscriptModalById,
+  close: closeCraftscriptModal,
+});
 
 // Simple client-side de-dup
 const seenKeys = new Set<string>();
@@ -249,6 +293,7 @@ const botNames = computed(() => bots.value.map((b: any) => b.name));
 const openIssuesCount = computed(() =>
   issues.value.filter((i: any) => !['resolved', 'closed'].includes(String(i.state))).length
 );
+
 
 function getStatusType(status: string): 'success' | 'info' | 'warning' | 'error' {
   if (status === 'connected') return 'success';
@@ -515,14 +560,32 @@ function openIssuesModal() {
 
 .bot-card {
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
+}
+
+.bot-card:hover {
+  transform: translateY(-1px);
 }
 
 .bot-card-active {
-  border-color: var(--n-border-color-primary);
+  border-color: #4a9eff !important;
 }
 
 .header {
   padding: 16px 24px;
+}
+
+.alerts-stack {
+  margin-bottom: 16px;
+}
+
+.alert-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.alert-meta {
+  font-size: 12px;
 }
 </style>
