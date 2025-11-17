@@ -107,6 +107,20 @@ Follow this sequence to validate new behavior end-to-end:
 5. **Shut down cleanly**
    - When finished, `make stop-colony` (which also tears down agents) and `make stop-server`.
 
+## Server Version Lock (Paper 1.21.4)
+
+We standardize on Paper **1.21.4 build 63** so every bot and client stays in sync.
+
+- `make start-server` always launches `minecraft-server/server/paper.jar`. Keep it identical to both `paper-1.21.4-java17.jar` and `versions/1.21.4/paper-1.21.4-63.jar`:
+  ```bash
+  cd minecraft-server/server
+  cp versions/1.21.4/paper-1.21.4-63.jar paper-1.21.4-java17.jar
+  cp versions/1.21.4/paper-1.21.4-63.jar paper.jar
+  ```
+- Swap jars only after `make stop-server`, then run `make start-server` and confirm with `make status-server`. If the start command fails with `Address already in use`, free port 25565 via `lsof -nP -i tcp:25565` and `kill <pid>`.
+- If Paperclip reports `Hash check failed for downloaded file mojang_1.21.4.jar`, delete `minecraft-server/server/cache/mojang_1.21.4.jar` and start again so it redownloads the vanilla bits.
+- Clients must connect with a **1.21.4** profile; mismatched clients see “Incompatible version.”
+
 ## Shared Configuration
 
 ### .claude/ Directory

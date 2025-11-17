@@ -1,94 +1,90 @@
 import type { GlobalThemeOverrides } from 'naive-ui';
 
-// Minecraft-inspired dark theme with better colors
+// Clean, readable dark theme for debugging
 export const themeOverrides: GlobalThemeOverrides = {
   common: {
-    primaryColor: '#5cb85c', // Minecraft grass green
-    primaryColorHover: '#6fd86f',
-    primaryColorPressed: '#4a9e4a',
-    primaryColorSuppl: '#7ee07e',
+    primaryColor: '#4a9eff',
+    primaryColorHover: '#6bb0ff',
+    primaryColorPressed: '#3a8eef',
+    primaryColorSuppl: '#5ca3ff',
 
-    infoColor: '#4a9eff', // Sky blue
+    infoColor: '#4a9eff',
     infoColorHover: '#6bb0ff',
     infoColorPressed: '#3a8eef',
 
-    successColor: '#5cb85c', // Green (emerald)
-    successColorHover: '#6fd86f',
-    successColorPressed: '#4a9e4a',
+    successColor: '#52c41a',
+    successColorHover: '#73d13d',
+    successColorPressed: '#389e0d',
 
-    warningColor: '#f0ad4e', // Gold/amber
-    warningColorHover: '#f2bd6e',
-    warningColorPressed: '#e09d3e',
+    warningColor: '#faad14',
+    warningColorHover: '#ffc53d',
+    warningColorPressed: '#d48806',
 
-    errorColor: '#d9534f', // Redstone red
-    errorColorHover: '#e17370',
-    errorColorPressed: '#c9433f',
+    errorColor: '#f5222d',
+    errorColorHover: '#ff4d4f',
+    errorColorPressed: '#cf1322',
 
-    // Background colors
-    bodyColor: '#0f1115', // Very dark gray
-    cardColor: '#1c1e24', // Dark card background
-    modalColor: '#1c1e24',
-    popoverColor: '#252830',
-    hoverColor: 'rgba(255, 255, 255, 0.05)',
+    bodyColor: '#141517',
+    cardColor: '#1e2024',
+    modalColor: '#1e2024',
+    popoverColor: '#2a2d33',
+    hoverColor: 'rgba(255, 255, 255, 0.06)',
 
-    // Text colors
-    textColorBase: '#e5e7eb', // Light gray text
-    textColor1: '#f3f4f6',
+    textColorBase: '#e3e5e8',
+    textColor1: '#eff0f2',
     textColor2: '#d1d5db',
     textColor3: '#9ca3af',
 
-    // Border colors
     borderColor: '#2d3139',
     dividerColor: '#2d3139',
 
-    // Additional
-    borderRadius: '8px',
+    borderRadius: '6px',
     borderRadiusSmall: '4px',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-    fontSize: '15px',
-    fontSizeMini: '13px',
-    fontSizeTiny: '13px',
-    fontSizeSmall: '14px',
-    fontSizeMedium: '15px',
-    fontSizeLarge: '16px',
-    fontSizeHuge: '18px',
+    fontFamily: "'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    fontSize: '14px',
+    fontSizeMini: '12px',
+    fontSizeTiny: '12px',
+    fontSizeSmall: '13px',
+    fontSizeMedium: '14px',
+    fontSizeLarge: '15px',
+    fontSizeHuge: '17px',
   },
   Layout: {
-    color: '#0f1115',
-    siderColor: '#16181d',
-    headerColor: '#16181d',
-    footerColor: '#16181d',
+    color: '#141517',
+    siderColor: '#1a1d24',
+    headerColor: '#1a1d24',
+    footerColor: '#1a1d24',
     siderBorderColor: '#2d3139',
     headerBorderColor: '#2d3139',
   },
   Card: {
-    borderRadius: '8px',
-    color: '#1c1e24',
-    colorEmbedded: '#16181d',
+    borderRadius: '6px',
+    color: '#1e2024',
+    colorEmbedded: '#1a1d24',
+    borderColor: '#2d3139',
     paddingMedium: '16px 20px',
     paddingLarge: '20px 24px',
   },
   DataTable: {
-    thColor: '#16181d',
-    tdColor: '#1c1e24',
+    thColor: '#1a1d24',
+    tdColor: '#1e2024',
     borderColor: '#2d3139',
   },
   Timeline: {
-    lineColor: '#2d3139',
+    lineColor: '#3a3f4b',
     contentTextColor: '#d1d5db',
   },
   Progress: {
     railColor: '#2d3139',
   },
   Badge: {
-    color: '#5cb85c',
-    textColor: '#ffffff',
+    fontWeight: '500',
   },
   Tag: {
     borderRadius: '4px',
   },
   Button: {
     borderRadiusMedium: '6px',
-    borderRadiusLarge: '8px',
+    borderRadiusLarge: '6px',
   },
 };

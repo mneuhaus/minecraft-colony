@@ -1,24 +1,24 @@
 <template>
   <div class="sidebar-inventory" v-if="inv">
-    <div class="inv__hdr">
-      <span class="inv__title">Inventory</span>
-      <span class="inv__stats">
-        <span class="chip">{{ inv.totalTypes }} types</span>
-        <span class="chip">{{ inv.slotsUsed }}/{{ inv.totalSlots }} slots</span>
-      </span>
+    <div class="inventory-header">
+      <h4>Inventory</h4>
+      <div class="inventory-stats">
+        <span class="stat">{{ inv.totalTypes }} types</span>
+        <span class="stat">{{ inv.slotsUsed }}/{{ inv.totalSlots }} slots</span>
+      </div>
     </div>
-    <div class="inv-grid">
+    <div class="inventory-grid">
       <div
         v-for="slot in 36"
         :key="slot"
-        class="inv-slot"
-        :class="{ 'inv-slot--filled': !!slotItem(slot-1) }"
-        :title="slotItem(slot-1)?.name || 'empty'"
+        class="inventory-slot"
+        :class="{ filled: !!slotItem(slot-1) }"
       >
         <template v-if="slotItem(slot-1)">
-          <img :src="getItemTexture(slotItem(slot-1)!.name)" class="inv-icon" :alt="slotItem(slot-1)!.name"
+          <img :src="getItemTexture(slotItem(slot-1)!.name)" class="item-icon" :alt="slotItem(slot-1)!.name"
                @error="(e)=>((e.target as HTMLImageElement).style.display='none')" />
-          <span class="inv-badge">{{ slotItem(slot-1)!.count }}</span>
+          <div class="item-count">{{ slotItem(slot-1)!.count }}</div>
+          <div class="item-tooltip">{{ formatItemName(slotItem(slot-1)!.name) }}</div>
         </template>
       </div>
     </div>
@@ -53,6 +53,15 @@ function getItemTexture(name: string){
   return `/api/minecraft/item/${encodeURIComponent(clean)}/texture`;
 }
 
+function formatItemName(name: string): string {
+  return name
+    .replace(/minecraft:/g, '')
+    .replace(/_/g, ' ')
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 onMounted(()=> {
   load();
   timer = setInterval(load, 4000);
@@ -64,15 +73,102 @@ watch(activeBot, ()=> load());
 </script>
 
 <style scoped>
-.sidebar-inventory { margin-top: 12px; padding: 10px; border: 1px solid #2E2E2E; border-radius: 10px; background: #181818; }
-.inv__hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
-.inv__title { color:#FFB86C; font-weight:600; font-size:14px; }
-.inv__stats { display:flex; gap:6px; }
-.chip { padding: 2px 6px; border:1px solid #2E2E2E; border-radius:6px; font-size:12px; color:#B3B3B3; }
-.inv-grid { display:grid; grid-template-columns:repeat(9,1fr); gap:2px; background:#0f0f0f; padding:4px; border-radius:6px; }
-.inv-slot { aspect-ratio:1; background:#2b2b2b; border:1px solid #3a3a3a; border-radius:3px; display:flex; align-items:center; justify-content:center; position:relative; }
-.inv-slot--filled { background:#3a3a3a; border-color:#4a4a4a; }
-.inv-slot:hover { border-color:#777; box-shadow: inset 0 0 2px rgba(255,255,255,0.1); }
-.inv-icon { width:90%; height:90%; image-rendering: pixelated; object-fit: contain; }
-.inv-badge { position:absolute; top:2px; right:2px; background:#E96D2F; color:#FFF; font-size:9px; font-weight:700; padding:1px 4px; border-radius:4px; line-height:1.2; font-family:'Monaco','Courier New',monospace; box-shadow: 0 1px 2px rgba(0,0,0,0.5); }
+.sidebar-inventory {
+  margin-top: 16px;
+}
+
+.inventory-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.inventory-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.inventory-stats {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.stat {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 42px);
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.inventory-slot {
+  aspect-ratio: 1;
+  background: linear-gradient(135deg, #2b2f38 0%, #1a1d24 100%);
+  border: 1px solid #0f1115;
+  border-radius: 4px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.inventory-slot.filled {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: linear-gradient(135deg, #3d4048 0%, #262932 100%);
+}
+
+.inventory-slot:hover {
+  transform: scale(1.05);
+  z-index: 10;
+}
+
+.item-icon {
+  width: 85%;
+  height: 85%;
+  image-rendering: pixelated;
+  object-fit: contain;
+}
+
+.item-count {
+  position: absolute;
+  bottom: 3px;
+  right: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.item-tooltip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.9);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  z-index: 100;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.inventory-slot:hover .item-tooltip {
+  opacity: 1;
+}
 </style>

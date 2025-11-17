@@ -1,4 +1,5 @@
-import { createApp, reactive } from 'vue';
+import { createApp, reactive, h } from 'vue';
+import { createRouter, createWebHistory, RouterView } from 'vue-router';
 import App from './App.vue';
 import './styles.css';
 
@@ -15,9 +16,34 @@ export const store = reactive({
   items: [] as TimelineItem[],
   activeBot: '' as string,
   viewMode: 'single' as 'single' | 'all',
+  craftModal: {
+    open: false,
+    jobId: null as string | null,
+    seed: null as TimelineItem | null,
+  },
 });
 
-const app = createApp(App);
+const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    {
+      path: '/',
+      name: 'Dashboard',
+      component: App,
+    },
+    {
+      path: '/craftscript/:jobId',
+      name: 'CraftscriptDetails',
+      component: App,
+    },
+  ],
+});
+
+const app = createApp({
+  render: () => h(RouterView),
+});
+
 app.use(naive);
+app.use(router);
 app.provide('store', store);
 app.mount('#app');

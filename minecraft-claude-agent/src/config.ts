@@ -17,6 +17,7 @@ export interface Config {
     port: number;
     username: string;
   };
+  botName?: string;
   logging: {
     level: string;
   };

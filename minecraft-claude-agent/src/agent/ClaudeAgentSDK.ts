@@ -58,7 +58,7 @@ export class ClaudeAgentSDK {
     logger.info('Claude Agent SDK initialized', {
       model: this.model,
     });
-    this.botName = this.config.minecraft.username || 'ClaudeBot';
+    this.botName = this.config.botName || this.config.minecraft.username || 'ClaudeBot';
     this.botNameLower = this.botName.toLowerCase();
     this.atBotName = `@${this.botNameLower}`;
     this.backstory = backstory;
@@ -68,6 +68,17 @@ export class ClaudeAgentSDK {
 
     // Initialize memory store
     this.memoryStore = new SqlMemoryStore(this.botName);
+  }
+
+  public async sendStopHookMessage(message?: string): Promise<void> {
+    const stopMessage =
+      message?.trim() ||
+      'continue developing the colony on your own, no need for my guidance/confirmation.';
+    try {
+      await this.handleChatMessage('stop-hook', stopMessage, 0, true, true);
+    } catch (error: any) {
+      logger.warn('Failed to deliver stop-hook message', { error: error?.message || error });
+    }
   }
 
   private enqueuePlayerMessage(username: string, message: string): void {
@@ -116,10 +127,7 @@ export class ClaudeAgentSDK {
     summary += '\nPlease review the CraftScript skill.';
     summary = summary.slice(0, 320);
     this.recordSystemActivity('error', summary, { job_id: event.id, error: event.error });
-    const interruptChat = (process.env.CRAFTSCRIPT_ERROR_INTERRUPT_CHAT ?? 'false').toLowerCase() !== 'false';
-    if (interruptChat) {
-      this.enqueueSystemInterrupt(summary);
-    }
+    this.enqueueSystemInterrupt(summary);
   }
 
   private isAbortError(error: any): boolean {

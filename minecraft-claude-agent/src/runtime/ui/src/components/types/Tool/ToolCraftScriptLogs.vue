@@ -4,6 +4,9 @@
       <span class="tool-icon">📋</span>
       <span class="tool-name">CraftScript Logs</span>
       <span class="log-status" :class="statusClass">{{ statusBadge }}</span>
+      <button class="detail-btn" @click="openDetail" :disabled="!jobId" title="Open CraftScript detail view">
+        🧱 View Details
+      </button>
       <button class="trace-btn" @click="viewTrace" title="View 3D block changes and movement">
         🔍 View Trace
       </button>
@@ -12,7 +15,7 @@
     <div class="log-meta">
       <div class="meta-row">
         <span class="meta-k">Job ID</span>
-        <span class="meta-v">{{ jobId }}</span>
+        <span class="meta-v">{{ jobId || '—' }}</span>
       </div>
       <div class="meta-row" v-if="status">
         <span class="meta-k">Status</span>
@@ -85,6 +88,20 @@
           <div v-else class="entry-unknown">
             {{ JSON.stringify(entry.data) }}
           </div>
+
+          <div v-if="getVoxSegments(entry).length" class="entry-vox">
+            <div
+              v-for="(segment, idx) in getVoxSegments(entry)"
+              :key="idx"
+              class="vox-path"
+            >
+              <div class="vox-path__meta">
+                <span class="vox-path__label">{{ segment.label || 'vox' }}</span>
+                <span v-if="segment.target" class="vox-path__target">@ {{ formatTarget(segment.target) }}</span>
+              </div>
+              <VoxPreview :vox="segment.vox" :target="segment.target" />
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -97,10 +114,14 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useRouter } from 'vue-router';
+import VoxPreview from '../../VoxPreview.vue';
 
 const props = defineProps<{ item: any }>();
+const router = useRouter();
 
 const raw = computed(() => {
+
   const o = props.item?.payload?.output;
   if (typeof o === 'string') {
     try { return JSON.parse(o); } catch { return {}; }
@@ -108,7 +129,7 @@ const raw = computed(() => {
   return o ?? {};
 });
 
-const jobId = computed(() => raw.value?.job_id || '?');
+const jobId = computed(() => raw.value?.job_id || props.item?.payload?.params_summary?.job_id || null);
 const status = computed(() => raw.value?.status);
 const error = computed(() => raw.value?.error);
 const logs = computed(() => Array.isArray(raw.value?.logs) ? raw.value.logs : []);
@@ -159,7 +180,59 @@ function formatLogArgs(args: any[]): string {
   }).join(' ');
 }
 
+function getVoxTarget(data: any) {
+  if (!data) return null;
+  if (Array.isArray(data.world) && data.world.length === 3) return data.world;
+  if (typeof data.world === 'object') return data.world;
+  if (data.origin) return data.origin;
+  if (data.position) return data.position;
+  if (data.target) return data.target;
+  return null;
+}
+
+function getVoxSegments(entry: any) {
+  const segments: Array<{ vox: any; target?: any; label?: string }> = [];
+  const pushSegment = (segment: any, fallbackLabel?: string) => {
+    if (!segment || !segment.vox) return;
+    segments.push({
+      vox: segment.vox,
+      target: segment.pos || segment.target || segment.world || getVoxTarget(segment) || entry?.data?.world,
+      label: segment.label || fallbackLabel,
+    });
+  };
+  const inspect = (data: any, labelPrefix = '') => {
+    if (!data) return;
+    if (data.vox) pushSegment({ vox: data.vox, target: data.world || data.target }, labelPrefix || data.label);
+    const path = data.vox_path;
+    if (Array.isArray(path)) {
+      path.forEach((segment: any, idx: number) => pushSegment(segment, segment.label || `${labelPrefix || 'path'}-${idx}`));
+    }
+    if (data.notes) {
+      inspect(data.notes, labelPrefix || 'notes');
+    }
+    if (data.debug) {
+      inspect(data.debug, labelPrefix || 'debug');
+    }
+  };
+  inspect(entry?.data, entry?.kind);
+  return segments;
+}
+
+function formatTarget(target: any) {
+  if (!target) return '';
+  if (Array.isArray(target) && target.length === 3) return target.join(', ');
+  if (typeof target === 'object') return [target.x, target.y, target.z].filter((v) => typeof v === 'number').join(', ');
+  return String(target);
+}
+
+function openDetail() {
+  const job = jobId.value;
+  if (!job || job === '?') return;
+  router.push({ name: 'CraftscriptDetails', params: { jobId: job } }).catch(() => {});
+}
+
 async function viewTrace() {
+
   const job = jobId.value;
   if (!job || job === '?') return;
 
@@ -195,6 +268,7 @@ async function viewTrace() {
 .status-failed { color: var(--color-danger); border-color: rgba(248,113,113,0.4); }
 .status-running { color: var(--color-accent); border-color: rgba(74,158,255,0.4); }
 .status-canceled { opacity: 0.65; }
+.detail-btn,
 .trace-btn {
   background: var(--color-accent-soft);
   border: 1px solid rgba(74,158,255,0.4);
@@ -202,6 +276,7 @@ async function viewTrace() {
   border-radius: 6px;
   padding: 4px 10px;
   font-size: 14px;
+  margin-left: 6px;
 }
 
 .log-meta {
@@ -276,5 +351,9 @@ async function viewTrace() {
 .step-meta { display: flex; gap: 8px; opacity: 0.65; font-size: 13px; }
 .step-error { color: var(--color-danger); margin-top: 4px; }
 .entry-trace { font-family: 'Courier New', monospace; font-size: 14px; }
+.entry-vox { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.vox-path { border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 6px; }
+.vox-path__meta { display: flex; gap: 8px; align-items: center; font-size: 12px; opacity: 0.85; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+.vox-path__target { opacity: 0.7; text-transform: none; letter-spacing: normal; }
 .log-empty { opacity: 0.65; font-style: italic; margin-top: 8px; }
 </style>

@@ -91,10 +91,12 @@ import SystemMessage from './types/SystemMessage.vue';
 import SkillMessage from './types/SkillMessage.vue';
 import ToolCard from './types/Tool/ToolCard.vue';
 import ThinkingMessage from './types/ThinkingMessage.vue';
+import { useRouter } from 'vue-router';
 
 const props = defineProps<{ item: any; expandedState: Record<string, boolean> }>();
 const message = useMessage();
 const isHighlighted = ref(false);
+const router = useRouter();
 
 // Generate unique key for this item
 const itemKey = computed(() => {
@@ -296,9 +298,7 @@ function openCraftscriptDetails() {
   const jobId = craftscriptJobId.value;
   if (!jobId) return;
 
-  // Open in new window
-  const url = `/craftscript/${encodeURIComponent(jobId)}`;
-  window.open(url, '_blank');
+  router.push({ name: 'CraftscriptDetails', params: { jobId } }).catch(() => {});
 }
 
 const identityLabel = computed(() => {

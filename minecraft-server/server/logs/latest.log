@@ -1,1 +1,18 @@
-[00:21:44] [Server thread/WARN]: Can't keep up! Is the server overloaded? Running 2843ms or 56 ticks behind
+[10:14:05] [ServerMain/INFO]: [bootstrap] Running Java 25 (OpenJDK 64-Bit Server VM 25.0.1; Homebrew Homebrew) on Mac OS X 15.3.1 (x86_64)
+[10:14:05] [ServerMain/INFO]: [bootstrap] Loading Paper 1.21.4-63-main@feb8756 (2024-12-28T21:39:34Z) for Minecraft 1.21.4
+[10:14:06] [ServerMain/INFO]: [PluginInitializerManager] Initializing plugins...
+[10:14:07] [ServerMain/INFO]: [PluginInitializerManager] Initialized 1 plugin
+[10:14:07] [ServerMain/INFO]: [PluginInitializerManager] Bukkit plugins (1):
+ - BannerGenerator (1.0.0)
+[10:14:11] [ServerMain/INFO]: Environment: Environment[sessionHost=https://sessionserver.mojang.com, servicesHost=https://api.minecraftservices.com, name=PROD]
+[10:14:11] [ServerMain/ERROR]: Failed to start the minecraft server
+net.minecraft.util.DirectoryLock$LockException: /Users/mneuhaus/Workspace/minecraft/minecraft-server/server/./world/session.lock: already locked (possibly by other Minecraft instance?)
+	at net.minecraft.util.DirectoryLock$LockException.alreadyLocked(DirectoryLock.java:100) ~[paper-1.21.4.jar:1.21.4-63-feb8756]
+	at net.minecraft.util.DirectoryLock.create(DirectoryLock.java:30) ~[paper-1.21.4.jar:1.21.4-63-feb8756]
+	at net.minecraft.world.level.storage.LevelStorageSource$LevelStorageAccess.<init>(LevelStorageSource.java:435) ~[paper-1.21.4.jar:1.21.4-63-feb8756]
+	at net.minecraft.world.level.storage.LevelStorageSource.validateAndCreateAccess(LevelStorageSource.java:350) ~[paper-1.21.4.jar:1.21.4-63-feb8756]
+	at net.minecraft.server.Main.main(Main.java:184) ~[paper-1.21.4.jar:1.21.4-63-feb8756]
+	at io.papermc.paper.PaperBootstrap.boot(PaperBootstrap.java:21) ~[paper-1.21.4.jar:1.21.4-63-feb8756]
+	at org.bukkit.craftbukkit.Main.main(Main.java:281) ~[paper-1.21.4.jar:1.21.4-63-feb8756]
+	at io.papermc.paperclip.Paperclip.lambda$main$0(Paperclip.java:42) ~[app:?]
+	at java.base/java.lang.Thread.run(Thread.java:1474) ~[?:?]

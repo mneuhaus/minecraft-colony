@@ -173,6 +173,7 @@ export class BotManager extends EventEmitter {
     instance.status = 'stopping';
 
     try {
+      await instance.claudeAgent.sendStopHookMessage();
       instance.claudeAgent.stop();
       instance.minecraftBot.disconnect();
       instance.status = 'stopped';

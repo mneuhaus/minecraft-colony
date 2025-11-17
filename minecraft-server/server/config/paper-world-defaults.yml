@@ -128,7 +128,6 @@ entities:
     stuck-entity-poi-retry-delay: 200
     zombie-villager-infection-chance: default
     zombies-target-turtle-eggs: true
-  entities-target-with-follow-range: false
   markers:
     tick: true
   mob-effects:
@@ -235,7 +234,6 @@ entities:
 environment:
   disable-explosion-knockback: false
   disable-ice-and-snow: false
-  disable-teleportation-suffocation-check: false
   disable-thunder: false
   fire-tick-delay: 30
   frosted-ice:

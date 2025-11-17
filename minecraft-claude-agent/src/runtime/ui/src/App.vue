@@ -132,7 +132,16 @@
 
       <!-- Main Content -->
       <n-layout :native-scrollbar="false">
-        <n-layout-header bordered class="header">
+      <n-layout-header bordered class="header">
+        <template v-if="viewingCraftscript">
+          <n-space justify="space-between" align="center">
+            <n-space align="center" :size="12">
+              <n-button size="small" quaternary @click="goBackToTimeline">← Back to Timeline</n-button>
+              <n-h2 style="margin: 0;">CraftScript Job {{ craftscriptJobId }}</n-h2>
+            </n-space>
+          </n-space>
+        </template>
+        <template v-else>
           <n-space justify="space-between" align="center">
             <n-h2 style="margin: 0;">Activity Timeline</n-h2>
             <n-space :size="12">
@@ -142,13 +151,15 @@
               </n-radio-group>
             </n-space>
           </n-space>
-        </n-layout-header>
+        </template>
+      </n-layout-header>
 
-        <n-layout-content :native-scrollbar="false" content-style="padding: 24px;">
-          <Timeline :items="filteredItems" @openInspector="openInspector" />
-        </n-layout-content>
-      </n-layout>
+      <n-layout-content :native-scrollbar="false" content-style="padding: 24px;">
+        <CraftscriptDetails v-if="viewingCraftscript" :job-id="craftscriptJobId" />
+        <Timeline v-else :items="filteredItems" @openInspector="openInspector" />
+      </n-layout-content>
     </n-layout>
+  </n-layout>
 
     <!-- Modals -->
     <Inspector :open="inspectorOpen" :item="inspectorItem" @close="inspectorOpen = false" />
@@ -187,6 +198,7 @@
 
 <script setup lang="ts">
 import { computed, inject, onMounted, provide, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { darkTheme, NCollapse } from 'naive-ui';
 import { themeOverrides } from './theme';
 import type { store as Store } from './main';
@@ -198,9 +210,21 @@ import IssueTrackerModal from './components/IssueTrackerModal.vue';
 import SidebarInventory from './components/SidebarInventory.vue';
 import SidebarSkills from './components/SidebarSkills.vue';
 import CraftscriptModal from './components/CraftscriptModal.vue';
+import CraftscriptDetails from './pages/CraftscriptDetails.vue';
 import { deriveJobIdFromEvent } from './utils/craftscriptJob';
 
 const store = inject<any>('store');
+const route = useRoute();
+const router = useRouter();
+const craftscriptJobId = computed(() => {
+  const param = route.params.jobId;
+  if (Array.isArray(param)) return param[0] || null;
+  return typeof param === 'string' && param.length ? param : null;
+});
+const viewingCraftscript = computed(() => Boolean(craftscriptJobId.value));
+function goBackToTimeline() {
+  router.push({ name: 'Dashboard' });
+}
 
 function openCraftscriptModalFromEvent(event: any) {
   if (!store?.craftModal) return;

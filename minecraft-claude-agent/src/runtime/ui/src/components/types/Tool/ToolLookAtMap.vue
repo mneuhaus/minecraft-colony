@@ -4,31 +4,62 @@
       2D top-down map for quick orientation. Each cell summarizes a zoom block; ▲ / • / ▼ show relative height against the bot.
     </div>
 
-    <div class="map-params">
-      <div class="param-row" v-if="radius">
-        <span class="param-label">radius</span>
-        <span class="param-val">{{ radius }}</span>
+    <div v-if="imagePayload" class="map-image-container">
+      <div class="map-image-wrapper">
+        <img :src="imagePayload.image" alt="Map image" class="map-image" />
       </div>
-      <div class="param-row" v-if="zoom && zoom > 1">
-        <span class="param-label">zoom</span>
-        <span class="param-val">{{ zoom }}x ({{ zoom }}x{{ zoom }} blocks/cell)</span>
-      </div>
-      <div class="param-row" v-if="grep.length">
-        <span class="param-label">filter</span>
-        <span class="param-val">{{ grep.join(', ') }}</span>
-      </div>
-      <div class="param-row" v-if="botHeight !== null">
-        <span class="param-label">bot height</span>
-        <span class="param-val">y={{ botHeight }}</span>
+      <div class="map-image-meta">
+        <span v-if="imagePayload.width">{{ Math.round(imagePayload.width) }}px</span>
+        <span v-if="imagePayload.height">× {{ Math.round(imagePayload.height) }}px</span>
+        <span v-if="imagePayload.info?.cells">| {{ imagePayload.info.cells }} cells</span>
+        <span v-if="imagePayload.info?.radius">| radius {{ imagePayload.info.radius }}</span>
+        <span v-if="imagePayload.info?.zoom">| zoom {{ imagePayload.info.zoom }}</span>
+        <span v-if="imagePayload.info?.view">| view {{ imagePayload.info.view }}</span>
       </div>
     </div>
 
-    <div class="map-grid-container" v-if="gridCells.length > 0">
-      <div class="map-orientation">
-        <div class="orientation-row">
-          <div class="orientation-label">↑ Forward</div>
+    <template v-else>
+      <div class="map-params">
+        <div class="param-row" v-if="radius">
+          <span class="param-label">radius</span>
+          <span class="param-val">{{ radius }}</span>
         </div>
-        <div class="orientation-hint">← Left | Bot Center | Right → • Matches outlined in blue</div>
+        <div class="param-row" v-if="zoom && zoom > 1">
+          <span class="param-label">zoom</span>
+          <span class="param-val">{{ zoom }}x ({{ zoom }}x{{ zoom }} blocks/cell)</span>
+        </div>
+        <div class="param-row" v-if="grep.length">
+          <span class="param-label">filter</span>
+          <span class="param-val">{{ grep.join(', ') }}</span>
+        </div>
+        <div class="param-row" v-if="botHeight !== null">
+          <span class="param-label">bot height</span>
+          <span class="param-val">y={{ botHeight }}</span>
+        </div>
+      </div>
+
+      <div class="map-grid-container" v-if="gridCells.length > 0">
+        <div class="map-orientation">
+          <div class="orientation-row">
+            <div class="orientation-label">↑ Forward</div>
+          </div>
+          <div class="orientation-hint">← Left | Bot Center | Right → • Matches outlined in blue</div>
+        </div>
+      <div class="map-view-toggle">
+        <button
+          class="map-btn"
+          :class="{ 'map-btn--active': mapViewMode === 'stacked' }"
+          @click="mapViewMode = 'stacked'"
+        >
+          Stacked View
+        </button>
+        <button
+          class="map-btn"
+          :class="{ 'map-btn--active': mapViewMode === 'top' }"
+          @click="mapViewMode = 'top'"
+        >
+          Top-down
+        </button>
       </div>
       <div class="map-grid" :style="{ gridTemplateColumns: `repeat(${gridWidth}, 1fr)` }">
         <div
@@ -56,21 +87,22 @@
         <span class="legend-item"><span class="legend-symbol">•</span> Level (±1)</span>
         <span class="legend-item"><span class="legend-symbol">▼</span> Below (-2)</span>
       </div>
-    </div>
-
-    <div class="map-summary" v-if="cellCount > 0">
-      <div class="summary-label">{{ cellCount }} cells | {{ uniqueBlocks.length }} block types</div>
-      <div class="blocks-list">
-        <span v-for="block in uniqueBlocks" :key="block" class="block-tag">{{ block }}</span>
       </div>
-    </div>
 
-    <div class="map-stats" v-if="heightStats">
-      <div class="stat-row">
-        <span class="stat-label">Height range:</span>
-        <span class="stat-val">{{ heightStats.min }} to {{ heightStats.max }}</span>
+      <div class="map-summary" v-if="cellCount > 0">
+        <div class="summary-label">{{ cellCount }} cells | {{ uniqueBlocks.length }} block types</div>
+        <div class="blocks-list">
+          <span v-for="block in uniqueBlocks" :key="block" class="block-tag">{{ block }}</span>
+        </div>
       </div>
-    </div>
+
+      <div class="map-stats" v-if="heightStats">
+        <div class="stat-row">
+          <span class="stat-label">Height range:</span>
+          <span class="stat-val">{{ heightStats.min }} to {{ heightStats.max }}</span>
+        </div>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -111,7 +143,16 @@ const grep = computed(() => {
 
 // View options
 const flipVertical = ref(true);
+const mapViewMode = ref<'stacked' | 'top'>('stacked');
 const tone = computed(() => (matchesOnly.value ? 'info' : 'neutral'));
+const imagePayload = computed(() => {
+  if (!raw.value || typeof raw.value !== 'object') return null;
+  const img = (raw.value as any).image;
+  if (typeof img === 'string' && img.startsWith('data:image')) {
+    return raw.value as any;
+  }
+  return null;
+});
 
 const uniqueBlocks = computed(() => {
   const blocks = new Set<string>();
@@ -156,6 +197,18 @@ function worldToGrid(cells: any[]): { minX: number; maxX: number; minZ: number; 
 }
 
 // Map block names to representative colors
+function hashColor(input: string): string {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = (hash << 5) - hash + input.charCodeAt(i);
+    hash |= 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  const saturation = 45 + (Math.abs(hash) % 30); // 45-75%
+  const lightness = 35 + (Math.abs(hash) % 25); // 35-60%
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+}
+
 function blockToColor(blocks: string[]): string {
   if (!blocks || blocks.length === 0) return '#2a2a2a';
 
@@ -212,6 +265,12 @@ function blockToColor(blocks: string[]): string {
     'snow': '#fffafa',
     'ice': '#9cd3f7',
     'clay': '#a4a8b8',
+    'terracotta': '#a26a52',
+    'brown_terracotta': '#7a4b2a',
+    'light_gray_terracotta': '#b6b0a2',
+    'white_terracotta': '#d6c3b0',
+    'orange_terracotta': '#d78a42',
+    'red_terracotta': '#b44940',
   };
 
   // Try to match the dominant block
@@ -231,7 +290,28 @@ function blockToColor(blocks: string[]): string {
   if (dominantBlock.includes('water')) return '#3f76e4';
   if (dominantBlock.includes('lava')) return '#ea5b09';
 
-  return '#5a5a5a'; // default gray for unknown blocks
+  return hashColor(dominantBlock);
+}
+
+function pickTopVisibleBlock(cell: any): string | null {
+  const tops = Array.isArray(cell?.top_blocks) ? cell.top_blocks.filter(Boolean) : [];
+  if (tops.length) {
+    const counts = new Map<string, number>();
+    for (const block of tops) {
+      counts.set(block, (counts.get(block) ?? 0) + 1);
+    }
+    let winner: string | null = null;
+    let max = 0;
+    counts.forEach((count, block) => {
+      if (count > max) {
+        max = count;
+        winner = block;
+      }
+    });
+    if (winner) return winner;
+  }
+  const blocks = Array.isArray(cell?.blocks) ? cell.blocks : [];
+  return blocks.length ? blocks[0] : null;
 }
 
 const gridWidth = computed(() => {
@@ -247,6 +327,7 @@ const gridWidth = computed(() => {
 const gridCells = computed(() => {
   const cells = [];
   const stats = heightStats.value;
+  const stacked = mapViewMode.value === 'stacked';
 
   // Use provided cells array (world x/z) and index for quick lookup
   const cellMap = new Map<string, any>();
@@ -264,8 +345,10 @@ const gridCells = computed(() => {
       const avgHeight = (cell.height_min + cell.height_max) / 2;
       const blocks = cell.blocks || [];
       const uniqueBlocks = Array.from(new Set(blocks));
-      const colors = uniqueBlocks.map(b => blockToColor([b]));
-      const dominantColor = blockToColor(blocks);
+      const topVisible = stacked ? null : pickTopVisibleBlock(cell);
+      const colors = stacked ? uniqueBlocks.map(b => blockToColor([b])) : undefined;
+      const colorSource = stacked ? blocks : (topVisible ? [topVisible] : blocks);
+      const dominantColor = blockToColor(colorSource);
       const blocksList = blocks.join(', ') || 'unknown';
       const heightDiff = Math.round(avgHeight);
       let heightSymbol = '•';
@@ -274,7 +357,7 @@ const gridCells = computed(() => {
       cells.push({
         key: `${key}#${idx++}`,
         color: dominantColor,
-        colors: colors.length > 1 ? colors : undefined,
+        colors: stacked && colors && colors.length > 1 ? colors : undefined,
         heightLabel: heightSymbol,
         heightValue: heightDiff,
         isBotPosition: false,
@@ -299,8 +382,10 @@ const gridCells = computed(() => {
         const avgHeight = (cell.height_min + cell.height_max) / 2;
         const blocks = cell.blocks || [];
         const uniqueBlocks = Array.from(new Set(blocks));
-        const colors = uniqueBlocks.map(b => blockToColor([b]));
-        const dominantColor = blockToColor(blocks);
+        const topVisible = stacked ? null : pickTopVisibleBlock(cell);
+        const colors = stacked ? uniqueBlocks.map(b => blockToColor([b])) : undefined;
+        const colorSource = stacked ? blocks : (topVisible ? [topVisible] : blocks);
+        const dominantColor = blockToColor(colorSource);
         const blocksList = blocks.join(', ') || 'unknown';
         const heightDiff = Math.round(avgHeight);
         let heightSymbol = '•';
@@ -309,7 +394,7 @@ const gridCells = computed(() => {
         cells.push({
           key,
           color: dominantColor,
-          colors: colors.length > 1 ? colors : undefined,
+          colors: stacked && colors && colors.length > 1 ? colors : undefined,
           heightLabel: heightSymbol,
           heightValue: heightDiff,
           isBotPosition: originX !== null && originZ !== null && f === originX && r === originZ,
@@ -354,7 +439,12 @@ const gridCells = computed(() => {
   border-radius: 6px;
   padding: 4px 8px;
   background: transparent;
-  ;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.map-btn--active {
+  background: rgba(74, 158, 255, 0.15);
+  border-color: rgba(74, 158, 255, 0.6);
+  color: var(--color-accent);
 }
 .map-params {
   display: flex;
@@ -368,6 +458,7 @@ const gridCells = computed(() => {
 
 .map-grid-container { border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 12px; background: rgba(0,0,0,0.15); }
 .map-orientation { text-align: center; margin-bottom: 8px; opacity: 0.65; font-size: 13px; }
+.map-view-toggle { display: flex; justify-content: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .map-grid {
   display: grid;
   gap: 1px;
@@ -399,4 +490,30 @@ const gridCells = computed(() => {
 .stat-row { display: flex; gap: 4px; font-size: 14px; }
 .stat-label { opacity: 0.65; }
 .stat-val { ; }
+
+.map-image-container {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.15);
+}
+.map-image-wrapper {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 10px;
+}
+.map-image {
+  width: 100%;
+  display: block;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.map-image-meta {
+  margin-top: 10px;
+  font-size: 13px;
+  opacity: 0.8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 </style>

@@ -42,22 +42,58 @@ const props = defineProps<{
 
 const showDiff = ref(true);
 
-const isUpdateMemory = computed(() => props.item.tool_name === 'update_memory');
-
-const memoryContent = computed(() => {
-  if (isUpdateMemory.value) {
-    return props.item.input?.content || props.item.params_summary?.content || '';
-  }
-  return props.item.output || '';
+const isUpdateMemory = computed(() => {
+  const toolName = props.item.payload?.tool_name || props.item.tool_name || '';
+  return toolName === 'update_memory';
 });
 
-const previousMemory = ref<string>(''); // In a real implementation, fetch from history
+const memoryContent = computed(() => {
+  const payload = props.item.payload || props.item;
+
+  if (isUpdateMemory.value) {
+    // For update_memory, get the new content from input/params
+    return payload.input?.content || payload.params_summary?.content || '';
+  }
+
+  // For get_memory, parse the output
+  let output = payload.output;
+  if (typeof output === 'string') {
+    try {
+      output = JSON.parse(output);
+    } catch {
+      return output;
+    }
+  }
+
+  return output?.content || output || '';
+});
+
+const previousMemory = computed(() => {
+  if (!isUpdateMemory.value) return '';
+
+  const payload = props.item.payload || props.item;
+  let output = payload.output;
+
+  if (typeof output === 'string') {
+    try {
+      output = JSON.parse(output);
+    } catch {
+      return '';
+    }
+  }
+
+  // The output of update_memory contains the previous content
+  return output?.previous_content || '';
+});
 
 const diffLines = computed(() => {
-  if (!previousMemory.value) return [];
+  const prev = previousMemory.value;
+  const curr = memoryContent.value;
 
-  const oldLines = previousMemory.value.split('\n');
-  const newLines = memoryContent.value.split('\n');
+  if (!prev) return [];
+
+  const oldLines = prev.split('\n');
+  const newLines = curr.split('\n');
   const diff: Array<{ type: string; marker: string; content: string }> = [];
 
   // Simple line-by-line diff

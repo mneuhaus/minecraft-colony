@@ -1,6 +1,16 @@
 <template>
   <div>
+    <div class="bc-toolbar" v-if="jobId">
+      <button class="bc-btn" @click="openDetail">View CraftScript</button>
+    </div>
+
     <div v-if="changes.length > 0">
+      <div class="bc-summary">
+        <span class="bc-summary-item">Total Changes: <strong>{{ totalChanges }}</strong></span>
+        <span class="bc-summary-item">Placed: <strong>{{ placedCount }}</strong></span>
+        <span class="bc-summary-item">Destroyed: <strong>{{ destroyedCount }}</strong></span>
+      </div>
+
       <div class="bc-entries">
         <div
           v-for="(change, idx) in changes"
@@ -18,35 +28,42 @@
       </div>
 
       <div class="bc-viewer">
-        <div class="bc-viewer-header">3D Visualization</div>
+        <div class="bc-viewer-header">
+          <span>3D Visualization</span>
+          <span v-if="!scene" class="bc-viewer-status">Initializing Three.js...</span>
+        </div>
         <canvas ref="canvas" class="bc-canvas"></canvas>
         <div class="bc-controls">
           <button @click="resetCamera" class="bc-btn">Reset View</button>
           <label class="bc-checkbox">
             <input type="checkbox" v-model="showPlaced" @change="updateScene" />
-            <span>Show Placed</span>
+            <span>Show Placed ({{ placedCount }})</span>
           </label>
           <label class="bc-checkbox">
             <input type="checkbox" v-model="showDestroyed" @change="updateScene" />
-            <span>Show Destroyed</span>
+            <span>Show Destroyed ({{ destroyedCount }})</span>
           </label>
         </div>
       </div>
     </div>
 
     <div v-else class="bc-empty">
-      No block changes recorded for this job.
+      <p>No block changes recorded for this job.</p>
+      <p v-if="jobId" class="bc-empty-hint">Job ID: {{ jobId }}</p>
+      <p v-if="fn" class="bc-empty-hint">Raw data keys: {{ Object.keys(fn).join(', ') }}</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 const props = defineProps<{ item: any }>();
 defineEmits<{ openInspector: [item: any] }>();
+const router = useRouter();
 
 const canvas = ref<HTMLCanvasElement | null>(null);
 const showPlaced = ref(true);
@@ -59,10 +76,16 @@ let controls: OrbitControls | null = null;
 let animationId: number | null = null;
 
 const fn = computed(() => props.item?.payload?.output ? JSON.parse(props.item.payload.output) : {});
-const jobId = computed(() => fn.value.job_id || 'unknown');
+const jobId = computed(() => fn.value.job_id || props.item?.payload?.params_summary?.job_id || null);
 const totalChanges = computed(() => fn.value.total_changes || 0);
 const changes = computed(() => fn.value.changes || []);
 const tone = computed(() => totalChanges.value > 0 ? 'info' : 'neutral');
+
+function openDetail() {
+  const job = jobId.value;
+  if (!job) return;
+  router.push({ name: 'CraftscriptDetails', params: { jobId: job } }).catch(() => {});
+}
 
 // Extract movement traces if available (from craftscript_logs.traces with kind='movement')
 const movements = computed(() => {
@@ -293,6 +316,32 @@ watch(() => changes.value.length, (newLen) => {
 </script>
 
 <style scoped>
+.bc-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.bc-summary {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.bc-summary-item {
+  font-size: 14px;
+  opacity: 0.85;
+}
+
+.bc-summary-item strong {
+  font-weight: 600;
+  opacity: 1;
+}
+
 .bc-chip {
   padding: 2px 8px;
   border-radius: 6px;
@@ -337,10 +386,19 @@ watch(() => changes.value.length, (newLen) => {
 .bc-viewer-header {
   font-weight: 600;
   margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.bc-viewer-status {
+  font-size: 12px;
+  opacity: 0.6;
+  font-weight: 400;
 }
 .bc-canvas {
   width: 100%;
-  height: 260px;
+  height: 500px;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: #0f1115;
@@ -367,11 +425,21 @@ watch(() => changes.value.length, (newLen) => {
 
 .bc-empty {
   margin: 0;
-  padding: 12px;
+  padding: 16px;
   text-align: center;
   opacity: 0.65;
   border: 1px dashed rgba(255, 255, 255, 0.1);
   border-radius: 10px;
+}
+
+.bc-empty p {
+  margin: 4px 0;
+}
+
+.bc-empty-hint {
+  font-size: 12px;
+  font-family: monospace;
+  opacity: 0.5;
 }
 
 .inspector-toggle {

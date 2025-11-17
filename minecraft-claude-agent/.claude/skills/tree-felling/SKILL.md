@@ -8,6 +8,20 @@ allowed-tools: find_trees, get_tree_structure, check_reachable, break_block_and_
 
 This skill teaches you HOW to fell trees using atomic tools. Each tool does ONE thing and returns data for YOU to make decisions.
 
+## Movement and Placement Physics (CRITICAL)
+
+**Block Placement - Standing ON, not IN:**
+- When placing a sapling at position (x, y, z), it goes in the empty space at that coordinate
+- The bot must stand nearby, never on the target position
+- Example: `place_sapling(120, 65, 131, "oak_sapling")` places sapling in the air space at Y=65, ON TOP of the dirt/grass block at Y=64
+- You place blocks by clicking adjacent block faces - the new block fills the empty space next to them
+
+**Movement During Tree Felling:**
+- You stand ON TOP of blocks/pillars while felling tall trees
+- `build_pillar(3)` places blocks beneath you as you jump, raising you 3 blocks higher
+- After building, you're standing ON the pillar, not "in" it
+- `descend_pillar_safely()` breaks blocks beneath you, lowering you down through the empty spaces
+
 ## Available Atomic Tools
 
 ### Discovery & Analysis

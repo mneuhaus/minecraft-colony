@@ -37,6 +37,7 @@ export class MinecraftBot extends EventEmitter {
   private readonly chatCooldownMs = parseInt(process.env.CHAT_COOLDOWN_MS || '1500', 10);
   private readonly chatMaxLen = parseInt(process.env.CHAT_MAX_LEN || '240', 10);
   private recentChatSet: Array<{ text: string; ts: number }> = [];
+  private reconnectDisabledReason: string | null = null;
 
   constructor(private config: Config) {
     super();
@@ -122,6 +123,7 @@ export class MinecraftBot extends EventEmitter {
 
       // Don't chat here - bot client might not be ready yet
       this.reconnectAttempts = 0;
+      this.reconnectDisabledReason = null;
 
       // JSON state/message files removed; relying on SQL via agent loop
 
@@ -207,7 +209,7 @@ export class MinecraftBot extends EventEmitter {
     this.bot.on('kicked', (reason) => {
       logger.error('Bot was kicked', { reason });
       this.emit('kicked', { reason });
-      this.handleDisconnect();
+      this.handleDisconnect(reason);
     });
 
     // End - disconnected
@@ -289,7 +291,21 @@ export class MinecraftBot extends EventEmitter {
   /**
    * Handle disconnection and attempt reconnection
    */
-  private handleDisconnect(): void {
+  private handleDisconnect(reason?: any): void {
+    if (this.reconnectDisabledReason) {
+      logger.warn('Reconnect disabled, skipping reconnect attempt', { reason: this.reconnectDisabledReason });
+      return;
+    }
+
+    if (reason && this.isDuplicateLoginReason(reason)) {
+      this.reconnectDisabledReason = 'duplicate_login';
+      logger.error('Duplicate login detected. Another session is already logged in with this username. Not attempting to reconnect until the other session disconnects.', {
+        username: this.config.minecraft.username,
+      });
+      this.emit('reconnectFailed');
+      return;
+    }
+
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       logger.error('Max reconnection attempts reached, giving up');
       this.emit('reconnectFailed');
@@ -306,6 +322,31 @@ export class MinecraftBot extends EventEmitter {
         logger.error('Reconnection failed', { error: error.message });
       });
     }, this.reconnectDelay);
+  }
+
+  private isDuplicateLoginReason(reason: any): boolean {
+    const text = this.serializeReason(reason).toLowerCase();
+    if (!text) return false;
+    return text.includes('multiplayer.disconnect.duplicate_login') || text.includes('duplicate_login') || text.includes('logged in from another location');
+  }
+
+  private serializeReason(reason: any): string {
+    if (!reason) return '';
+    if (typeof reason === 'string') return reason;
+    if (typeof reason === 'number') return String(reason);
+    if (typeof reason === 'object') {
+      if (typeof reason.text === 'string') return reason.text;
+      if (typeof reason.translate === 'string') return reason.translate;
+      if (typeof reason.value === 'string') return reason.value;
+      if (typeof reason.value === 'object') return this.serializeReason(reason.value);
+      if (Array.isArray(reason.extra)) {
+        return reason.extra.map((r: any) => this.serializeReason(r)).join(' ');
+      }
+      if (typeof reason === 'object') {
+        try { return JSON.stringify(reason); } catch { return ''; }
+      }
+    }
+    return '';
   }
 
   /**

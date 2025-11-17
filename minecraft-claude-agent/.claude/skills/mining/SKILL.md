@@ -8,6 +8,20 @@ allowed-tools: find_block, get_block_info, dig_block, break_block_and_wait, coll
 
 This skill teaches you how to mine blocks safely and efficiently to gather resources.
 
+## Movement Physics (CRITICAL)
+
+**Standing ON blocks, moving through SPACE:**
+- You stand ON TOP of solid blocks, with your feet at a Y coordinate
+- You move THROUGH empty space (air), not "into" blocks
+- When mining downward, you dig the block and move into the empty SPACE left behind
+- Example: Standing at Y=64, you dig block at Y=63 below your feet, then descend into that empty space
+
+**Digging and Positioning:**
+- Can reach blocks within 4.5 blocks of your feet position
+- After breaking a block, it becomes air - you can then move through that space
+- Never dig straight down into unknown space (could fall into lava or void)
+- Create safe paths by digging strategically and moving through cleared spaces
+
 ## Available Tools
 
 ### Block Discovery (NEW)
@@ -112,11 +126,13 @@ When mining ores, stone, or any resource, the item drops on the ground. If you u
 ```
 NEVER dig straight down (you could fall into lava or caves)!
 Instead, create a staircase:
-1. Dig one block at your feet
-2. Move into that space
+1. Dig one block at your feet (creating empty space)
+2. Move down into that empty space (now standing one block lower)
 3. Dig diagonally downward (one block forward, one block down)
-4. Repeat in a spiral or straight pattern
-5. This creates safe stairs you can climb back up
+4. Move through the cleared space to the new position
+5. Repeat in a spiral or straight pattern
+6. This creates safe stairs you can climb back up
+Note: You're always moving through EMPTY SPACE left by broken blocks, never moving "into" solid blocks
 ```
 
 **Mining Upward (Pillar):**
