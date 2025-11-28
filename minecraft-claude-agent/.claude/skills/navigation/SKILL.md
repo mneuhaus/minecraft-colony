@@ -1,6 +1,6 @@
 ---
 name: navigation
-description: This skill should be used for navigating the Minecraft world. Uses JavaScript with goto() and SimplePathfinder for scaffolding/ladder support.
+description: This skill should be used for navigating the Minecraft world. Uses JavaScript with goto() for movement.
 allowed-tools: get_position, get_status, get_vox, look_at_map, look_at_map_image, craftscript_start, craftscript_status, craftscript_logs
 ---
 
@@ -29,22 +29,6 @@ Monitor after you act.
 - Write script with `await goto(x, y, z)`
 - Execute with `craftscript_start(script)`
 - Monitor with `craftscript_status(job_id)` and `craftscript_logs(job_id)`
-
-## Pathfinding System
-
-Navigation uses a dual-pathfinder approach:
-
-1. **SimplePathfinder** (default, preferred)
-   - Custom A* implementation with proper scaffolding/ladder support
-   - Block classification: solid, passable, climbable, danger, liquid
-   - Handles: walking, jumping, dropping (up to 3 blocks), climbing scaffolding/ladders
-   - Falls back to mineflayer-pathfinder if no path found
-
-2. **mineflayer-pathfinder** (fallback)
-   - Standard Minecraft pathfinding
-   - Used when SimplePathfinder can't find a path
-
-You can force the fallback pathfinder: `await goto(x, y, z, { simple: false })`
 
 ## Movement Physics (Critical)
 

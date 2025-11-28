@@ -333,7 +333,7 @@ export class JavaScriptExecutor {
         checkAbort();
         const t0 = Date.now();
         const tolerance = opts.tolerance ?? opts.tol ?? 0; // Default: exact position (no tolerance)
-        const useSimple = opts.simple !== false; // Default to SimplePathfinder
+        const useSimple = opts.simple === true; // Default to mineflayer-pathfinder (SimplePathfinder disabled)
         const from = { x: bot.entity.position.x, y: bot.entity.position.y, z: bot.entity.position.z };
         const to = { x, y, z };
         const distance = bot.entity.position.distanceTo(new Vec3(x, y, z));
