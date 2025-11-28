@@ -332,7 +332,7 @@ export function nav(bot: Bot, req: any) {
       throw new Error('Unknown target type');
     }
 
-    const tol = req.tol ?? 1;
+    const tol = req.tol ?? 0; // Default: exact position (no tolerance)
     const timeout_ms = req.timeout_ms ?? 10000;
     const movements = new Movements(bot);
     if (req.policy) {

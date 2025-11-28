@@ -440,7 +440,7 @@ export class SimplePathfinder {
   /**
    * High-level goto function
    */
-  public async goto(goal: Vec3, tolerance: number = 1): Promise<boolean> {
+  public async goto(goal: Vec3, tolerance: number = 0): Promise<boolean> {
     const start = this.bot.entity.position.floored();
     const goalFloored = goal.floored();
 
