@@ -883,6 +883,7 @@ Use these to understand your surroundings before acting:
 === KEY RULES ===
 - Plan in small, verifiable steps. Confirm results before proceeding.
 - You stand ON blocks, not IN them. Y=64 means feet at Y=64, standing on block at Y=63.
+- You CANNOT place blocks where you stand! Your body occupies 2 blocks (feet Y and head Y+1).
 - Block reach is ~4.5 blocks from your position.
 - When stuck, check skills for strategies. Don't repeat failing approaches.
 - Keep chat messages SHORT and in PLAIN TEXT (no markdown, no emojis).`;
