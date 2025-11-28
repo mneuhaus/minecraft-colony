@@ -14,7 +14,7 @@ Write **standard JavaScript (ES2023)** with async/await to control the Minecraft
 
 ```javascript
 // 1. Scout: Use read-only tools
-const pos = await get_position();
+const pos = get_position();
 const nearbyOre = find_blocks("iron_ore", 32, 10);
 
 // 2. Plan: Check what's available
@@ -175,13 +175,32 @@ console.log(...args)            // Log to Console tab
 
 ## Query Functions (Read-Only, Instant)
 
+### 📍 Position
+
+```javascript
+get_position()                  // Returns { x, y, z, exact: { x, y, z } }
+```
+
+**Example:**
+```javascript
+const pos = get_position();
+console.log(`I'm at ${pos.x}, ${pos.y}, ${pos.z}`);
+
+// Use exact for precise calculations
+const dist = Math.sqrt(
+  Math.pow(pos.exact.x - target.x, 2) +
+  Math.pow(pos.exact.z - target.z, 2)
+);
+```
+
 ### 🔍 Block Queries
 
 ```javascript
 is_air(x, y, z)                 // Returns true if air
 block_is(x, y, z, blockId)      // Returns true if matches
 get_block(x, y, z)              // Returns { name, displayName, position, hardness, type }
-find_blocks(blockId, maxDist, count)  // Returns array of {x,y,z} positions
+find_blocks(blockId, maxDist, count)  // Returns array of {x,y,z} sorted by distance
+find_nearest_block(blockId, maxDist)  // Returns { x, y, z, distance } or null
 can_see_block(x, y, z)          // Returns true if line-of-sight
 ```
 
@@ -200,6 +219,14 @@ console.log(`Block: ${block.displayName}, hardness: ${block.hardness}`);
 const diamonds = find_blocks("diamond_ore", 64, 5);
 for (const pos of diamonds) {
   console.log(`Diamond at ${pos.x}, ${pos.y}, ${pos.z}`);
+}
+
+// Find single nearest block
+const nearest = find_nearest_block("iron_ore", 32);
+if (nearest) {
+  console.log(`Nearest iron ore at ${nearest.x}, ${nearest.y}, ${nearest.z} (${nearest.distance.toFixed(1)} blocks)`);
+  await goto(nearest.x, nearest.y, nearest.z);
+  await dig(nearest.x, nearest.y, nearest.z);
 }
 ```
 
@@ -601,7 +628,7 @@ console.log("Back on ground!");
 
 **Actions:** goto, look_at, dig, place, build_up, build_scaffolding, equip, pickup_blocks, toss, open_container, deposit, withdraw, close_container, craft, wait
 
-**Queries:** is_air, block_is, get_block, find_blocks, can_see_block, get_nearest_entity, get_entities, get_players, has_item, get_recipes, can_craft
+**Queries:** get_position, is_air, block_is, get_block, find_blocks, find_nearest_block, can_see_block, get_nearest_entity, get_entities, get_players, has_item, get_recipes, can_craft
 
 **Custom:** Your bot's custom functions (auto-loaded)
 
