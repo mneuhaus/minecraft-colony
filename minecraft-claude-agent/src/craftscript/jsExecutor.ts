@@ -1128,7 +1128,12 @@ export class JavaScriptExecutor {
         }
 
         try {
-          const container = await bot.openContainer(block);
+          // Furnaces require bot.openFurnace(), other containers use bot.openContainer()
+          const furnaceTypes = ['furnace', 'blast_furnace', 'smoker'];
+          const isFurnace = furnaceTypes.some(type => block.name.includes(type));
+          const container = isFurnace
+            ? await bot.openFurnace(block)
+            : await bot.openContainer(block);
           checkAbort();
           // Store container reference for deposit/withdraw
           (bot as any)._currentContainer = container;
