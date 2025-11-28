@@ -395,4 +395,11 @@ export class SqlMemoryStore {
   public getColonyDatabase(): ColonyDatabase {
     return this.colonyDb;
   }
+
+  /**
+   * Get core missions for this bot
+   */
+  public getCoreMissions(): any[] {
+    return this.colonyDb.listCoreMissions(this.botId);
+  }
 }

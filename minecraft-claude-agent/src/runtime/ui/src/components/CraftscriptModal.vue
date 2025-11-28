@@ -22,7 +22,13 @@
         <n-tab-pane name="script" tab="Script">
           <pre class="cs-code" v-html="highlightedScript"></pre>
         </n-tab-pane>
-        <n-tab-pane name="logs" tab="Logs" v-if="snapshot.logs.length">
+        <n-tab-pane name="console" tab="Console" v-if="snapshot.consoleLogs.length">
+          <CraftscriptConsole :logs="snapshot.consoleLogs" />
+        </n-tab-pane>
+        <n-tab-pane name="trace" tab="Block Changes" v-if="traceItem">
+          <ToolCraftScriptTrace :item="traceItem" />
+        </n-tab-pane>
+        <n-tab-pane name="logs" tab="Raw Logs" v-if="snapshot.logs.length">
           <div class="cs-list">
             <div v-for="log in orderedLogs" :key="log.ts + log.kind" class="cs-list__item">
               <span class="cs-list__time">{{ formatTs(log.ts) }}</span>
@@ -39,9 +45,6 @@
               <span class="cs-list__body">{{ step.summary }}</span>
             </div>
           </div>
-        </n-tab-pane>
-        <n-tab-pane name="trace" tab="Trace" v-if="traceItem">
-          <ToolCraftScriptTrace :item="traceItem" />
         </n-tab-pane>
         <n-tab-pane name="vox" tab="Vox" v-if="snapshot.voxWindows.length">
           <div class="vox-list">
@@ -60,7 +63,7 @@
       </n-tabs>
     </div>
     <div v-else class="cs-empty">
-      No CraftScript data available.
+      No JavaScript data available.
     </div>
   </n-modal>
 </template>
@@ -73,6 +76,7 @@ import javascript from 'highlight.js/lib/languages/javascript';
 import ToolCraftScriptTrace from './types/Tool/ToolCraftScriptTrace.vue';
 import VoxPreview from './VoxPreview.vue';
 import Vox3DViewer from './Vox3DViewer.vue';
+import CraftscriptConsole from './CraftscriptConsole.vue';
 import { collectCraftscriptSnapshot, extractScriptFromEvent, type CraftscriptSnapshot } from '../utils/craftscriptJob';
 
 hljs.registerLanguage('javascript', javascript);
@@ -125,8 +129,8 @@ watch(
 const snapshot = computed(() => mergeSnapshots(localSnapshot.value, remoteSnapshot.value));
 
 const modalTitle = computed(() => {
-  if (!props.jobId) return 'CraftScript Detail';
-  return `CraftScript Job ${props.jobId}`;
+  if (!props.jobId) return 'JavaScript Detail';
+  return `JavaScript Job ${props.jobId}`;
 });
 
 const scriptContent = computed(() => {
@@ -215,6 +219,7 @@ function mergeSnapshots(primary: CraftscriptSnapshot, secondary: CraftscriptSnap
     traces: mergeCollections(primary.traces, secondary.traces, (item) => `${item.ts}-${item.kind}`),
     voxWindows: mergeCollections(primary.voxWindows, secondary.voxWindows, (item) => `${item.ts}-${JSON.stringify(item.target || {})}`),
     logs: mergeCollections(primary.logs, secondary.logs, (item) => `${item.ts}-${item.kind}`),
+    consoleLogs: mergeCollections(primary.consoleLogs, secondary.consoleLogs, (item) => `${item.ts}-${item.message}`),
   };
 }
 

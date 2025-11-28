@@ -194,6 +194,77 @@ export function createDashboardApp(botManager: BotManager) {
     }
   });
 
+  // Serve screenshot images
+  app.get('/api/screenshot', async (c) => {
+    try {
+      const imagePath = c.req.query('path');
+      if (!imagePath) {
+        return c.json({ error: 'Missing path parameter' }, 400);
+      }
+
+      // Security: only allow paths within logs/screenshots directory
+      const logsDir = path.join(process.cwd(), 'logs', 'screenshots');
+      const resolvedPath = path.resolve(imagePath);
+      if (!resolvedPath.startsWith(logsDir)) {
+        return c.json({ error: 'Invalid path' }, 403);
+      }
+
+      // Check if file exists
+      if (!fs.existsSync(resolvedPath)) {
+        return c.json({ error: 'Screenshot not found' }, 404);
+      }
+
+      // Read and serve the image
+      const imageBuffer = fs.readFileSync(resolvedPath);
+      return new Response(imageBuffer, {
+        headers: {
+          'Content-Type': 'image/png',
+          'Cache-Control': 'public, max-age=3600',
+        },
+      });
+    } catch (error: any) {
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
+  // Get latest todos for a bot
+  app.get('/api/bots/:name/todos', (c) => {
+    try {
+      const name = c.req.param('name');
+      const colonyDb = ColonyDatabase.getInstance();
+      const db = colonyDb.getDb();
+      const botId = colonyDb.getBotId(name);
+
+      if (!botId) {
+        return c.json({ ok: false, error: 'Bot not found' }, 404);
+      }
+
+      // Find the most recent write_todo activity
+      const row = db.prepare(`
+        SELECT data, timestamp
+        FROM activities
+        WHERE bot_id = ? AND type = 'tool' AND data LIKE '%write_todo%'
+        ORDER BY timestamp DESC
+        LIMIT 1
+      `).get(botId) as any;
+
+      if (!row) {
+        return c.json({ ok: true, todos: [] });
+      }
+
+      try {
+        const data = JSON.parse(row.data);
+        // Extract todos from the tool data
+        const todos = data?.input?.todos || data?.params_summary?.todos || data?.output?.todos || [];
+        return c.json({ ok: true, todos });
+      } catch (parseError) {
+        return c.json({ ok: true, todos: [] });
+      }
+    } catch (error: any) {
+      return c.json({ ok: false, error: error.message }, 500);
+    }
+  });
+
   app.post('/api/bots/:name/start', async (c) => {
     try {
       const name = c.req.param('name');
@@ -226,6 +297,28 @@ export function createDashboardApp(botManager: BotManager) {
       const name = c.req.param('name');
       await botManager.restartBot(name);
       return c.json({ success: true, message: `Bot ${name} restarted` });
+    } catch (error: any) {
+      return c.json({ error: error.message }, 500);
+    }
+  });
+
+  app.post('/api/bots/:name/message', async (c) => {
+    try {
+      const name = c.req.param('name');
+      const body = await c.req.json();
+      const message = String(body?.message || '').trim();
+
+      if (!message) {
+        return c.json({ error: 'message required' }, 400);
+      }
+
+      const instance = botManager.getBot(name);
+      if (!instance) {
+        return c.json({ error: 'Bot not found or not running' }, 404);
+      }
+
+      instance.claudeAgent.enqueueSystemInterrupt(message);
+      return c.json({ success: true, message: `System message sent to ${name}` });
     } catch (error: any) {
       return c.json({ error: error.message }, 500);
     }
@@ -617,6 +710,144 @@ export function createDashboardApp(botManager: BotManager) {
   });
 
   // ============================================================================
+  // Core Missions
+  // ============================================================================
+
+  app.get('/api/bots/:name/missions', (c) => {
+    try {
+      const name = c.req.param('name');
+      const colonyDb = ColonyDatabase.getInstance();
+      const botId = colonyDb.getBotId(name);
+
+      if (!botId) {
+        return c.json({ error: 'Bot not found' }, 404);
+      }
+
+      const missions = colonyDb.listCoreMissions(botId);
+      return c.json({ ok: true, missions });
+    } catch (error: any) {
+      return c.json({ ok: false, error: error.message }, 500);
+    }
+  });
+
+  app.post('/api/bots/:name/missions', async (c) => {
+    try {
+      const name = c.req.param('name');
+      const colonyDb = ColonyDatabase.getInstance();
+      const botId = colonyDb.getBotId(name);
+
+      if (!botId) {
+        return c.json({ error: 'Bot not found' }, 404);
+      }
+
+      const body = await c.req.json();
+      const { content, description, priority } = body;
+
+      if (!content || typeof content !== 'string') {
+        return c.json({ error: 'Missing or invalid content' }, 400);
+      }
+
+      const id = colonyDb.createCoreMission(
+        botId,
+        content,
+        description,
+        priority !== undefined ? Number(priority) : 0,
+        'user'
+      );
+
+      return c.json({ ok: true, id });
+    } catch (error: any) {
+      return c.json({ ok: false, error: error.message }, 500);
+    }
+  });
+
+  app.put('/api/bots/:name/missions/:id', async (c) => {
+    try {
+      const id = parseInt(c.req.param('id'), 10);
+      const body = await c.req.json();
+
+      const updates: any = {};
+      if (body.content !== undefined) updates.content = body.content;
+      if (body.description !== undefined) updates.description = body.description;
+      if (body.priority !== undefined) updates.priority = Number(body.priority);
+
+      const colonyDb = ColonyDatabase.getInstance();
+      const success = colonyDb.updateCoreMission(id, updates);
+
+      if (!success) {
+        return c.json({ error: 'Mission not found' }, 404);
+      }
+
+      return c.json({ ok: true });
+    } catch (error: any) {
+      return c.json({ ok: false, error: error.message }, 500);
+    }
+  });
+
+  app.delete('/api/bots/:name/missions/:id', (c) => {
+    try {
+      const id = parseInt(c.req.param('id'), 10);
+      const colonyDb = ColonyDatabase.getInstance();
+      const success = colonyDb.deleteCoreMission(id);
+
+      if (!success) {
+        return c.json({ error: 'Mission not found' }, 404);
+      }
+
+      return c.json({ ok: true });
+    } catch (error: any) {
+      return c.json({ ok: false, error: error.message }, 500);
+    }
+  });
+
+  // Get/set auto-mode for a bot
+  app.get('/api/bots/:name/auto-mode', (c) => {
+    try {
+      const name = c.req.param('name');
+      const colonyDb = ColonyDatabase.getInstance();
+      const botId = colonyDb.getBotId(name);
+
+      if (!botId) {
+        return c.json({ error: 'Bot not found' }, 404);
+      }
+
+      const autoModeValue = colonyDb.getMetadata(`bot_${botId}_auto_mode`);
+      const autoMode = autoModeValue === 'true';
+
+      return c.json({ ok: true, autoMode });
+    } catch (error: any) {
+      return c.json({ ok: false, error: error.message }, 500);
+    }
+  });
+
+  app.post('/api/bots/:name/auto-mode', async (c) => {
+    try {
+      const name = c.req.param('name');
+      const colonyDb = ColonyDatabase.getInstance();
+      const botId = colonyDb.getBotId(name);
+
+      if (!botId) {
+        return c.json({ error: 'Bot not found' }, 404);
+      }
+
+      const body = await c.req.json();
+      const autoMode = body.autoMode === true;
+
+      colonyDb.setMetadata(`bot_${botId}_auto_mode`, autoMode.toString());
+
+      // Notify the bot instance if it exists
+      const instance = botManager.getBot(name);
+      if (instance && instance.agent) {
+        (instance.agent as any).setAutoMode?.(autoMode);
+      }
+
+      return c.json({ ok: true, autoMode });
+    } catch (error: any) {
+      return c.json({ ok: false, error: error.message }, 500);
+    }
+  });
+
+  // ============================================================================
   // Timeline / Events
   // ============================================================================
 
@@ -826,6 +1057,31 @@ export function createDashboardApp(botManager: BotManager) {
     }
   });
 
+  // Map image endpoint - generates a rendered map view for a bot
+  app.post('/api/map', async (c) => {
+    try {
+      const body = await c.req.json();
+      const { bot: botName, zoom = 0, showHeight = true } = body;
+
+      if (!botName) {
+        return c.json({ error: 'Bot name required' }, 400);
+      }
+
+      const bot = botManager.getBot(botName);
+      if (!bot) {
+        return c.json({ error: 'Bot not found' }, 404);
+      }
+
+      const { getMapImagePayload } = await import('../utils/mapImage.js');
+      const result = await getMapImagePayload(bot.minecraftBot.getBot(), { zoom, showHeight });
+
+      return c.json(result);
+    } catch (error: any) {
+      console.error('Map generation error:', error);
+      return c.json({ error: error.message || 'Failed to generate map' }, 500);
+    }
+  });
+
   // ============================================================================
   // Static UI
   // ============================================================================
@@ -915,15 +1171,26 @@ export function startDashboardServer(botManager: BotManager, port: number = 4242
     if (t === 'thinking') {
       broadcast({
         id: `think-${ts}-${Math.random().toString(36).slice(2,7)}`,
-        type: 'chat',
+        type: 'thinking',
         bot_id: data.botId,
         ts,
+        message: String(data.description || ''),
         payload: {
-          from: 'Planner',
-          text: String(data.description || ''),
-          channel: 'system',
-          direction: 'out',
-          kind: 'thinking'
+          message: String(data.description || '')
+        }
+      });
+      return;
+    }
+
+    if (t === 'assistant_text') {
+      broadcast({
+        id: `assistant-${ts}-${Math.random().toString(36).slice(2,7)}`,
+        type: 'assistant_text',
+        bot_id: data.botId,
+        ts,
+        message: String(data.description || ''),
+        payload: {
+          message: String(data.description || '')
         }
       });
       return;

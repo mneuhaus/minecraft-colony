@@ -106,6 +106,7 @@ place("minecraft:stone", 106, 67, 82);             // place using coordinates
 equip("minecraft:iron_pickaxe");
 build_up();                        // jump and place block beneath (auto-selects material)
 build_up("dirt");                  // jump and place specific block beneath
+build_scaffolding(100, 64, 50, 10); // build scaffolding tower at (100,64,50) with height 10
 pickup_blocks();                   // collect dropped items within 8 blocks
 pickup_blocks(16);                 // collect dropped items within 16 blocks
 scan(r:2);                         // refresh local voxel snapshot
@@ -358,17 +359,64 @@ Use cases:
 - Capture ground truth inline without separate tools.
 - Pair with `craftscript_logs { job_id }` (MCP) to fetch consolidated JSON for assertions.
 
+### D) Building scaffolding towers
+
+```c
+// Build a scaffolding tower for easy vertical access
+let tower_x = 100;
+let tower_y = 64;
+let tower_z = 50;
+let tower_height = 15;
+
+log("Building scaffolding tower", tower_height, "blocks tall");
+
+// Navigate close to the build location
+goto(tower_x, tower_y, tower_z, tol:2);
+
+// Build the scaffolding tower using Minecraft's auto-stacking mechanics
+build_scaffolding(tower_x, tower_y, tower_z, tower_height);
+
+log("Scaffolding tower complete!");
+```
+
+**Important notes about scaffolding:**
+- **Auto-stacking**: Scaffolding uses Minecraft's special placement mechanics. When you activate (right-click) existing scaffolding, new scaffolding automatically places on top of the highest scaffolding at that location.
+- **Easy climbing**: Scaffolding has no collision detection — bots and players can climb up by jumping or descend by sneaking.
+- **Connected structure**: Scaffolding can extend up to 6 blocks horizontally from its base of support. Beyond that, it falls.
+- **Easy removal**: Breaking the bottom scaffolding block causes all scaffolding above it to break, similar to chorus plants and bamboo.
+- **Temporary structures**: Perfect for temporary vertical access during construction projects.
+
+Example use case — building tall walls:
+```c
+// Build a grid of scaffolding towers for wall construction
+let wall_start_x = 100;
+let wall_start_z = 50;
+let wall_y = 64;
+let wall_height = 20;
+let tower_spacing = 6;
+
+repeat(i: 0..5) {
+  let x = wall_start_x + (i * tower_spacing);
+  log("Tower", i+1, "at x=", x);
+  goto(x, wall_y, wall_start_z, tol:2);
+  build_scaffolding(x, wall_y, wall_start_z, wall_height);
+}
+
+log("Scaffolding grid complete — ready to build wall");
+```
+
 ## 10) Integration mapping (mineflayer / MCP)
 
-| CraftScript command | Implementation                             |
-| ------------------- | ------------------------------------------ |
-| `move`              | step solver or small motion                |
-| `dig`               | `bot.dig(blockAt(world))`                  |
-| `place`             | `bot.placeBlock(block, vecFromFace(face))` |
-| `equip`             | `bot.equip(itemId, 'hand')`                |
-| `scan`              | call `get_vox`                             |
-| `goto`              | call `nav(action:'start')`                 |
-| `turn*`             | adjust yaw                                 |
+| CraftScript command   | Implementation                                            |
+| --------------------- | --------------------------------------------------------- |
+| `move`                | step solver or small motion                               |
+| `dig`                 | `bot.dig(blockAt(world))`                                 |
+| `place`               | `bot.placeBlock(block, vecFromFace(face))`                |
+| `build_scaffolding`   | `bot.placeBlock()` then `bot.activateBlock()` for stacking |
+| `equip`               | `bot.equip(itemId, 'hand')`                               |
+| `scan`                | call `get_vox`                                            |
+| `goto`                | call `nav(action:'start')`                                |
+| `turn*`               | adjust yaw                                                |
 
 IDs and faces always passed **unchanged** (`"minecraft:..."`, `"up"`, etc.).
 

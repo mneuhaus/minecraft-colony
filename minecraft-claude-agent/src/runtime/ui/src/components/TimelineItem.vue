@@ -165,6 +165,10 @@ const messageTitle = computed(() => {
     return 'Thinking';
   }
 
+  if (t === 'assistant_text') {
+    return 'Chain of Thought';
+  }
+
   if (t === 'tool') {
     return props.item.payload?.tool_name || 'Tool';
   }
@@ -210,6 +214,11 @@ const cardBorderColor = computed(() => {
     return '#9b59b6';
   }
 
+  if (t === 'assistant_text') {
+    // Assistant text (chain of thought) = Purple/Violet
+    return '#9b59b6';
+  }
+
   if (t === 'tool') {
     // Tool calls = Purple
     return '#9b59b6';
@@ -249,7 +258,7 @@ const wrapperClass = computed(() => {
 const componentName = computed(() => {
   const t = String(props.item.type || '');
   if (t === 'chat' || t === 'chat-in' || t === 'chat-out') return ChatMessage;
-  if (t === 'thinking') return ThinkingMessage;
+  if (t === 'thinking' || t === 'assistant_text') return ThinkingMessage;
   if (t === 'system') return SystemMessage;
   if (t === 'skill') return SkillMessage;
   if (t === 'tool') return ToolCard;

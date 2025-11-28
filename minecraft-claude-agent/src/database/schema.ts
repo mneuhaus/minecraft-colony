@@ -5,7 +5,7 @@
  * where all tables have a bot_id column for multi-tenancy.
  */
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * SQL statements to create the shared colony database schema
@@ -147,6 +147,19 @@ export const SCHEMA_SQL = `
     FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
   );
 
+  -- Core missions - persistent goals set by users that bots work towards
+  CREATE TABLE IF NOT EXISTS core_missions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    description TEXT,
+    priority INTEGER DEFAULT 0, -- Higher = more important
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    created_by TEXT,
+    FOREIGN KEY (bot_id) REFERENCES bots(id) ON DELETE CASCADE
+  );
+
   -- CraftScript custom functions - reusable bot procedures
   CREATE TABLE IF NOT EXISTS craftscript_functions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -222,6 +235,8 @@ export const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_issues_bot ON issues(bot_id);
   CREATE INDEX IF NOT EXISTS idx_issues_assigned_bot ON issues(assigned_bot_id);
   CREATE INDEX IF NOT EXISTS idx_issue_comments_issue ON issue_comments(issue_id);
+  CREATE INDEX IF NOT EXISTS idx_core_missions_bot ON core_missions(bot_id);
+  CREATE INDEX IF NOT EXISTS idx_core_missions_priority ON core_missions(priority DESC);
 `;
 
 /**

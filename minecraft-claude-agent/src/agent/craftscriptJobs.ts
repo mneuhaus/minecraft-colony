@@ -1,6 +1,5 @@
 import { MinecraftBot } from '../bot/MinecraftBot.js';
-import { CraftscriptExecutor } from '../craftscript/executor.js';
-import { parse as parseCraft } from '../craftscript/parser.js';
+import { JavaScriptExecutor } from '../craftscript/jsExecutor.js';
 import { ActivityWriter } from '../utils/activityWriter.js';
 import { SqlMemoryStore } from '../utils/sqlMemoryStore.js';
 import { ColonyDatabase } from '../database/ColonyDatabase.js';
@@ -19,6 +18,7 @@ interface Job {
   getSessionId?: () => string | null;
   activityWriter?: ActivityWriter;
   botName?: string;
+  abortController?: AbortController;
 }
 
 const JOBS = new Map<string, Job>();
@@ -86,6 +86,12 @@ export function cancelCraftscriptJob(id: string): void {
   const job = JOBS.get(id);
   if (!job) return;
   if (job.state === 'completed' || job.state === 'failed' || job.state === 'canceled') return;
+
+  // Abort the running script
+  if (job.abortController) {
+    job.abortController.abort();
+  }
+
   job.state = 'canceled';
   job.endedAt = Date.now();
   // Emit a canceled status so UI can update the originating card
@@ -113,73 +119,24 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
     job.state = 'running';
     job.startedAt = Date.now();
 
-    console.log('[CraftScript] Parsing script:', job.script.substring(0, 100) + (job.script.length > 100 ? '...' : ''));
-    let ast: any = null;
-    try {
-      ast = parseCraft(job.script);
-    } catch (e: any) {
-      const msg = e?.message || String(e);
-      console.error('[CraftScript] Parse error:', msg);
-      job.state = 'failed';
-      job.error = msg;
-      job.endedAt = Date.now();
-      const lineNum = (e?.location?.start?.line ?? e?.location?.line ?? undefined);
-      const columnNum = (e?.location?.start?.column ?? e?.location?.column ?? undefined);
-      // Emit a fail step so the dashboard CraftScript card has something to show
-      try {
-        const step = { ok: false, error: 'compile_error', message: msg, op_index: 0, ts: Date.now() };
-        if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_step', details: { name: 'craftscript_step', tool_name: 'craftscript_step', input: {}, params_summary: {}, output: JSON.stringify({ ...step, job_id: job.id }), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
-        if (job.memoryStore) {
-          const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
-          if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_step', { job_id: job.id, step });
-        }
-      } catch {}
-      // Emit a status row
-      try {
-        const status = {
-          id: job.id,
-          state: 'failed',
-          script: job.script,
-          duration_ms: (job.endedAt - (job.startedAt || job.endedAt)),
-          error: {
-            type: 'compile_error',
-            message: msg,
-            line: lineNum,
-            column: columnNum,
-          }
-        } as any;
-        if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_status', details: { name: 'craftscript_status', tool_name: 'craftscript_status', input: { job_id: job.id }, params_summary: { job_id: job.id }, output: JSON.stringify(status), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
-        if (job.memoryStore) {
-          const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
-          if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_status', status);
-        }
-      } catch {}
-      chatCraftscriptError(minecraftBot, job.id, 'compile_error', msg, lineNum, columnNum);
-      emitCraftscriptEvent({
-        id: job.id,
-        state: 'failed',
-        script: job.script,
-        error: {
-          type: 'compile_error',
-          message: msg,
-          line: lineNum,
-          column: columnNum,
-        },
-        botName,
-      });
-      return;
-    }
-    console.log('[CraftScript] Parsed successfully, executing...');
+    // Create AbortController for cancellation support
+    job.abortController = new AbortController();
 
-    // Get database connection and bot ID for custom functions
+    console.log('[JavaScript] Executing script:', job.script.substring(0, 100) + (job.script.length > 100 ? '...' : ''));
+
+    // Get database connection and bot ID
     const colonyDb = ColonyDatabase.getInstance();
     const db = colonyDb.getDb();
     const botId = colonyDb.getBotId(botName || minecraftBot.getBot().username || 'bot');
 
-    const exec = new CraftscriptExecutor(bot, {
+    const exec = new JavaScriptExecutor();
+    await exec.initialize();
+
+    const result = await exec.execute(job.script, bot, {
       db,
       botId: botId || undefined,
       jobId: job.id,
+      abortSignal: job.abortController.signal,
       onStep: (r) => {
         try {
           if (!activityWriter) return;
@@ -232,92 +189,82 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
         } catch {}
       }
     });
-    const result = await exec.run(ast as any);
 
-    console.log('[CraftScript] Execution completed:', {
+    console.log('[JavaScript] Execution result:', {
       ok: result.ok,
-      totalResults: result.results.length,
-      failed: result.results.filter(r => !r.ok).length
+      duration_ms: result.duration_ms,
+      hasError: !!result.error
     });
 
-    // Steps were already streamed via onStep callback above.
+    if (!result.ok && result.error) {
+      console.error('[JavaScript] Execution failed:', result.error);
+      job.state = 'failed';
+      job.error = result.error.message || 'javascript_failed';
+      job.endedAt = Date.now();
 
-    for (const r of result.results) {
-      job.lastStep = r;
-      if (!r.ok) {
-        console.error('[CraftScript] Step failed:', {
-          error: r.error,
-          message: r.message,
-          op_index: r.op_index
-        });
-        job.state = 'failed';
-        job.error = r.message || 'craftscript_failed';
-        job.endedAt = Date.now();
-        // Also emit status for failed jobs
-        let lastStatus: any = null;
-        try {
-          const st = {
-            id: job.id,
-            state: 'failed',
-            script: job.script,
-            duration_ms: (job.endedAt - (job.startedAt || job.endedAt)),
-            error: {
-              type: r.error,
-              message: r.message,
-              op: (r as any).op,
-              op_index: r.op_index,
-              line: (r as any).loc?.line,
-              column: (r as any).loc?.column,
-              notes: (r as any).notes
-            }
-          } as any;
-          lastStatus = st;
-          if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_status', details: { name: 'craftscript_status', tool_name: 'craftscript_status', input: { job_id: job.id }, params_summary: { job_id: job.id }, output: JSON.stringify(st), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
-          if (job.memoryStore) {
-            const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
-            if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_status', st);
-          }
-        } catch {}
-        const line = (r as any).loc?.line;
-        const column = (r as any).loc?.column;
-        chatCraftscriptError(minecraftBot, job.id, r.error || 'runtime_error', r.message || 'Unbekannter Fehler', line, column);
-        emitCraftscriptEvent({
+      // Emit a fail step
+      try {
+        const step = { ok: false, error: result.error.type, message: result.error.message, op_index: 0, ts: Date.now() };
+        if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_step', details: { name: 'craftscript_step', tool_name: 'craftscript_step', input: {}, params_summary: {}, output: JSON.stringify({ ...step, job_id: job.id }), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
+        if (job.memoryStore) {
+          const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
+          if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_step', { job_id: job.id, step });
+        }
+      } catch {}
+
+      // Emit a status row
+      try {
+        const status = {
           id: job.id,
           state: 'failed',
           script: job.script,
-          error: lastStatus?.error ?? {
-            type: r.error,
-            message: r.message,
-            op: (r as any).op,
-            op_index: r.op_index,
-            line,
-            column
-          },
-          botName
-        });
-        return;
-      }
-      if (JOB_CANCELLED(job)) return;
+          duration_ms: result.duration_ms,
+          error: result.error
+        } as any;
+        if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_status', details: { name: 'craftscript_status', tool_name: 'craftscript_status', input: { job_id: job.id }, params_summary: { job_id: job.id }, output: JSON.stringify(status), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
+        if (job.memoryStore) {
+          const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
+          if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_status', status);
+        }
+      } catch {}
+
+      chatCraftscriptError(minecraftBot, job.id, result.error.type, result.error.message, result.error.line, result.error.column);
+      emitCraftscriptEvent({
+        id: job.id,
+        state: 'failed',
+        script: job.script,
+        error: result.error,
+        botName,
+      });
+      return;
     }
-    if (JOB_CANCELLED(job)) return;
+
+    // Success
     job.state = 'completed';
     job.endedAt = Date.now();
-    console.log('[CraftScript] Job completed successfully');
-    // Emit completed status
+
+    // Emit success status
     try {
-      const st = { id: job.id, state: 'completed', script: job.script, duration_ms: (job.endedAt - (job.startedAt || job.endedAt)) } as any;
-      if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_status', details: { name: 'craftscript_status', tool_name: 'craftscript_status', input: { job_id: job.id }, params_summary: { job_id: job.id }, output: JSON.stringify(st), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
+      const status = {
+        id: job.id,
+        state: 'completed',
+        script: job.script,
+        duration_ms: result.duration_ms,
+      } as any;
+      if (activityWriter) activityWriter.addActivity({ type: 'tool', message: 'Tool: craftscript_status', details: { name: 'craftscript_status', tool_name: 'craftscript_status', input: { job_id: job.id }, params_summary: { job_id: job.id }, output: JSON.stringify(status), duration_ms: 0 }, role: 'tool', speaker: botName || minecraftBot.getBot().username || 'bot' });
       if (job.memoryStore) {
         const sid = (job.getSessionId && job.getSessionId()) || job.memoryStore.getLastActiveSessionId();
-        if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_status', st);
+        if (sid) job.memoryStore.addActivity(sid, 'tool', 'craftscript_status', status);
       }
     } catch {}
+
     emitCraftscriptEvent({
       id: job.id,
       state: 'completed',
       script: job.script,
-      botName
+      botName,
     });
+
   } catch (e: any) {
     if (job.state === 'canceled') return;
     console.error('[CraftScript] Job failed with exception:', e);
@@ -349,8 +296,4 @@ async function runJob(minecraftBot: MinecraftBot, job: Job, activityWriter?: Act
       botName
     });
   }
-}
-
-function JOB_CANCELLED(job: Job): boolean {
-  return job.state === 'canceled';
 }

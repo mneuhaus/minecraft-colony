@@ -731,6 +731,75 @@ export class ColonyDatabase extends EventEmitter {
   }
 
   // ============================================================================
+  // Core Missions
+  // ============================================================================
+
+  public createCoreMission(botId: number, content: string, description?: string, priority: number = 0, createdBy?: string): number {
+    const now = Math.floor(Date.now() / 1000);
+    const result = this.db.prepare(`
+      INSERT INTO core_missions (bot_id, content, description, priority, created_at, updated_at, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(botId, content, description || null, priority, now, now, createdBy || null);
+
+    return Number(result.lastInsertRowid);
+  }
+
+  public listCoreMissions(botId: number): any[] {
+    return this.db.prepare(`
+      SELECT * FROM core_missions
+      WHERE bot_id = ?
+      ORDER BY priority DESC, created_at ASC
+    `).all(botId);
+  }
+
+  public updateCoreMission(id: number, updates: { content?: string; description?: string; priority?: number }): boolean {
+    const now = Math.floor(Date.now() / 1000);
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (updates.content !== undefined) {
+      fields.push('content = ?');
+      values.push(updates.content);
+    }
+    if (updates.description !== undefined) {
+      fields.push('description = ?');
+      values.push(updates.description);
+    }
+    if (updates.priority !== undefined) {
+      fields.push('priority = ?');
+      values.push(updates.priority);
+    }
+
+    if (fields.length === 0) return false;
+
+    fields.push('updated_at = ?');
+    values.push(now);
+    values.push(id);
+
+    const result = this.db.prepare(`
+      UPDATE core_missions
+      SET ${fields.join(', ')}
+      WHERE id = ?
+    `).run(...values);
+
+    return result.changes > 0;
+  }
+
+  public deleteCoreMission(id: number): boolean {
+    const result = this.db.prepare('DELETE FROM core_missions WHERE id = ?').run(id);
+    return result.changes > 0;
+  }
+
+  public getCoreMissionsText(botId: number): string {
+    const missions = this.listCoreMissions(botId);
+    if (missions.length === 0) return '';
+
+    return missions.map((m: any, i: number) =>
+      `${i + 1}. ${m.content}${m.description ? ` (${m.description})` : ''}`
+    ).join('\n');
+  }
+
+  // ============================================================================
   // Cleanup & Maintenance
   // ============================================================================
 

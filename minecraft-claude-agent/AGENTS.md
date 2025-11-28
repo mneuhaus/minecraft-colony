@@ -9,7 +9,7 @@ This file contains legacy development details and debugging methodology.
 ## Project Documentation
 
 - **AGENTS.md** - **AI agent programming guide (READ THIS FIRST)**
-- **ARCHITECTURE.md** - System architecture overview (MCP tools, CraftScript runtime, dashboard pipeline)
+- **ARCHITECTURE.md** - System architecture overview (MCP tools, JavaScript runtime, dashboard pipeline)
 - **CLAUDE.md** (this file) - Legacy development guide and debugging methodology  
 - **TODO.md** - Roadmap of planned features and tasks
 - **CHANGELOG.md** - Version history following [Keep a Changelog](https://keepachangelog.com/) format
@@ -37,13 +37,14 @@ This file contains legacy development details and debugging methodology.
 
 ## Direct Control API (Optional)
 
-- Each bot can expose a local HTTP control port for direct CraftScript execution without chat injection.
+- Each bot can expose a local HTTP control port for direct JavaScript script execution without chat injection.
 - Configure per-bot in `bots.yaml` with `control_port: <port>`.
 - Endpoints (local to the bot process):
-  - `POST /control/craftscript/start` → `{ script }` returns `{ ok, job_id }`
+  - `POST /control/craftscript/start` → `{ script }` (JavaScript code) returns `{ ok, job_id }`
   - `GET /control/craftscript/status?id=...` → returns job state and `lastStep`
   - `POST /control/craftscript/cancel` → `{ job_id }`
-- The dashboard will automatically use this API (when configured) for the “Run Again” action; otherwise it falls back to chat injection.
+- Scripts use standard JavaScript (ES2023) with async/await support and access to bot commands like `dig()`, `place()`, `goto()`, etc.
+- The dashboard will automatically use this API (when configured) for the "Run Again" action; otherwise it falls back to chat injection.
 
 ## Blueprint Storage
 

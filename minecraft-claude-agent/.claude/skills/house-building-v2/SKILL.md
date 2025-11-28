@@ -73,16 +73,16 @@ MACRO EXCAVATE_RECT(p0, width, length) {
 }
 
 # Freiformvariante mit expliziten Koordinaten (x/z-Bereiche + Zielhöhe)
-**CraftScript-Funktion `excavate_range(name, from_x, to_x, from_z, to_z, target_y)`**
+**JavaScript-Funktion `excavate_range(name, from_x, to_x, from_z, to_z, target_y)`**
 
-> Persistente `craftscript_function` im Colony-DB-Cache (jetzt registriert): läuft spaltenweise durch den Bereich, `goto`’t jede Säule und bricht Blöcke von oben nach unten bis `target_y`. `break()` bringt automatisch den SAFE_DIG-Effekt (Sand/Gravel-Warnung), hinzu kommen Logs `excavate_range:start|column|done` für das angegebene `name`.
+> Persistente JavaScript-Funktion im Colony-DB-Cache (jetzt registriert): läuft spaltenweise durch den Bereich, `goto`'t jede Säule und bricht Blöcke von oben nach unten bis `target_y`. `break()` bringt automatisch den SAFE_DIG-Effekt (Sand/Gravel-Warnung), hinzu kommen Logs `excavate_range:start|column|done` für das angegebene `name`.
 
 * `name` – freies Label für Log/Diagnose (default: `"excavate_range"`).
 * `from_x` / `to_x` – Grenzen in X (Reihenfolge egal, der Helper sortiert sie).
 * `from_z` / `to_z` – Grenzen in Z.
 * `target_y` – Absolute Tiefe, bis wohin jede Säule abgetragen wird.
 
-**Aufruf im CraftScript:**
+**Aufruf im JavaScript:**
 
 ```
 excavate_range(

@@ -6,6 +6,7 @@
 import { computed } from 'vue';
 import ToolTodo from './ToolTodo.vue';
 import ToolGetPosition from './ToolGetPosition.vue';
+import ToolGetStatus from './ToolGetStatus.vue';
 import ToolNearest from './ToolNearest.vue';
 import ToolVox from './ToolVox.vue';
 import ToolAffordances from './ToolAffordances.vue';
@@ -21,6 +22,7 @@ import ToolGeneric from './ToolGeneric.vue';
 import ToolCraftScriptStatus from './ToolCraftScriptStatus.vue';
 import ToolCraftScriptFunction from './ToolCraftScriptFunction.vue';
 import ToolCraftScriptLogs from './ToolCraftScriptLogs.vue';
+import ToolScreenshot from './ToolScreenshot.vue';
 
 const props = defineProps<{ item: any }>();
 const normalized = computed(() => {
@@ -56,15 +58,19 @@ const key = computed(()=> {
   if (/block_info$/.test(n)) return 'block_info';
   if (/affordances$/.test(n)) return 'affordances';
   if (/nearest$/.test(n)) return 'nearest';
+  if (/get_status$/.test(n)) return 'get_status';
   if (/get_position$/.test(n)) return 'get_position';
   if (/get_inventory$/.test(n)) return 'inventory';
   if (/(get|update)_memory$/.test(n)) return 'memory';
+  if (/take_screenshot$/.test(n)) return 'screenshot';
+  if (/get_ascii_view$/.test(n)) return 'ascii_view';
   return 'generic';
 });
 
 const toolComponent = computed(()=> ({
   todo: ToolTodo,
   get_position: ToolGetPosition,
+  get_status: ToolGetStatus,
   nearest: ToolNearest,
   vox: ToolVox,
   look_at_map: ToolLookAtMap,
@@ -79,6 +85,8 @@ const toolComponent = computed(()=> ({
   craftscript_function: ToolCraftScriptFunction,
   memory: ToolMemory,
   inventory: ToolInventory,
+  screenshot: ToolScreenshot,
+  ascii_view: ToolGeneric, // ASCII view uses generic display
   generic: ToolGeneric,
 }[key.value] || ToolGeneric));
 </script>

@@ -8,6 +8,7 @@ export interface CraftscriptSnapshot {
   traces: Array<{ ts: number; kind: string; data: any }>;
   voxWindows: Array<{ ts: number; vox: any; target?: any; label?: string; source?: string }>;
   logs: Array<{ ts: number; kind: string; data: any }>;
+  consoleLogs: Array<{ ts: number; level: string; message: string; details?: any }>;
 }
 
 export function deriveJobIdFromEvent(event: any): string | null {
@@ -71,6 +72,7 @@ export function collectCraftscriptSnapshot(items: TimelineItem[], targetJobId?: 
     traces: [],
     voxWindows: [],
     logs: [],
+    consoleLogs: [],
   };
 
   for (const item of items) {
@@ -127,8 +129,20 @@ export function collectCraftscriptSnapshot(items: TimelineItem[], targetJobId?: 
     if (toolName === 'craftscript_trace') {
       if (data?.trace) {
         const ts = data.trace.ts || item.ts || Date.now();
-        snapshot.traces.push({ ts, kind: data.trace.kind || 'trace', data: data.trace });
-        ingestVoxEntries(snapshot, data.trace, ts, 'trace');
+        const trace = data.trace;
+
+        // Extract console logs
+        if (trace.kind === 'console') {
+          snapshot.consoleLogs.push({
+            ts,
+            level: trace.level || 'info',
+            message: trace.message || '',
+            details: trace.details,
+          });
+        }
+
+        snapshot.traces.push({ ts, kind: trace.kind || 'trace', data: trace });
+        ingestVoxEntries(snapshot, trace, ts, 'trace');
       } else {
         const ts = item.ts || Date.now();
         snapshot.traces.push({ ts, kind: 'changes', data });

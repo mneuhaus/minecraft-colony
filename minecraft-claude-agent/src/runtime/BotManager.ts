@@ -128,6 +128,13 @@ export class BotManager extends EventEmitter {
       claudeAgent.start();
       logger.info(`[${config.name}] Claude Agent event listeners registered`);
 
+      // Load auto-mode state from database
+      const autoModeValue = this.colonyDb.getMetadata(`bot_${botId}_auto_mode`);
+      if (autoModeValue === 'true') {
+        claudeAgent.setAutoMode(true);
+        logger.info(`[${config.name}] Auto-mode enabled`);
+      }
+
       // Connect to Minecraft server
       logger.info(`[${config.name}] Connecting to Minecraft server...`);
       await minecraftBot.connect();

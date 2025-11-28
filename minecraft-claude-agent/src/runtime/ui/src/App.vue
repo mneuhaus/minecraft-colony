@@ -82,6 +82,30 @@
                   <!-- Inventory -->
                   <SidebarInventory />
 
+                  <!-- Todos -->
+                  <SidebarTodos />
+
+                  <!-- Core Missions -->
+                  <SidebarMissions />
+
+                  <!-- Auto-Mode Toggle -->
+                  <div class="auto-mode-section">
+                    <n-space justify="space-between" align="center">
+                      <n-text strong style="font-size: 13px;">Auto-Mode</n-text>
+                      <n-switch v-model:value="autoMode" @update:value="toggleAutoMode" />
+                    </n-space>
+                    <n-text depth="3" style="font-size: 11px; margin-top: 4px; display: block;">
+                      Automatically prompts bot with core missions when idle
+                    </n-text>
+                  </div>
+
+                  <!-- Map View -->
+                  <n-collapse arrow-placement="right" style="margin-top: 12px;">
+                    <n-collapse-item title="Map View" name="map">
+                      <SidebarMap />
+                    </n-collapse-item>
+                  </n-collapse>
+
                   <!-- Skills -->
                   <n-collapse arrow-placement="right" style="margin-top: 12px;">
                     <SidebarSkills />
@@ -208,6 +232,9 @@ import BlueprintsModal from './components/BlueprintsModal.vue';
 import BlueprintDetail from './components/BlueprintDetail.vue';
 import IssueTrackerModal from './components/IssueTrackerModal.vue';
 import SidebarInventory from './components/SidebarInventory.vue';
+import SidebarTodos from './components/SidebarTodos.vue';
+import SidebarMissions from './components/SidebarMissions.vue';
+import SidebarMap from './components/SidebarMap.vue';
 import SidebarSkills from './components/SidebarSkills.vue';
 import CraftscriptModal from './components/CraftscriptModal.vue';
 import CraftscriptDetails from './pages/CraftscriptDetails.vue';
@@ -313,6 +340,7 @@ const issues = ref<any[]>([]);
 const issuesModalOpen = ref(false);
 const inspectorOpen = ref(false);
 const inspectorItem = ref<any>(null);
+const autoMode = ref(false);
 const botNames = computed(() => bots.value.map((b: any) => b.name));
 const openIssuesCount = computed(() =>
   issues.value.filter((i: any) => !['resolved', 'closed'].includes(String(i.state))).length
@@ -344,8 +372,14 @@ function setViewMode(mode: 'single' | 'all') {
 }
 
 function selectBot(name: string) {
+  // If clicking the same bot, do nothing
+  if (store.activeBot === name) return;
+
   store.activeBot = name;
-  if (store.viewMode === 'single') loadBotTimeline(name);
+
+  // Auto-switch to single view when selecting a bot
+  store.viewMode = 'single';
+  loadBotTimeline(name);
 }
 
 async function loadBots() {
@@ -505,6 +539,7 @@ onMounted(async () => {
   connectWebSocket();
   loadBlueprints();
   loadIssues();
+  loadAutoMode();
 
   // Listen for hash changes
   window.addEventListener('hashchange', () => {
@@ -521,6 +556,7 @@ watch(
 
 watch(() => store.activeBot, () => {
   loadIssues();
+  loadAutoMode();
 });
 
 async function loadBlueprints() {
@@ -562,6 +598,40 @@ async function handleCreateBlueprint(payload: any) {
 function openIssuesModal() {
   issuesModalOpen.value = true;
   loadIssues();
+}
+
+async function loadAutoMode() {
+  if (!store.activeBot) return;
+
+  try {
+    const res = await fetch(`/api/bots/${encodeURIComponent(store.activeBot)}/auto-mode`);
+    const data = await res.json();
+    if (data.ok) {
+      autoMode.value = data.autoMode;
+    }
+  } catch (error) {
+    console.error('Failed to load auto-mode state', error);
+  }
+}
+
+async function toggleAutoMode(enabled: boolean) {
+  if (!store.activeBot) return;
+
+  try {
+    const res = await fetch(`/api/bots/${encodeURIComponent(store.activeBot)}/auto-mode`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ autoMode: enabled })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      autoMode.value = data.autoMode;
+      console.log(`Auto-mode ${enabled ? 'enabled' : 'disabled'} for ${store.activeBot}`);
+    }
+  } catch (error) {
+    console.error('Failed to toggle auto-mode', error);
+    autoMode.value = !enabled; // Revert on error
+  }
 }
 </script>
 
@@ -611,5 +681,12 @@ function openIssuesModal() {
 
 .alert-meta {
   font-size: 12px;
+}
+
+.auto-mode-section {
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  margin-top: 12px;
 }
 </style>

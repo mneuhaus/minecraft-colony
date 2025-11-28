@@ -1,5 +1,12 @@
 /* Clean, functional debugging dashboard */
 
+:root {
+  --color-accent: #4a9eff;
+  --color-accent-rgb: 74, 158, 255;
+  --color-bg: #141517;
+  --color-text: #e3e5e8;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;

@@ -10,6 +10,7 @@ type MapOptions = {
   zoom?: number;
   grep?: string[];
   view?: 'stacked' | 'top';
+  showHeight?: boolean;
 };
 
 const COLOR_FALLBACKS: Record<string, string> = {
@@ -130,6 +131,7 @@ export async function generateMapImage(bot: Bot, options: MapOptions = {}) {
   const zoom = options.zoom ?? 1;
   const grep = options.grep ?? [];
   const view = options.view ?? 'top';
+  const showHeight = options.showHeight ?? true; // Default to true
 
   const snapshot = look_at_map(bot, radius, zoom, grep);
   const cells = Array.isArray(snapshot?.cells) ? snapshot.cells : [];
@@ -137,8 +139,8 @@ export async function generateMapImage(bot: Bot, options: MapOptions = {}) {
     return { image: null, width: 0, height: 0, info: { message: 'No cells to render' } };
   }
 
-  const xs = Array.from(new Set(cells.map((c: any) => c.x))).sort((a, b) => a - b);
-  const zs = Array.from(new Set(cells.map((c: any) => c.z))).sort((a, b) => a - b);
+  const xs = Array.from(new Set(cells.map((c: any) => c.x))).sort((a: any, b: any) => a - b);
+  const zs = Array.from(new Set(cells.map((c: any) => c.z))).sort((a: any, b: any) => a - b);
   const cellSize = view === 'stacked' ? 20 : 24;
   const offset = 120;
   const gridWidth = xs.length * cellSize;
@@ -163,6 +165,7 @@ export async function generateMapImage(bot: Bot, options: MapOptions = {}) {
         create: { width: cellSize, height: cellSize, channels: 4, background: fill }
       }).png().toBuffer();
     }
+
     const left = Math.round(offset + xIndex * cellSize);
     const top = Math.round(offset + (zs.length - 1 - zIndex) * cellSize);
     overlays.push({ input: tile, left, top });
@@ -190,6 +193,40 @@ export async function generateMapImage(bot: Bot, options: MapOptions = {}) {
     svgParts.push(`<text x="${offset - 25}" y="${labelY}" font-size="16" text-anchor="end" fill="#d1d5db">${z}</text>`);
     svgParts.push(`<text x="${canvasWidth - offset + 25}" y="${labelY}" font-size="16" text-anchor="start" fill="#d1d5db">${z}</text>`);
   });
+
+  // Add height badges if enabled
+  if (showHeight) {
+    for (const cell of cells as any[]) {
+      const xIndex = xs.indexOf(cell.x);
+      const zIndex = zs.indexOf(cell.z);
+      if (xIndex === -1 || zIndex === -1) continue;
+
+      const avgHeight = Math.round((cell.height_min + cell.height_max) / 2);
+      if (avgHeight === 0) continue; // Skip badges at bot level
+
+      const centerX = offset + xIndex * cellSize + cellSize / 2;
+      const centerY = offset + (zs.length - 1 - zIndex) * cellSize + cellSize / 2;
+
+      // Determine text color based on height - no background
+      let textColor: string;
+      let strokeColor: string;
+      if (avgHeight > 0) {
+        // Above bot: warm colors (orange to red for higher)
+        textColor = avgHeight > 5 ? '#ef4444' : '#f97316'; // red : orange
+        strokeColor = '#000000';
+      } else {
+        // Below bot: cool colors (cyan to blue for deeper)
+        textColor = avgHeight < -5 ? '#3b82f6' : '#06b6d4'; // blue : cyan
+        strokeColor = '#000000';
+      }
+
+      const heightText = avgHeight > 0 ? `+${avgHeight}` : `${avgHeight}`;
+
+      // Draw text with stroke for better visibility
+      svgParts.push(`<text x="${centerX}" y="${centerY + 4}" font-size="12" font-weight="bold" text-anchor="middle" stroke="${strokeColor}" stroke-width="2" fill="${strokeColor}">${heightText}</text>`);
+      svgParts.push(`<text x="${centerX}" y="${centerY + 4}" font-size="12" font-weight="bold" text-anchor="middle" fill="${textColor}">${heightText}</text>`);
+    }
+  }
 
   const originX = snapshot?.grid?.origin?.x ?? null;
   const originZ = snapshot?.grid?.origin?.z ?? null;

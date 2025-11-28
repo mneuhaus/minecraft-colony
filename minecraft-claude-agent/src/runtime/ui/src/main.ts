@@ -15,7 +15,7 @@ export const store = reactive({
   bots: [] as any[],
   items: [] as TimelineItem[],
   activeBot: '' as string,
-  viewMode: 'single' as 'single' | 'all',
+  viewMode: 'all' as 'single' | 'all',
   craftModal: {
     open: false,
     jobId: null as string | null,

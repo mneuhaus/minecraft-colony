@@ -16,7 +16,18 @@
         <n-tab-pane name="script" tab="Script">
           <pre class="cs-code" v-html="highlightedScript"></pre>
         </n-tab-pane>
-        <n-tab-pane name="logs" tab="Logs" v-if="snapshot.logs.length">
+        <n-tab-pane name="console" tab="Console" v-if="snapshot.consoleLogs.length">
+          <CraftscriptConsole :logs="snapshot.consoleLogs" />
+        </n-tab-pane>
+        <n-tab-pane name="trace" tab="Block Changes">
+          <ToolCraftScriptTrace v-if="traceItem" :item="traceItem" />
+          <CraftscriptMovementPanel
+            v-else-if="movementVoxEntries.length"
+            :entries="movementVoxEntries"
+          />
+          <div v-else class="cs-empty">No block changes available for this job.</div>
+        </n-tab-pane>
+        <n-tab-pane name="logs" tab="Raw Logs" v-if="snapshot.logs.length">
           <div class="cs-list">
             <div v-for="log in orderedLogs" :key="log.ts + log.kind" class="cs-list__item">
               <span class="cs-list__time">{{ formatTs(log.ts) }}</span>
@@ -33,14 +44,6 @@
               <span class="cs-list__body">{{ step.summary }}</span>
             </div>
           </div>
-        </n-tab-pane>
-        <n-tab-pane name="trace" tab="Trace">
-          <ToolCraftScriptTrace v-if="traceItem" :item="traceItem" />
-          <CraftscriptMovementPanel
-            v-else-if="movementVoxEntries.length"
-            :entries="movementVoxEntries"
-          />
-          <div v-else class="cs-empty">No trace data available for this job.</div>
         </n-tab-pane>
         <n-tab-pane name="vox" tab="Vox" v-if="snapshot.voxWindows.length">
           <div class="vox-list">
@@ -61,9 +64,9 @@
 
     <n-card v-else>
       <div class="cs-empty">
-        <p v-if="remoteLoading">Loading CraftScript data...</p>
+        <p v-if="remoteLoading">Loading JavaScript data...</p>
         <p v-else-if="remoteError">Error: {{ remoteError }}</p>
-        <p v-else>No CraftScript data available for job {{ jobId }}</p>
+        <p v-else>No JavaScript data available for job {{ jobId }}</p>
       </div>
     </n-card>
   </div>
@@ -79,6 +82,7 @@ import ToolCraftScriptTrace from '../components/types/Tool/ToolCraftScriptTrace.
 import VoxPreview from '../components/VoxPreview.vue';
 import Vox3DViewer from '../components/Vox3DViewer.vue';
 import CraftscriptMovementPanel from '../components/CraftscriptMovementPanel.vue';
+import CraftscriptConsole from '../components/CraftscriptConsole.vue';
 import { collectCraftscriptSnapshot, type CraftscriptSnapshot } from '../utils/craftscriptJob';
 
 hljs.registerLanguage('javascript', javascript);
@@ -142,6 +146,7 @@ function mergeSnapshots(primary: CraftscriptSnapshot, secondary: CraftscriptSnap
     traces: mergeCollections(primary.traces, secondary.traces, (item) => `${item.ts}-${item.kind}`),
     voxWindows: mergeCollections(primary.voxWindows, secondary.voxWindows, (item) => `${item.ts}-${JSON.stringify(item.target || {})}`),
     logs: mergeCollections(primary.logs, secondary.logs, (item) => `${item.ts}-${item.kind}`),
+    consoleLogs: mergeCollections(primary.consoleLogs, secondary.consoleLogs, (item) => `${item.ts}-${item.message}`),
   };
 }
 

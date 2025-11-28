@@ -1,325 +1,646 @@
 ---
-name: craftscript
-description: Write safe, minimal CraftScript using direct coordinates (x,y,z) for movement and block actions. Use read-only tools to plan, then execute with strong guardrails and report clear errors. ALL movement and block interaction must be done through CraftScript - do NOT use nav or other direct tools.
-allowed-tools: craftscript_start, craftscript_status, craftscript_cancel, get_vox, block_info, affordances, get_topography, send_chat, get_position, get_inventory
+name: javascript-scripting
+description: Write safe, powerful JavaScript scripts to control the Minecraft bot with full world awareness, crafting capabilities, and reusable custom functions. Use read-only queries for planning, then execute precise actions with comprehensive logging. ALL movement and block interaction must be done through JavaScript scripts - do NOT use nav or other direct tools.
+allowed-tools: craftscript_start, craftscript_status, craftscript_cancel, get_vox, block_info, affordances, get_topography, send_chat, get_position, get_inventory, create_craftscript_function, edit_craftscript_function, list_craftscript_functions, get_craftscript_function, list_function_versions, delete_craftscript_function
 ---
 
-# CraftScript (Direct Coordinates) – Safe Execution Guide
+# JavaScript Bot Scripting – Complete Guide
 
-Use direct coordinates (x,y,z) for precise actions. Always inspect first, plan in small steps, and rely on guardrails that return specific error codes when an action is unsafe or impossible.
+Write standard JavaScript (ES2023) with async/await to control the Minecraft bot. **New capabilities**: World awareness (blocks, entities, players), crafting system, and persistent custom functions!
 
-## Read-Only Scouting
+## Quick Start
 
-Use these tools to gather information and plan your CraftScript actions:
+### 1. Scout → 2. Plan → 3. Execute
 
-- get_position() → { x,y,z } - Get bot's current position
-- get_inventory() → list of all items in bot's inventory with counts
-- get_vox(radius, grep?) → voxels near the bot (x/y/z; matches for grep)
-- get_topography(radius) → 2D height map around bot
-- block_info({ x,y,z }) → block metadata at position
-- affordances({ x,y,z }) → standability, placeable faces, safety hints
+```javascript
+// 1. Scout: Use read-only tools
+const pos = await get_position();
+const nearbyOre = find_blocks("iron_ore", 32, 10);
 
-## Predicates
-
-- safe_step_up(sel), safe_step_down(sel), can_stand(sel), is_air(sel)
-- has_item("minecraft:item"), is_hazard("lava_near")
-- block_is(pos, id) → true if the block at a selector or world (x,y,z) equals the given id
-
-## Execution
-
-ALL movement and block interaction must be done through CraftScript:
-
-- craftscript_start({ script }) → run CraftScript with movement/actions
-- craftscript_status({ job_id }) → check CraftScript execution status
-- craftscript_cancel({ job_id }) → cancel running CraftScript
-
-**IMPORTANT**: Do NOT use `nav` or `nearest` tools directly. Use `goto()`, `dig()`, `place()`, etc. inside CraftScript instead.
-
-## CraftScript Commands
-
-**Block Interaction:**
-- dig(x, y, z) or dig(selector) → dig block at position
-- break(x, y, z) or break(selector) → alias for dig (better for breaking logs/wood)
-- place(block_id, x, y, z) or place(block_id, selector) → place block at position
-- build_up() or build_up(block_id) → jump and place block beneath (builds pillar upward)
-- plant(sapling_id, x, y, z) → plant sapling/crop at position
-
-**Movement & Navigation:**
-- goto(x, y, z, tol:1) or goto(selector, tol:1) → navigate to position
-- scan(radius) → refresh local voxel data
-
-**Inventory:**
-- equip(item_id) → equip tool or item
-- pickup_blocks() or pickup_blocks(radius) → collect dropped items within radius (default 8 blocks)
-- drop(item_id, count) → drop items from inventory
-
-**Crafting & Containers:**
-- craft(item_id, count) → craft items (auto-finds crafting table if needed)
-- wait(ms) → wait/delay for milliseconds (max 300000 = 5 minutes)
-// Low-level (slots)
-- open_container(x, y, z) → open at position (alias: open)
-- container_put(slot, item_id, count) → put items (slots: "input"/"fuel" for furnace or number for chest)
-- container_take(slot, count) → take items (slots: "output" for furnace or number for chest)
-- container_items() → list all items in the open container
-- close_container() → close (alias: close)
-
-// High-level (slotless shorthands)
-- deposit([x,y,z,] item_id, count?) → deposit into container (opens/closes automatically when x,y,z provided). Omitting count deposits all of that item in inventory.
-- withdraw([x,y,z,] item_id, count?) → withdraw from container (opens/closes automatically when x,y,z provided). Omitting count withdraws all available.
-
-## Guardrails (Error Codes)
-
-- dig:
-  - no_target → there is no block to dig at that position
-  - out_of_reach → target further than 4.5 blocks
-  - invariant_violation: gravity_block_overhead → avoid opening into gravel/sand above
-  - runtime_error → dig failed (engine reason)
-
-- place:
-  - unavailable → missing item in inventory
-  - blocked: no reference to place against (check face)
-  - out_of_reach → reference beyond reach (4.5)
-  - runtime_error → place failed (engine reason)
-
-- build_up:
-  - unavailable → no building blocks (dirt/cobblestone/stone/planks/log) in inventory
-  - blocked: no reference block beneath → can't place block mid-air
-  - runtime_error → jump or place failed (engine reason)
-
-- move/goto:
-  - no_path → pathfinder couldn't plan a path to coordinates
-
-When you get an error, explain briefly what failed and propose a safer or smaller step (e.g., move closer first, pick another face, clear gravity overhead, scan again).
-
-## Examples
-
-### Move then Dig at a Coordinate (Safe)
-
-```
-repeat(1){
-  // navigate near target
-  goto(120, 64, -80, tol:1);
-  // inspect
-  scan(2);
-  // dig the block if reachable
-  dig(120, 64, -80);
+// 2. Plan: Check what's available
+if (nearbyOre.length > 0 && has_item("iron_pickaxe")) {
+  // 3. Execute: Run actions
+  for (const orePos of nearbyOre) {
+    await goto(orePos.x, orePos.y, orePos.z);
+    await dig(orePos.x, orePos.y, orePos.z);
+  }
+  await pickup_blocks(8);
 }
 ```
 
-### Place a Block Against a Face
+---
 
-```
-// Equip and place a planks block at world position, facing up
-place("minecraft:oak_planks", 121, 64, -80, face: up);
+## Read-Only Scouting Tools
+
+Use these MCP tools to gather information **before** writing scripts:
+
+- `get_position()` → Current bot position { x, y, z }
+- `get_inventory()` → All items with counts
+- `get_vox(radius, grep?)` → Voxel data around bot
+- `get_topography(radius)` → 2D height map
+- `block_info({ x, y, z })` → Detailed block metadata
+- `affordances({ x, y, z })` → Standability, placeable faces
+
+---
+
+## JavaScript API Reference
+
+All action commands are **async functions** - always use `await`.
+
+### 🚶 Movement & Navigation
+
+```javascript
+await goto(x, y, z, opts)       // Navigate to coordinates
+  // opts: { tolerance: 1 }     // How close to get (default: 1 block)
+
+await look_at(x, y, z)          // Aim at coordinates
 ```
 
-### Build Up (Jump and Place Beneath)
+**Examples:**
+```javascript
+// Navigate to coordinates
+await goto(100, 64, 50);
 
+// Get close to a position (within 3 blocks)
+await goto(x, y, z, { tolerance: 3 });
+
+// Look at a block before interacting
+await look_at(x, y, z);
+await dig(x, y, z);
 ```
-// Build a pillar 5 blocks high
-repeat(5) {
-  build_up();  // Auto-selects dirt/cobblestone/stone/planks/log
+
+### ⛏️ Block Interaction
+
+```javascript
+await dig(x, y, z)              // Mine block (auto-equips best tool)
+await place(blockId, x, y, z)   // Place block (finds reference block)
+await build_up(blockId)         // Jump and place block below to build up 1 block
+await equip(itemId)             // Equip item to hand
+```
+
+**Examples:**
+```javascript
+// Dig a block
+await dig(100, 64, 50);
+
+// Place a torch
+await place("torch", 100, 65, 50);
+
+// Build up one block (pillar jump)
+await build_up("dirt");
+
+// Equip a pickaxe
+await equip("iron_pickaxe");
+```
+
+**Note:** For descending, use `goto()` - pathfinder will automatically drop down up to 8 blocks if safe.
+
+### 💼 Inventory & Items
+
+```javascript
+await pickup_blocks(radius)     // Collect dropped items (default: 8 blocks)
+await toss(itemId, count)       // Drop items (count optional)
+```
+
+**Examples:**
+```javascript
+// Pick up nearby items
+await pickup_blocks(10);
+
+// Drop 32 cobblestone
+await toss("cobblestone", 32);
+
+// Drop all dirt
+while (has_item("dirt")) {
+  await toss("dirt", 64);
+}
+```
+
+### 📦 Container Management
+
+```javascript
+await open_container(x, y, z)   // Open chest/barrel/container
+await deposit(itemId, count)    // Put items in (count optional)
+await withdraw(itemId, count)   // Take items out (count optional)
+await close_container()         // Close current container
+```
+
+**Examples:**
+```javascript
+// Store items in a chest
+await open_container(100, 64, 50);
+await deposit("cobblestone", 64);
+await deposit("dirt");  // Deposits all
+await close_container();
+
+// Retrieve items from chest
+await open_container(100, 64, 50);
+await withdraw("iron_ingot", 10);
+await close_container();
+```
+
+### 🔨 Crafting
+
+```javascript
+await craft(itemId, count, useCraftingTable)
+  // count: items to craft (default: 1)
+  // useCraftingTable: auto-find table within 32 blocks (default: false)
+```
+
+**Examples:**
+```javascript
+// Craft sticks (2x2 grid)
+await craft("stick", 4);
+
+// Craft pickaxe (needs crafting table)
+await craft("iron_pickaxe", 1, true);
+
+// Craft torches
+if (has_item("coal") && has_item("stick")) {
+  await craft("torch", 64);
+}
+```
+
+### ⏰ Utilities
+
+```javascript
+await wait(ms)                  // Delay (max 300000ms = 5 minutes)
+console.log(...args)            // Log to Console tab
+```
+
+**Script Timeout:** 5 minutes (300 seconds) maximum execution time.
+
+---
+
+## Query Functions (Read-Only, Instant)
+
+### 🔍 Block Queries
+
+```javascript
+is_air(x, y, z)                 // Returns true if air
+block_is(x, y, z, blockId)      // Returns true if matches
+get_block(x, y, z)              // Returns { name, displayName, position, hardness, type }
+find_blocks(blockId, maxDist, count)  // Returns array of {x,y,z} positions
+can_see_block(x, y, z)          // Returns true if line-of-sight
+```
+
+**Examples:**
+```javascript
+// Check block type
+if (block_is(100, 64, 50, "stone")) {
+  await dig(100, 64, 50);
 }
 
-// Build with specific material
-repeat(3) {
-  build_up("dirt");  // Uses dirt blocks specifically
+// Get block details
+const block = get_block(100, 64, 50);
+console.log(`Block: ${block.displayName}, hardness: ${block.hardness}`);
+
+// Find nearest diamonds
+const diamonds = find_blocks("diamond_ore", 64, 5);
+for (const pos of diamonds) {
+  console.log(`Diamond at ${pos.x}, ${pos.y}, ${pos.z}`);
+}
+```
+
+### 👥 Entity Queries
+
+```javascript
+get_nearest_entity(type?)       // Find closest entity (optional type filter)
+get_entities(type?, maxDist)    // Get all entities (default 32 blocks)
+get_players()                   // Get all visible players
+```
+
+**Examples:**
+```javascript
+// Find nearest mob
+const mob = get_nearest_entity("zombie");
+if (mob && mob.distance < 10) {
+  console.log("Zombie nearby at", mob.position);
 }
 
-// Combine with navigation
-goto(100, 64, -10, tol:1);
-repeat(10) {
-  build_up("cobblestone");  // Build 10-block cobblestone pillar
+// Find all sheep within 50 blocks
+const sheep = get_entities("sheep", 50);
+console.log(`Found ${sheep.length} sheep`);
+
+// Check for nearby players
+const players = get_players();
+if (players.length > 0) {
+  console.log(`Players nearby: ${players.map(p => p.username).join(', ')}`);
 }
 ```
 
-### Build Up (range loop and top marker)
+### 🎒 Inventory & Recipe Queries
 
-```
-// Build 6 blocks up at a target and place a torch on top
-goto(140, 64, 92, tol:1);
-repeat(h: 1..6) { build_up(); }
-if (has_item("minecraft:torch")) { place("minecraft:torch", 140, 64+6, 92, face: up); }
-```
-
-### Direct Coordinates vs Selectors
-
-```
-// Using direct coordinates (x, y, z)
-dig(106, 67, 82);
-place("stone", 106, 67, 82);
-goto(106, 67, 82, tol:1);
-
-// Using selectors (relative positioning)
-dig(f1+u2);                    // dig forward 1, up 2
-place("cobblestone", f1+u1, face:"up");  // place at forward 1, up 1
-goto(f6, tol:1);               // move to 6 blocks forward
-
-// Using waypoints
-goto(waypoint("home"), tol:1);
+```javascript
+has_item(itemId)                // Returns true if in inventory
+get_recipes(itemId)             // Returns array of recipes
+can_craft(itemId, count?)       // Returns true if craftable now
 ```
 
-### Building a Platform
+**Examples:**
+```javascript
+// Check inventory before acting
+if (has_item("iron_pickaxe")) {
+  await equip("iron_pickaxe");
+  await dig(x, y, z);
+}
 
-```
-// Build a 3x3 platform at specific location
-goto(100, 64, 50, tol:1);
-place("oak_planks", 100, 64, 50);
-place("oak_planks", 101, 64, 50);
-place("oak_planks", 102, 64, 50);
-place("oak_planks", 100, 64, 51);
-place("oak_planks", 101, 64, 51);
-place("oak_planks", 102, 64, 51);
-place("oak_planks", 100, 64, 52);
-place("oak_planks", 101, 64, 52);
-place("oak_planks", 102, 64, 52);
+// Check crafting options
+if (can_craft("iron_pickaxe")) {
+  await craft("iron_pickaxe", 1, true);
+} else {
+  console.log("Missing materials for iron pickaxe");
+  const recipes = get_recipes("iron_pickaxe");
+  console.log("Recipe:", recipes[0]);
+}
 ```
 
-### Plant in a 6‑block spacing grid (only on dirt)
+---
 
+## Control Flow & Patterns
+
+### Conditionals
+
+```javascript
+// Check before digging
+if (!is_air(x, y, z)) {
+  await dig(x, y, z);
+}
+
+// Conditional crafting
+if (has_item("coal") && has_item("stick")) {
+  await craft("torch", 16);
+}
 ```
-let ox = 113; let oy = 64; let oz = 114;
-repeat(ix: 0..4) {
-  repeat(iz: 0..3) {
-    let px = ox + ix * 6;
-    let pz = oz + iz * 6;
-    if (block_is(px, oy - 1, pz, "dirt")) {
-      plant("oak_sapling", px, oy, pz);
+
+### Loops
+
+```javascript
+// Mine a row
+for (let x = 100; x < 110; x++) {
+  if (!is_air(x, 64, 50)) {
+    await dig(x, 64, 50);
+  }
+}
+
+// Mine until inventory full
+const blocks = find_blocks("iron_ore", 64, 100);
+for (const pos of blocks) {
+  await goto(pos.x, pos.y, pos.z);
+  await dig(pos.x, pos.y, pos.z);
+}
+await pickup_blocks(10);
+```
+
+### Error Handling
+
+```javascript
+try {
+  await goto(x, y, z);
+  await dig(x, y, z);
+} catch (error) {
+  console.log("Operation failed:", error.message);
+  // Fallback behavior
+}
+```
+
+---
+
+## Custom Reusable Functions 🎯
+
+Create persistent, versioned functions for common patterns!
+
+### Creating Functions
+
+Use the `create_craftscript_function` tool:
+
+```javascript
+create_craftscript_function({
+  name: "mine_vein",
+  description: "Mine all connected ore blocks of same type",
+  args: [
+    { name: "ore_type", type: "string" },
+    { name: "start_x", type: "int" },
+    { name: "start_y", type: "int" },
+    { name: "start_z", type: "int" }
+  ],
+  body: `
+    const mined = new Set();
+    const queue = [[start_x, start_y, start_z]];
+
+    while (queue.length > 0 && mined.size < 50) {
+      const [x, y, z] = queue.shift();
+      const key = \`\${x},\${y},\${z}\`;
+
+      if (mined.has(key)) continue;
+      if (!block_is(x, y, z, ore_type)) continue;
+
+      await goto(x, y, z);
+      await dig(x, y, z);
+      mined.add(key);
+
+      // Check adjacent blocks
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dz = -1; dz <= 1; dz++) {
+            if (dx === 0 && dy === 0 && dz === 0) continue;
+            queue.push([x + dx, y + dy, z + dz]);
+          }
+        }
+      }
+    }
+
+    console.log(\`Mined \${mined.size} \${ore_type} blocks\`);
+    await pickup_blocks(10);
+  `
+});
+```
+
+### Using Custom Functions
+
+Functions auto-load in all scripts:
+
+```javascript
+// Find and mine iron veins
+const ores = find_blocks("iron_ore", 32, 10);
+for (const ore of ores) {
+  await mine_vein("iron_ore", ore.x, ore.y, ore.z);
+}
+```
+
+### More Function Examples
+
+**Safe building helper:**
+```javascript
+create_craftscript_function({
+  name: "safe_place",
+  description: "Place block only if space is empty",
+  args: [
+    { name: "block_id", type: "string" },
+    { name: "x", type: "int" },
+    { name: "y", type: "int" },
+    { name: "z", type: "int" }
+  ],
+  body: `
+    if (is_air(x, y, z) && has_item(block_id)) {
+      await place(block_id, x, y, z);
+      return true;
+    }
+    return false;
+  `
+});
+```
+
+**Inventory management:**
+```javascript
+create_craftscript_function({
+  name: "store_items",
+  description: "Store specified items in nearest chest",
+  args: [
+    { name: "item_id", type: "string" },
+    { name: "keep_count", type: "int", optional: true, default: 0 }
+  ],
+  body: `
+    if (!has_item(item_id)) return;
+
+    // Find nearest chest
+    const chests = find_blocks("chest", 32, 1);
+    if (chests.length === 0) {
+      console.log("No chest found nearby");
+      return;
+    }
+
+    const chest = chests[0];
+    await goto(chest.x, chest.y, chest.z);
+    await open_container(chest.x, chest.y, chest.z);
+
+    // Deposit all except keep_count
+    await deposit(item_id);
+    if (keep_count > 0) {
+      await withdraw(item_id, keep_count);
+    }
+
+    await close_container();
+    console.log(\`Stored \${item_id}, kept \${keep_count}\`);
+  `
+});
+```
+
+### Function Features
+
+- 📦 **Persistent**: Saved in database, available across sessions
+- 🔄 **Versioned**: Full edit history with rollback
+- ✅ **Type-safe**: Args validated (int, bool, string)
+- 📊 **Logged**: Calls shown in Console with 📦 icon
+- 🔒 **Scoped**: Each bot has its own functions
+- 🧩 **Composable**: Can call other functions and bot commands
+- ⏱️ **Timeout**: 30 seconds per function call
+
+### Managing Functions
+
+```javascript
+list_craftscript_functions()    // See all your functions
+edit_craftscript_function({     // Update function (new version)
+  name: "mine_vein",
+  body: "...",
+  change_summary: "Added max limit check"
+})
+get_craftscript_function({ name: "mine_vein" })
+list_function_versions({ name: "mine_vein" })
+delete_craftscript_function({ name: "mine_vein" })
+```
+
+---
+
+## Practical Examples
+
+### Example 1: Auto-Mining with Tool Crafting
+
+```javascript
+// Find iron ore and mine it, crafting tools as needed
+const ores = find_blocks("iron_ore", 64, 50);
+console.log(`Found ${ores.length} iron ore blocks`);
+
+for (const ore of ores) {
+  // Check tool durability, craft new one if needed
+  if (!has_item("iron_pickaxe")) {
+    if (can_craft("iron_pickaxe")) {
+      await craft("iron_pickaxe", 1, true);
+      console.log("Crafted new pickaxe");
+    } else {
+      console.log("No pickaxe available, stopping");
+      break;
+    }
+  }
+
+  await goto(ore.x, ore.y, ore.z);
+  await dig(ore.x, ore.y, ore.z);
+}
+
+await pickup_blocks(10);
+```
+
+### Example 2: Smart Chest Organization
+
+```javascript
+// Store all mined items, keeping tools
+const chestPos = { x: 100, y: 64, z: 50 };
+
+await goto(chestPos.x, chestPos.y, chestPos.z);
+await open_container(chestPos.x, chestPos.y, chestPos.z);
+
+// Deposit ores and cobblestone
+const depositable = ["cobblestone", "iron_ore", "coal", "dirt"];
+for (const item of depositable) {
+  if (has_item(item)) {
+    await deposit(item);
+  }
+}
+
+await close_container();
+console.log("Items stored in chest");
+```
+
+### Example 3: Building with Awareness
+
+```javascript
+// Build a platform, checking each block first
+const buildY = 64;
+const size = 5;
+
+for (let x = 0; x < size; x++) {
+  for (let z = 0; z < size; z++) {
+    const worldX = 100 + x;
+    const worldZ = 50 + z;
+
+    // Only place if empty
+    if (is_air(worldX, buildY, worldZ)) {
+      await goto(worldX, buildY, worldZ);
+      await place("stone", worldX, buildY, worldZ);
     }
   }
 }
-```
-### Plant in a 6‑block spacing grid (only on dirt)
 
+console.log(`Built ${size}x${size} platform`);
 ```
-let ox = 113; let oy = 64; let oz = 114;
-repeat(ix: 0..4) {
-  repeat(iz: 0..3) {
-    let px = ox + ix * 6;
-    let pz = oz + iz * 6;
-    if (block_is(px, oy - 1, pz, "dirt")) {
-      plant("oak_sapling", px, oy, pz);
-    }
+
+### Example 4: Building a Tower (Pillar Jump)
+
+```javascript
+// Build a vertical tower using build_up
+const targetHeight = 10; // blocks to climb
+const blockType = "dirt";
+
+console.log(`Building ${targetHeight}-block tower with ${blockType}`);
+
+// Check we have enough blocks
+const dirtItem = bot.inventory.items().find(i => i.name === blockType);
+if (!dirtItem || dirtItem.count < targetHeight) {
+  console.log(`Need ${targetHeight} ${blockType}, only have ${dirtItem?.count || 0}`);
+} else {
+  const startY = bot.entity.position.y;
+
+  for (let i = 0; i < targetHeight; i++) {
+    await build_up(blockType);
+    const currentHeight = Math.floor(bot.entity.position.y - startY);
+    console.log(`Height: ${currentHeight}/${targetHeight}`);
   }
+
+  console.log(`Reached height ${Math.floor(bot.entity.position.y - startY)}!`);
 }
 ```
 
-### Short Navigation Script with Check
+### Example 5: Vertical Navigation with Pathfinder
 
+```javascript
+// Navigate to higher ground - pathfinder handles the climb
+const hillTop = { x: 150, y: 80, z: 200 };
+console.log(`Navigating to hilltop at y=${hillTop.y}`);
+
+await goto(hillTop.x, hillTop.y, hillTop.z, { tolerance: 2 });
+console.log("Reached hilltop!");
+
+// Do something at the top...
+await place("banner", hillTop.x, hillTop.y, hillTop.z);
+
+// Navigate back down - pathfinder automatically drops down (up to 8 blocks)
+const groundLevel = { x: 145, y: 64, z: 195 };
+console.log("Returning to ground level...");
+
+await goto(groundLevel.x, groundLevel.y, groundLevel.z, { tolerance: 2 });
+console.log("Back on ground!");
+
+// Note: Pathfinder can drop up to 8 blocks safely
+// For taller structures, use build_up() or stairs
 ```
-macro step_to(x:int,y:int,z:int){
-  goto(x, y, z, tol:1);
+
+---
+
+## Best Practices
+
+### ✅ DO:
+- Scout with read-only tools before executing
+- Use world coordinates (absolute x, y, z)
+- Check inventory before crafting/placing
+- Handle errors with try/catch
+- Log progress with console.log()
+- Create custom functions for repeated patterns
+- Use queries to make informed decisions
+
+### ❌ DON'T:
+- Use `nav` or `nearest` tools (use JavaScript instead)
+- Assume commands succeed (always check/handle errors)
+- Create giant monolithic scripts (break into small steps)
+- Ignore inventory state (check with has_item())
+- Forget to pickup items after mining
+
+---
+
+## Available Globals
+
+**Actions:** goto, look_at, dig, place, build_up, equip, pickup_blocks, toss, open_container, deposit, withdraw, close_container, craft, wait
+
+**Queries:** is_air, block_is, get_block, find_blocks, can_see_block, get_nearest_entity, get_entities, get_players, has_item, get_recipes, can_craft
+
+**Custom:** Your bot's custom functions (auto-loaded)
+
+**Standard JS:** Math, JSON, Array, Object, String, Number, Date, Promise, console.log(), setTimeout, setInterval
+
+**Disabled:** eval, Function, require, process, global
+
+---
+
+## Debugging & Monitoring
+
+### Console Tab
+All script output appears in the **Console tab** with:
+- 📦 Custom function calls
+- 🚶 Movement logs
+- ⛏️ Block interactions
+- 🔨 Crafting operations
+- ✓/✗ Success/failure indicators
+- Expandable details with positions, inventory changes
+
+### Logging Tips
+```javascript
+// Log important state
+console.log("Starting mining operation");
+console.log(`Inventory: ${has_item("iron_pickaxe") ? "Has pickaxe" : "No pickaxe"}`);
+
+// Log progress in loops
+for (let i = 0; i < blocks.length; i++) {
+  console.log(`Mining block ${i+1}/${blocks.length}`);
+  await dig(blocks[i].x, blocks[i].y, blocks[i].z);
 }
 
-repeat(3){ step_to(100,64,-10); }
-```
-
-### Digging a Tunnel
-
-```
-// Dig a horizontal tunnel 5 blocks long
-let start_x = 100;
-let y = 64;
-let z = 50;
-
-repeat(5) {
-  dig(start_x, y, z);      // Dig at feet level
-  dig(start_x, y+1, z);    // Dig at head level
-  start_x = start_x + 1;   // Move forward
-  goto(start_x, y, z, tol:1);
+// Log decisions
+if (ores.length > 0) {
+  console.log(`Found ${ores.length} ores, starting mining`);
+} else {
+  console.log("No ores found, stopping");
 }
 ```
 
-### Breaking Trees and Collecting Wood
+---
 
-```
-// Break tree logs using 'break' (clearer than 'dig' for wood)
-equip("minecraft:iron_axe");
-break(f1);                 // Break log in front
-break(f1+u1);             // Break log above
-break(f1+u2);             // Continue up the tree
-pickup_blocks(8);         // Collect dropped wood and saplings
-```
-
-### Collecting Dropped Items After Mining
-
-```
-// After mining, collect all dropped items
-dig(f1);
-dig(f1+u1);
-dig(f1+d1);
-pickup_blocks();          // Default 8 block radius
-pickup_blocks(16);        // Or specify larger radius for scattered items
-```
-
-### Crafting Tools and Items
-
-```
-// Craft basic tools
-craft("stick", 4);
-craft("wooden_pickaxe");
-craft("crafting_table");
-
-// Craft with quantity
-craft("torch", 16);
-```
-
-### Smelting with Furnace
-
-```
-// Complete smelting workflow
-goto(100, 64, 50, tol:1);           // Go to furnace
-open_container(100, 64, 50);         // Open the furnace
-container_put("input", "iron_ore", 8);  // Add 8 iron ore
-container_put("fuel", "coal", 2);       // Add 2 coal
-close_container();                   // Close and let it smelt
-
-wait(80000);                         // Wait ~80 seconds for smelting
-
-open_container(100, 64, 50);         // Reopen furnace
-container_take("output", 8);         // Take iron ingots
-close_container();
-```
-
-### Tree Farming with Replanting
-
-```
-// Fell tree, collect items, replant
-equip("iron_axe");
-break(100, 64, 50);        // Break base log
-break(100, 65, 50);        // Break log above
-break(100, 66, 50);        // Continue breaking
-pickup_blocks(10);         // Collect wood and saplings
-plant("oak_sapling", 100, 64, 50);  // Replant sapling
-```
-
-### Storing Items in Chest
-
-```
-// Transfer items to storage chest
-goto(120, 64, 80, tol:1);
-deposit(120, 64, 80, "cobblestone", 64);
-deposit(120, 64, 80, "iron_ore", 32);
-```
-
-## Strategy
-
-1) **Scout first**: Use get_position(), get_vox(), block_info() to understand surroundings
-2) **Plan in CraftScript**: Write all movement and actions in a single CraftScript
-3) **Navigate with goto()**: Use `goto(x, y, z, tol:1)` for all movement - do NOT use nav tool
-4) **Check reach**: Confirm targets are ≤4.5 blocks before dig/place
-5) **Safety checks**:
-   - Avoid gravity-overhead before digging (gravel/sand)
-   - Ensure solid reference block for placing
-6) **Handle errors**: Check craftscript_status() and adapt on failures
-
-Keep scripts short (≤20 lines) and focused. Write multiple small scripts rather than one huge script.
-
-**Example workflow**:
-```
-1. get_position() → find where you are
-2. get_inventory() → check what items you have
-3. get_vox(10) → see nearby blocks
-4. craftscript_start({ script: "goto(100,64,50,tol:1); dig(100,65,50);" })
-5. craftscript_status() → check if succeeded
-```
+**Remember**: Scout → Plan → Execute. Use queries to understand the world, then take precise actions with confidence!

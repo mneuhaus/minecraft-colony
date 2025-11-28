@@ -116,7 +116,209 @@ export class MinecraftBot extends EventEmitter {
 
       // Set up pathfinder movements
       const defaultMove = new Movements(this.bot!);
+      // Do NOT break blocks during pathfinding (but allow opening doors)
+      defaultMove.canDig = false;
+      defaultMove.allow1by1towers = false; // Don't place blocks to tower up either
+      defaultMove.scafoldingBlocks = []; // Disable scaffolding completely
+      defaultMove.canOpenDoors = true; // Enable door opening
+      defaultMove.maxDropDown = 8; // Allow dropping down up to 8 blocks
+
+      // Set up pathfinder FIRST
       this.bot!.pathfinder.setMovements(defaultMove);
+
+      // Add scaffolding to climbables AFTER setMovements so pathfinder can climb up/down scaffolding towers
+      // Hardcode scaffolding ID (800) since registry lookup might fail at spawn time
+      const scaffoldingId = 800; // Scaffolding block ID in Minecraft 1.21.4
+      this.bot!.pathfinder.movements.climbables.add(scaffoldingId);
+      logger.info('Added scaffolding to climbables', {
+        scaffoldingId,
+        climbables: Array.from(this.bot!.pathfinder.movements.climbables),
+      });
+
+        // Patch getLandingBlock to allow landing on climbable blocks (like scaffolding)
+        // Original only lands on physical blocks, but scaffolding has boundingBox='empty'
+        const movements = this.bot!.pathfinder.movements;
+        const originalGetLandingBlock = movements.getLandingBlock.bind(movements);
+        movements.getLandingBlock = function(node: any, dir: any) {
+          let blockLand = this.getBlock(node, dir.x, -2, dir.z);
+          while (blockLand.position && blockLand.position.y > this.bot.game.minY) {
+            if (blockLand.liquid && blockLand.safe) return blockLand;
+            // PATCH: Allow landing on climbable blocks (scaffolding)
+            if (blockLand.climbable) {
+              if (node.y - blockLand.position.y <= this.maxDropDown) return this.getBlock(blockLand.position, 0, 1, 0);
+              return null;
+            }
+            if (blockLand.physical) {
+              if (node.y - blockLand.position.y <= this.maxDropDown) return this.getBlock(blockLand.position, 0, 1, 0);
+              return null;
+            }
+            if (!blockLand.safe) return null;
+            blockLand = this.getBlock(blockLand.position, 0, -1, 0);
+          }
+          return null;
+        };
+
+        // Patch getMoveUp to enable scaffolding climbing
+        // Key insight: Check block BELOW node (where feet are), not block AT node
+        const originalGetMoveUp = (movements as any).getMoveUp.bind(movements);
+        const Move = require('mineflayer-pathfinder/lib/move');
+        (movements as any).getMoveUp = function(node: any, neighbors: any[]) {
+          // Check both the block at the node and the block directly under the node
+          const blockAt = this.getBlock(node, 0, 0, 0);
+          const blockBelow = this.getBlock(node, 0, -1, 0);
+
+          // Treat a vertical "climbable column" as: either the block at or just below
+          // the node is climbable (scaffolding, ladder, vine)
+          const climbBlock =
+            (blockBelow && blockBelow.climbable && blockBelow) ||
+            (blockAt && blockAt.climbable && blockAt) ||
+            null;
+
+          if (climbBlock) {
+            // Basic safety checks
+            if (climbBlock.liquid) return;
+            if (this.getNumEntitiesAt(node, 0, 0, 0) > 0) return;
+
+            // Block in the "head" space if we climb up 1 node
+            const headBlock = this.getBlock(node, 0, 1, 0);
+
+            // Allow climbing if the space above is safe enough
+            if (
+              headBlock &&
+              (headBlock.safe ||
+                headBlock.climbable ||
+                headBlock.boundingBox === 'empty')
+            ) {
+              neighbors.push(
+                new Move(
+                  node.x,
+                  node.y + 1,
+                  node.z,
+                  node.remainingBlocks,
+                  1,      // cost
+                  [],     // blocksToBreak
+                  []      // blocksToPlace
+                )
+              );
+              return;
+            }
+          }
+
+          // Everything else (normal jumps, stairs, etc.) uses original logic
+          return originalGetMoveUp(node, neighbors);
+        };
+
+        // Patch getMoveDown to enable scaffolding descent
+        const originalGetMoveDown = (movements as any).getMoveDown?.bind(movements);
+        if (originalGetMoveDown) {
+          (movements as any).getMoveDown = function(node: any, neighbors: any[]) {
+            const blockAt = this.getBlock(node, 0, 0, 0);
+            const blockBelow = this.getBlock(node, 0, -1, 0);
+            const climbBlock =
+              (blockBelow && blockBelow.climbable && blockBelow) ||
+              (blockAt && blockAt.climbable && blockAt) ||
+              null;
+
+            if (climbBlock) {
+              const downFeet = this.getBlock(node, 0, -1, 0);
+              const downHead = this.getBlock(node, 0, 0, 0);
+
+              if (
+                downFeet &&
+                downHead &&
+                (downFeet.safe || downFeet.climbable || downFeet.boundingBox === 'empty') &&
+                (downHead.safe || downHead.climbable || downHead.boundingBox === 'empty')
+              ) {
+                neighbors.push(
+                  new Move(
+                    node.x,
+                    node.y - 1,
+                    node.z,
+                    node.remainingBlocks,
+                    1,
+                    [],
+                    []
+                  )
+                );
+                return;
+              }
+            }
+
+            return originalGetMoveDown(node, neighbors);
+          };
+        }
+
+        // Patch getMoveForward to allow ENTERING scaffolding from the side
+        // This is the missing piece - without this, pathfinder can't walk INTO a scaffolding column
+        const originalGetMoveForward = (movements as any).getMoveForward.bind(movements);
+        (movements as any).getMoveForward = function(node: any, dir: any, neighbors: any[]) {
+          const blockB = this.getBlock(node, dir.x, 1, dir.z); // head space at destination
+          const blockC = this.getBlock(node, dir.x, 0, dir.z); // body at destination
+          const blockD = this.getBlock(node, dir.x, -1, dir.z); // feet/floor at destination
+
+          // Check if we're entering a climbable column (scaffolding, ladder, vine)
+          if (blockC.climbable || blockD.climbable) {
+            // Safety checks for the destination
+            if (this.getNumEntitiesAt(node, dir.x, 0, dir.z) > 0) return;
+
+            // Head space must be safe or climbable
+            if (!blockB.safe && !blockB.climbable && blockB.boundingBox !== 'empty') return;
+
+            // Body space must be safe or climbable
+            if (!blockC.safe && !blockC.climbable && blockC.boundingBox !== 'empty') return;
+
+            // Add move into the scaffolding column
+            neighbors.push(
+              new Move(
+                blockC.position.x,
+                blockC.position.y,
+                blockC.position.z,
+                node.remainingBlocks,
+                1, // cost
+                [], // toBreak
+                []  // toPlace
+              )
+            );
+            return;
+          }
+
+          // Fall through to original logic for normal moves
+          return originalGetMoveForward(node, dir, neighbors);
+        };
+
+        // Patch getMoveDropDown to allow dropping into scaffolding
+        const originalGetMoveDropDown = (movements as any).getMoveDropDown?.bind(movements);
+        if (originalGetMoveDropDown) {
+          (movements as any).getMoveDropDown = function(node: any, dir: any, neighbors: any[]) {
+            const blockC = this.getBlock(node, dir.x, 0, dir.z);
+            const blockD = this.getBlock(node, dir.x, -1, dir.z);
+
+            // If destination has climbable, allow dropping into it
+            if (blockC.climbable || blockD.climbable) {
+              const blockB = this.getBlock(node, dir.x, 1, dir.z);
+
+              // Safety checks
+              if (this.getNumEntitiesAt(node, dir.x, 0, dir.z) > 0) return;
+              if (!blockB.safe && !blockB.climbable && blockB.boundingBox !== 'empty') return;
+              if (!blockC.safe && !blockC.climbable && blockC.boundingBox !== 'empty') return;
+
+              neighbors.push(
+                new Move(
+                  blockC.position.x,
+                  blockC.position.y,
+                  blockC.position.z,
+                  node.remainingBlocks,
+                  1,
+                  [],
+                  []
+                )
+              );
+              return;
+            }
+
+            return originalGetMoveDropDown(node, dir, neighbors);
+          };
+        }
 
       // Start the 3D viewer
       void this.startViewer();

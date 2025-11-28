@@ -20,7 +20,7 @@ COLONY_CMD := env $(AGENT_ENV) DASHBOARD_PORT=$(DASHBOARD_PORT) bun run colony
 
 .PHONY: start-server stop-server restart-server status-server \
         start-agents stop-agents restart-agents status-agents \
-        start-colony stop-colony restart-colony status-colony
+        start-colony stop-colony restart-colony status-colony dev-colony
 
 start-server:
 	@mkdir -p $(SERVER_DIR)
@@ -149,3 +149,10 @@ status-colony:
 	else \
 		echo "Colony runtime not running."; \
 	fi
+
+dev-colony:
+	@echo "Starting colony in foreground (non-detached) mode..."
+	@echo "Press Ctrl+C to stop"
+	@echo "Dashboard will be available at: http://localhost:$(DASHBOARD_PORT)"
+	@cd $(AGENT_DIR) && bun run dashboard:build
+	@cd $(AGENT_DIR) && $(COLONY_CMD)

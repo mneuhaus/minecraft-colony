@@ -53,9 +53,6 @@ importers:
       prismarine-viewer:
         specifier: ^1.33.0
         version: 1.33.0
-      quickjs-emscripten:
-        specifier: ^0.31.0
-        version: 0.31.0
       sharp:
         specifier: ^0.33.5
         version: 0.33.5
@@ -588,21 +585,6 @@ packages:
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [x64]
     os: [win32]
-
-  '@jitl/quickjs-ffi-types@0.31.0':
-    resolution: {integrity: sha512-1yrgvXlmXH2oNj3eFTrkwacGJbmM0crwipA3ohCrjv52gBeDaD7PsTvFYinlAnqU8iPME3LGP437yk05a2oejw==}
-
-  '@jitl/quickjs-wasmfile-debug-asyncify@0.31.0':
-    resolution: {integrity: sha512-YkdzQdr1uaftFhgEnTRjTTZHk2SFZdpWO7XhOmRVbi6CEVsH9g5oNF8Ta1q3OuSJHRwwT8YsuR1YzEiEIJEk6w==}
-
-  '@jitl/quickjs-wasmfile-debug-sync@0.31.0':
-    resolution: {integrity: sha512-8XvloaaWBONqcHXYs5tWOjdhQVxzULilIfB2hvZfS6S+fI4m2+lFiwQy7xeP8ExHmiZ7D8gZGChNkdLgjGfknw==}
-
-  '@jitl/quickjs-wasmfile-release-asyncify@0.31.0':
-    resolution: {integrity: sha512-uz0BbQYTxNsFkvkurd7vk2dOg57ElTBLCuvNtRl4rgrtbC++NIndD5qv2+AXb6yXDD3Uy1O2PCwmoaH0eXgEOg==}
-
-  '@jitl/quickjs-wasmfile-release-sync@0.31.0':
-    resolution: {integrity: sha512-hYduecOByj9AsAfsJhZh5nA6exokmuFC8cls39+lYmTCGY51bgjJJJwReEu7Ff7vBWaQCL6TeDdVlnp2WYz0jw==}
 
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
@@ -1484,13 +1466,6 @@ packages:
     resolution: {integrity: sha512-+38qI9SOr8tfZ4QmJNplMUxqjbe7LKvvZgWdExBOmd+egZTtjLB67Gu0HRX3u/XOq7UU2Nx6nsjvS16Z9uwfpg==}
     engines: {node: '>=0.6'}
 
-  quickjs-emscripten-core@0.31.0:
-    resolution: {integrity: sha512-oQz8p0SiKDBc1TC7ZBK2fr0GoSHZKA0jZIeXxsnCyCs4y32FStzCW4d1h6E1sE0uHDMbGITbk2zhNaytaoJwXQ==}
-
-  quickjs-emscripten@0.31.0:
-    resolution: {integrity: sha512-K7Yt78aRPLjPcqv3fIuLW1jW3pvwO21B9pmFOolsjM/57ZhdVXBr51GqJpalgBlkPu9foAvhEAuuQPnvIGvLvQ==}
-    engines: {node: '>=16.0.0'}
-
   railroad-diagrams@1.0.0:
     resolution: {integrity: sha512-cz93DjNeLY0idrCNOH6PviZGRN9GJhsdm9hpn1YCS879fj4W+x5IFJhhkRZcwVgMmFF7R82UA/7Oh+R8lLZg6A==}
 
@@ -2108,24 +2083,6 @@ snapshots:
 
   '@img/sharp-win32-x64@0.33.5':
     optional: true
-
-  '@jitl/quickjs-ffi-types@0.31.0': {}
-
-  '@jitl/quickjs-wasmfile-debug-asyncify@0.31.0':
-    dependencies:
-      '@jitl/quickjs-ffi-types': 0.31.0
-
-  '@jitl/quickjs-wasmfile-debug-sync@0.31.0':
-    dependencies:
-      '@jitl/quickjs-ffi-types': 0.31.0
-
-  '@jitl/quickjs-wasmfile-release-asyncify@0.31.0':
-    dependencies:
-      '@jitl/quickjs-ffi-types': 0.31.0
-
-  '@jitl/quickjs-wasmfile-release-sync@0.31.0':
-    dependencies:
-      '@jitl/quickjs-ffi-types': 0.31.0
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
 
@@ -3133,18 +3090,6 @@ snapshots:
   qs@6.13.0:
     dependencies:
       side-channel: 1.1.0
-
-  quickjs-emscripten-core@0.31.0:
-    dependencies:
-      '@jitl/quickjs-ffi-types': 0.31.0
-
-  quickjs-emscripten@0.31.0:
-    dependencies:
-      '@jitl/quickjs-wasmfile-debug-asyncify': 0.31.0
-      '@jitl/quickjs-wasmfile-debug-sync': 0.31.0
-      '@jitl/quickjs-wasmfile-release-asyncify': 0.31.0
-      '@jitl/quickjs-wasmfile-release-sync': 0.31.0
-      quickjs-emscripten-core: 0.31.0
 
   railroad-diagrams@1.0.0: {}
 

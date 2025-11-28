@@ -2,10 +2,16 @@ import type { Bot } from 'mineflayer';
 import minecraftData from 'minecraft-data';
 import { Vec3 } from 'vec3';
 import pathfinderPkg from 'mineflayer-pathfinder';
-import { yawToHeadingRadians } from './selector.js';
-import type { Selector as SelAst } from './types.js';
 
 const { goals, Movements } = pathfinderPkg as any;
+
+// Helper function to convert yaw to heading
+function yawToHeadingRadians(yaw: number): number {
+  // Normalize yaw to 0-2π range
+  let normalized = yaw % (2 * Math.PI);
+  if (normalized < 0) normalized += 2 * Math.PI;
+  return normalized;
+}
 
 export type VoxSnapshot = {
   window: { radius: number; shape: [number, number, number]; origin: { x: number; y: number; z: number } };
@@ -164,7 +170,7 @@ export function affordances(bot: Bot, target: { x: number; y: number; z: number 
   const targetVec = new Vec3(Math.floor(target.x), Math.floor(target.y), Math.floor(target.z));
   const canStand = can_stand_at_world(bot, targetVec);
   // prefetch surrounding blocks
-  const selF1: SelAst = selectorFromTerms([{ axis: 'f', n: 1 }]);
+  const selF1: any = selectorFromTerms([{ axis: 'f', n: 1 }]);
   const safeUp = safe_step_up(bot, selF1);
   const safeDown = safe_step_down(bot, selF1);
 
@@ -413,7 +419,7 @@ export function nav(bot: Bot, req: any) {
 
 // FR projection helpers removed
 
-function selectorFromTerms(terms: { axis: any; n: number }[]): SelAst {
+function selectorFromTerms(terms: { axis: any; n: number }[]): any {
   return { type: 'Selector', terms } as any;
 }
 
@@ -424,18 +430,18 @@ function can_stand_at_world(bot: Bot, pos: Vec3): boolean {
   return !!below && below.name !== 'air' && (!feet || feet.name === 'air') && (!head || head.name === 'air');
 }
 
-export function can_stand(bot: Bot, _selector: SelAst): boolean {
+export function can_stand(bot: Bot, _selector: any): boolean {
   const pos = bot.entity.position.floored();
   return can_stand_at_world(bot, pos);
 }
 
-export function is_air(bot: Bot, _selector: SelAst): boolean {
+export function is_air(bot: Bot, _selector: any): boolean {
   const pos = bot.entity.position.floored();
   const b = bot.blockAt(pos);
   return !b || b.name === 'air';
 }
 
-export function safe_step_up(bot: Bot, _selector: SelAst): boolean {
+export function safe_step_up(bot: Bot, _selector: any): boolean {
   const pos = bot.entity.position.floored();
   // Need a solid block at feet (pos) and two air blocks above that position
   const foot = bot.blockAt(pos);
@@ -444,7 +450,7 @@ export function safe_step_up(bot: Bot, _selector: SelAst): boolean {
   return !!foot && foot.name !== 'air' && (!step || step.name === 'air') && (!head || head.name === 'air');
 }
 
-export function safe_step_down(bot: Bot, _selector: SelAst): boolean {
+export function safe_step_down(bot: Bot, _selector: any): boolean {
   const to = bot.entity.position.floored();
   const belowTo = bot.blockAt(to.offset(0, -1, 0));
   const toFeet = bot.blockAt(to);

@@ -123,20 +123,37 @@ const structuredFormat = winston.format.combine(
   yamlFormatter()
 );
 
+// Helper to format metadata compactly
+const formatMetadata = (metadata: any): string => {
+  const keys = Object.keys(metadata);
+  if (keys.length === 0) return '';
+
+  // For simple metadata (1-3 keys with short values), show inline
+  if (keys.length <= 3) {
+    const pairs = keys.map(key => {
+      const value = metadata[key];
+      if (typeof value === 'string' && value.length > 50) {
+        return `${key}=${value.slice(0, 47)}...`;
+      }
+      if (typeof value === 'object' && value !== null) {
+        return `${key}={...}`;
+      }
+      return `${key}=${JSON.stringify(value)}`;
+    });
+    return ` ${pairs.join(', ')}`;
+  }
+
+  // For complex metadata, use compact JSON
+  return `\n${JSON.stringify(metadata, null, 2)}`;
+};
+
 // Custom format for console output (colored and readable)
 const consoleFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
   winston.format.colorize(),
   winston.format.printf(({ timestamp, level, message, ...metadata }) => {
-    let msg = `${timestamp} [${level}]: ${message}`;
-
-    // Add metadata if present
-    if (Object.keys(metadata).length > 0) {
-      const metadataStr = JSON.stringify(metadata, null, 2);
-      msg += `\n${metadataStr}`;
-    }
-
-    return msg;
+    const formattedMeta = formatMetadata(metadata);
+    return `${timestamp} [${level}]: ${message}${formattedMeta}`;
   })
 );
 

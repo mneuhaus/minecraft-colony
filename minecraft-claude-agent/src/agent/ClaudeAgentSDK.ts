@@ -43,6 +43,9 @@ export class ClaudeAgentSDK {
   private currentAbortController: AbortController | null = null;
   private abortReason: string | null = null;
   private skipMemoryPromptOnce = false;
+  private autoMode = false;
+  private autoModeCheckTimer: NodeJS.Timeout | null = null;
+  private lastActivityTime: number = Date.now();
   public getActivityWriter(){ return this.activityWriter; }
   public getMemoryStore(){ return this.memoryStore; }
   public getSessionId(){ return this.currentSessionId; }
@@ -53,7 +56,7 @@ export class ClaudeAgentSDK {
     backstory?: string
   ) {
     // Set model from config or use default
-    this.model = this.config.anthropic.model || 'claude-sonnet-4-5-20250929';
+    this.model = this.config.anthropic.model || 'claude-opus-4-5-20251101';
 
     logger.info('Claude Agent SDK initialized', {
       model: this.model,
@@ -90,7 +93,7 @@ export class ClaudeAgentSDK {
     this.processMessageQueue();
   }
 
-  private enqueueSystemInterrupt(message: string): void {
+  public enqueueSystemInterrupt(message: string): void {
     this.pendingMessages.unshift({ username: 'SYSTEM', message, force: true });
     if (this.isProcessing) {
       this.requestAbort('system_interrupt');
@@ -472,15 +475,17 @@ export class ClaudeAgentSDK {
       }
       options.abortController = abortController;
 
-      // Log outgoing SDK request
+      // Log outgoing SDK request (only safe fields, no MCP schemas)
       logger.debug('SDK REQUEST', {
         prompt: prompt.substring(0, 500) + (prompt.length > 500 ? '...' : ''),
         promptLength: prompt.length,
         options: {
-          ...options,
-          // Don't log the abort controller or API key
-          abortController: options.abortController ? '[AbortController]' : undefined,
-          anthropicApiKey: options.anthropicApiKey ? '[REDACTED]' : undefined,
+          model: options.model,
+          maxTurns: options.maxTurns,
+          permissionMode: options.permissionMode,
+          allowedTools: options.allowedTools?.length ? `${options.allowedTools.length} tools` : undefined,
+          mcpServers: options.mcpServers ? Object.keys(options.mcpServers) : undefined,
+          resume: options.resume || undefined,
         },
       });
 
@@ -492,17 +497,15 @@ export class ClaudeAgentSDK {
         })) {
         messageCount++;
 
-        // Log raw SDK message for debugging
-        logger.debug('RAW SDK MESSAGE', {
-          type: sdkMessage.type,
-          messageCount,
-          rawMessage: JSON.stringify(sdkMessage, null, 2),
-        });
-
-        logger.debug('Received SDK message', {
-          type: sdkMessage.type,
-          messageCount,
-        });
+        // Compact SDK message logging
+        if (process.env.LOG_LEVEL === 'debug' && process.env.SDK_VERBOSE === 'true') {
+          // Only show full raw messages if SDK_VERBOSE is enabled
+          logger.debug('RAW SDK MESSAGE', {
+            type: sdkMessage.type,
+            messageCount,
+            rawMessage: JSON.stringify(sdkMessage, null, 2),
+          });
+        }
 
         if (
           sdkMessage.type === 'system' &&
@@ -512,11 +515,8 @@ export class ClaudeAgentSDK {
           sdkMessage.session_id
         ) {
           this.currentSessionId = sdkMessage.session_id;
-          logger.info('Claude session initialized', {
-            sessionId: this.currentSessionId,
-            forkSession: this.forkSessions,
-            isResumed: shouldResume,
-          });
+          const sessionType = shouldResume ? 'resumed' : 'new';
+          logger.info(`🎯 Session ${sessionType}: ${this.currentSessionId.slice(0, 8)}...`);
           
           // Only create new session in memory store if not resuming
           if (!shouldResume) {
@@ -534,6 +534,17 @@ export class ClaudeAgentSDK {
             if (blockType === 'text') {
               const textContent = typeof blockAny.text === 'string' ? blockAny.text : '';
               this.debugSnippet('Assistant text block', textContent);
+
+              // Broadcast text blocks as thinking activity for dashboard visibility
+              if (textContent && textContent.trim().length > 0) {
+                this.activityWriter.addActivity({
+                  type: 'assistant_text',
+                  message: textContent.trim(),
+                  speaker: this.botName,
+                  role: 'assistant',
+                });
+              }
+
               // Detect common provider/billing errors and surface them clearly
               const lc = textContent.toLowerCase();
               if (this.isRequestTooLargeText(textContent)) {
@@ -594,15 +605,20 @@ export class ClaudeAgentSDK {
               if (blockAny.name) {
                 toolsUsed.add(blockAny.name);
               }
-              logger.debug('Assistant requested tool', {
-                toolName: blockAny.name,
-                toolInput: blockAny.input,
-              });
+
+              // Compact tool logging
+              const toolName = blockAny.name || 'unknown';
+              const inputKeys = blockAny.input ? Object.keys(blockAny.input) : [];
+              const inputSummary = inputKeys.length > 0
+                ? inputKeys.slice(0, 2).join(', ') + (inputKeys.length > 2 ? '...' : '')
+                : 'no input';
+
+              logger.info(`🔧 ${toolName}(${inputSummary})`);
 
               // Special handling for Skill tool (provided by SDK, not wrapped by loggingTool)
               if (blockAny.name === 'Skill' && blockAny.input) {
                 const skillName = blockAny.input.command || blockAny.input.skill_name || blockAny.input.name || 'unknown';
-                logger.info('Skill invoked via Skill tool', { skillName, input: blockAny.input });
+                logger.info(`📦 Skill: ${skillName}`);
 
                 this.activityWriter.addActivity({
                   type: 'skill',
@@ -630,12 +646,9 @@ export class ClaudeAgentSDK {
 
         // Handle result messages
         if (sdkMessage.type === 'result') {
-          logger.info('Claude Agent SDK query completed', {
-            subtype: sdkMessage.subtype,
-            numTurns: sdkMessage.num_turns,
-            durationMs: sdkMessage.duration_ms,
-            costUsd: sdkMessage.total_cost_usd,
-          });
+          const duration = sdkMessage.duration_ms ? `${(sdkMessage.duration_ms / 1000).toFixed(1)}s` : 'N/A';
+          const cost = sdkMessage.total_cost_usd ? `$${sdkMessage.total_cost_usd.toFixed(4)}` : 'N/A';
+          logger.info(`✅ Query complete: ${sdkMessage.num_turns} turns, ${duration}, ${cost}`);
 
           if (sdkMessage.subtype === 'success') {
             // Success - response is in sdkMessage.result
@@ -798,7 +811,11 @@ export class ClaudeAgentSDK {
           this.currentAbortController = null;
         }
         this.abortReason = null;
+        this.lastActivityTime = Date.now();
         this.processMessageQueue();
+
+        // Check if we should trigger auto-mode
+        this.scheduleAutoModeCheck();
       }
     }
   }
@@ -909,14 +926,17 @@ ${chatContext}
    * Helper to log potentially long strings without flooding logs.
    */
   private debugSnippet(label: string, value: string | null | undefined): void {
-    if (!value || value.length === 0) {
-      logger.debug(`${label}`, { length: 0, snippet: '' });
-      return;
-    }
+    if (!value || value.length === 0) return;
 
-    const maxLength = 400;
-    const snippet = value.length > maxLength ? `${value.slice(0, maxLength)}…` : value;
-    logger.debug(`${label}`, { length: value.length, snippet });
+    // Only log snippets if debug level is enabled
+    if (logger.level !== 'debug') return;
+
+    const maxLength = 200;
+    if (value.length <= maxLength) {
+      logger.debug(`💬 ${label}: "${value}"`);
+    } else {
+      logger.debug(`💬 ${label}: "${value.slice(0, maxLength)}..." (${value.length} chars)`);
+    }
   }
 
   private recordSystemActivity(level: 'info' | 'warn' | 'error', message: string, details?: any): void {
@@ -1111,5 +1131,86 @@ ${chatContext}
       return 'system';
     }
     return 'player';
+  }
+
+  /**
+   * Enable or disable auto-mode
+   */
+  public setAutoMode(enabled: boolean): void {
+    this.autoMode = enabled;
+    logger.info(`Auto-mode ${enabled ? 'enabled' : 'disabled'} for ${this.botName}`);
+
+    if (enabled) {
+      this.scheduleAutoModeCheck();
+    } else if (this.autoModeCheckTimer) {
+      clearTimeout(this.autoModeCheckTimer);
+      this.autoModeCheckTimer = null;
+    }
+  }
+
+  /**
+   * Schedule an idle check for auto-mode
+   */
+  private scheduleAutoModeCheck(): void {
+    // Clear existing timer
+    if (this.autoModeCheckTimer) {
+      clearTimeout(this.autoModeCheckTimer);
+    }
+
+    // Only schedule if auto-mode is enabled
+    if (!this.autoMode) return;
+
+    // Check after 30 seconds of inactivity
+    this.autoModeCheckTimer = setTimeout(() => {
+      this.checkAutoModeIdle();
+    }, 30000);
+  }
+
+  /**
+   * Check if bot is idle and should auto-continue with core missions
+   */
+  private async checkAutoModeIdle(): Promise<void> {
+    // Don't trigger if already processing
+    if (this.isProcessing) {
+      this.scheduleAutoModeCheck();
+      return;
+    }
+
+    // Don't trigger if there are pending messages
+    if (this.pendingMessages.length > 0) {
+      this.scheduleAutoModeCheck();
+      return;
+    }
+
+    // Check how long since last activity
+    const idleTime = Date.now() - this.lastActivityTime;
+    if (idleTime < 30000) {
+      // Not idle yet, reschedule
+      this.scheduleAutoModeCheck();
+      return;
+    }
+
+    // Bot is idle - inject core missions prompt
+    logger.info(`🤖 Bot ${this.botName} idle in auto-mode, injecting core missions`);
+
+    const missions = this.memoryStore.getCoreMissions();
+    if (!missions || missions.length === 0) {
+      logger.info('No core missions defined, skipping auto-prompt');
+      this.scheduleAutoModeCheck();
+      return;
+    }
+
+    const missionsText = missions.map((m: any, i: number) =>
+      `${i + 1}. ${m.content}${m.description ? ` (${m.description})` : ''}`
+    ).join('\n');
+
+    const autoPrompt = `Continue working on your core missions:\n\n${missionsText}\n\nWhat's the next step you can take?`;
+
+    try {
+      await this.handleChatMessage('auto-mode', autoPrompt, 0, true, true);
+    } catch (error: any) {
+      logger.error('Auto-mode prompt failed', { error: error?.message || error });
+      this.scheduleAutoModeCheck();
+    }
   }
 }

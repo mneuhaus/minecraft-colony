@@ -1,6 +1,7 @@
 import { tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { MinecraftBot } from '../bot/MinecraftBot.js';
+import { captureVoxelScreenshot, generateASCIIView } from '../utils/voxelScreenshot.js';
 
 // MCRN removed — all tool inputs/outputs use world coordinates (x,y,z)
 
@@ -209,13 +210,13 @@ export function createUnifiedMcpServer(
         return { content: [{ type: 'text', text: result }] };
       }, context),
       // Note: Storage interactions are intentionally NOT exposed as direct tools.
-      // Use CraftScript commands only: open/close, container_put/take, deposit/withdraw.
+      // Use JavaScript commands only: open/close, container_put/take, deposit/withdraw.
       /**
        * Captures a voxel snapshot centered on the bot for short-range spatial reasoning.
        * @remarks Input: `{ radius?: number, include_air?: boolean, grep?: string[], filter?: string[] }`.
        * @returns JSON text describing sampled voxels, including block ids and coordinates.
        */
-      loggingTool('get_vox', '3D voxel snapshot of the local area around the bot (x/y/z world coordinates). Use for precise short-range understanding; combine with look_at_map for 2D overview.', {
+      loggingTool('get_vox', '3D voxel snapshot for exact block information at specific coordinates (x/y/z world coordinates). Use when you need precise block IDs, positions, and details.', {
         radius: z.number().optional(),
         include_air: z.boolean().optional(),
         grep: z.array(z.string()).optional(),
@@ -284,39 +285,54 @@ export function createUnifiedMcpServer(
         return { content: [{ type: 'text', text: JSON.stringify(look_at_map(bot, radius ?? 25, 5)) }] };
       }, context),
       /**
-       * Queues a CraftScript program for asynchronous execution.
-       * @remarks Input: `{ script: string }` CraftScript source code.
+       * Generates a high-fidelity rendered map image using real Minecraft textures.
+       * @remarks Input: `{ radius?: number, zoom?: number, view?: 'stacked' | 'top', showHeight?: boolean }`.
+       * @returns JSON with base64 PNG image and metadata (center coords, size, radius).
+       */
+      loggingTool('look_at_map_image', 'Rendered map image with real Minecraft textures. Returns base64 PNG for VISUAL CONFIRMATION: verifying symmetry, checking expected shapes, finding blind spots, gaps, or misplaced blocks. Includes bot position marker, coordinate labels, and height badges (blocks above/below bot level).', {
+        radius: z.number().optional(),
+        zoom: z.number().optional(),
+        view: z.enum(['stacked', 'top']).optional(),
+        showHeight: z.boolean().optional()
+      }, async ({ radius, zoom, view, showHeight }) => {
+        const { getMapImagePayload } = await import('../utils/mapImage.js');
+        const result = await getMapImagePayload(bot, { radius, zoom, view, showHeight });
+        return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      }, context),
+      /**
+       * Queues a JavaScript script for asynchronous execution.
+       * @remarks Input: `{ script: string }` JavaScript source code (ES2023, async/await supported).
        * @returns `{ job_id, state }` JSON payload once the job is enqueued.
        */
-      loggingTool('craftscript_start', 'Start CraftScript asynchronously. Response only confirms `{ job_id, state: "queued" }` — ALWAYS poll `craftscript_status` / `craftscript_logs` to learn whether it compiled, failed, or completed.', { script: z.string() }, async ({ script }) => {
+      loggingTool('craftscript_start', 'Start JavaScript script asynchronously. Response only confirms `{ job_id, state: "queued" }` — ALWAYS poll `craftscript_status` / `craftscript_logs` to learn whether it failed or completed.', { script: z.string() }, async ({ script }) => {
         const { createCraftscriptJob } = await import('./craftscriptJobs.js');
         if ((process.env.CRAFTSCRIPT_CHAT_ENABLED ?? 'false').toLowerCase() !== 'false') {
           try {
             const lines = String(script || '').split(/\r?\n/);
             const max = Math.max(0, parseInt(process.env.CRAFTSCRIPT_CHAT_PREVIEW_LINES ?? '4', 10));
             const suffix = max > 0 && lines.length > max ? `… ${lines.length - max} more line(s)` : '';
-            minecraftBot.chat(`Start CraftScript (${lines.length} lines) ${suffix}`.trim());
+            minecraftBot.chat(`Start JavaScript (${lines.length} lines) ${suffix}`.trim());
           } catch {}
         }
         const id = createCraftscriptJob(minecraftBot, script, context.activityWriter as any, context.botName, context.memoryStore as any, context.getSessionId);
         return { content: [{ type: 'text', text: JSON.stringify({ job_id: id, state: 'queued' }) }] };
       }, context),
       /**
-       * Polls the current status of a CraftScript job.
+       * Polls the current status of a JavaScript job.
        * @remarks Input: `{ job_id: string }`.
        * @returns JSON status including state, last_step, and optional error.
        */
-      loggingTool('craftscript_status', 'Poll CraftScript job status (state + last_step + error). Use this immediately after `craftscript_start` to see if the script compiled, started running, failed, or finished.', { job_id: z.string() }, async ({ job_id }) => {
+      loggingTool('craftscript_status', 'Poll JavaScript job status (state + last_step + error). Use this immediately after `craftscript_start` to see if the script compiled, started running, failed, or finished.', { job_id: z.string() }, async ({ job_id }) => {
         const { getCraftscriptStatus } = await import('./craftscriptJobs.js');
         const status = getCraftscriptStatus(job_id);
         return { content: [{ type: 'text', text: JSON.stringify(status || { ok: false, error: 'not_found' }) }] };
       }, context),
       /**
-       * Streams consolidated CraftScript logs (status, steps, traces) for auditing.
+       * Streams consolidated JavaScript logs (status, steps, traces) for auditing.
        * @remarks Input: `{ job_id: string, limit?: number }`.
        * @returns JSON object with ordered logs suitable for timeline rendering.
        */
-      loggingTool('craftscript_logs', 'Fetch consolidated CraftScript logs for a job (status + steps + traces). Falls back to the live runtime snapshot when the database has no rows yet so you can still see whether the job is queued, failed, or done.', { job_id: z.string(), limit: z.number().optional() }, async ({ job_id, limit = 300 }) => {
+      loggingTool('craftscript_logs', 'Fetch consolidated JavaScript logs for a job (status + steps + traces). Falls back to the live runtime snapshot when the database has no rows yet so you can still see whether the job is queued, failed, or done.', { job_id: z.string(), limit: z.number().optional() }, async ({ job_id, limit = 300 }) => {
         const { ColonyDatabase } = await import('../database/ColonyDatabase.js');
         const { getCraftscriptStatus } = await import('./craftscriptJobs.js');
         const colonyDb = ColonyDatabase.getInstance();
@@ -358,7 +374,18 @@ export function createUnifiedMcpServer(
             let payload: any = {};
             try { payload = data?.output ? JSON.parse(String(data.output)) : {}; } catch {}
             const trace = payload?.trace || payload;
-            out.logs.push({ kind: 'trace', ts, data: trace });
+            // Extract console.log messages for better readability
+            if (trace?.kind === 'console') {
+              out.logs.push({
+                kind: 'console',
+                ts,
+                level: trace.level || 'info',
+                message: trace.message,
+                details: trace.details
+              });
+            } else {
+              out.logs.push({ kind: 'trace', ts, data: trace });
+            }
             continue;
           }
         }
@@ -383,21 +410,21 @@ export function createUnifiedMcpServer(
         return { content: [{ type: 'text', text: JSON.stringify(out) }] };
       }, context),
       /**
-       * Cancels a queued or running CraftScript job.
+       * Cancels a queued or running JavaScript job.
        * @remarks Input: `{ job_id: string }`.
        * @returns `{ job_id, state: 'canceled' }` confirmation payload.
        */
-      loggingTool('craftscript_cancel', 'Cancel CraftScript job', { job_id: z.string() }, async ({ job_id }) => {
+      loggingTool('craftscript_cancel', 'Cancel JavaScript job', { job_id: z.string() }, async ({ job_id }) => {
         const { cancelCraftscriptJob } = await import('./craftscriptJobs.js');
         cancelCraftscriptJob(job_id);
         return { content: [{ type: 'text', text: JSON.stringify({ job_id, state: 'canceled' }) }] };
       }, context),
       /**
-       * Retrieves full CraftScript traces including block changes and movement history.
+       * Retrieves full JavaScript traces including block changes and movement history.
        * @remarks Input: `{ job_id: string }`.
        * @returns JSON with `{ job_id, total_changes, changes[] }` sorted chronologically.
        */
-      loggingTool('craftscript_trace', 'Retrieve all traces for a CraftScript job including block changes (placed/destroyed) and movement. Returns chronological list with coordinates, block types, commands, positions, and timestamps. Useful for verifying builds, debugging paths, testing, and creating visualizations. Every modification and movement is tracked automatically even if the script fails.', {
+      loggingTool('craftscript_trace', 'Retrieve all traces for a JavaScript job including block changes (placed/destroyed) and movement. Returns chronological list with coordinates, block types, commands, positions, and timestamps. Useful for verifying builds, debugging paths, testing, and creating visualizations. Every modification and movement is tracked automatically even if the script fails.', {
         job_id: z.string()
       }, async ({ job_id }) => {
         const { ColonyDatabase } = await import('../database/ColonyDatabase.js');
@@ -427,13 +454,13 @@ export function createUnifiedMcpServer(
         }
       }, context),
 
-      // Custom CraftScript Function Management
+      // Custom JavaScript Function Management
       /**
-       * Registers a new versioned CraftScript function available to future jobs.
+       * Registers a new versioned JavaScript function available to future jobs.
        * @remarks Input: `{ name, description?, args: {name,type,...}[], body }`.
        * @returns JSON containing the persisted function id and initial version.
        */
-      loggingTool('create_craftscript_function', 'Create a new reusable CraftScript function with automatic versioning. Functions are persistent across sessions and can be called from any CraftScript. Args must specify {name, type, optional?, default?} where type is \"int\", \"bool\", or \"string\". Body is CraftScript code that can reference arg names as variables.', {
+      loggingTool('create_craftscript_function', 'Create a new reusable JavaScript function with automatic versioning. Functions are persistent across sessions and can be called from any JavaScript script. Args must specify {name, type, optional?, default?} where type is \"int\", \"bool\", or \"string\". Body is JavaScript code that can reference arg names as variables.', {
         name: z.string(),
         description: z.string().optional(),
         args: z.array(z.object({
@@ -476,11 +503,11 @@ export function createUnifiedMcpServer(
       }, context),
 
       /**
-       * Creates a new version of an existing CraftScript function (edit in place).
+       * Creates a new version of an existing JavaScript function (edit in place).
        * @remarks Input: `{ name, description?, args?, body?, change_summary? }`.
        * @returns JSON showing previous/current version numbers and bodies.
        */
-      loggingTool('edit_craftscript_function', 'Update an existing CraftScript function. Creates a new version automatically (increments version number). You can update body, description, args, or any combination. Use change_summary to document what changed. Previous versions are preserved and can be viewed with list_function_versions.', {
+      loggingTool('edit_craftscript_function', 'Update an existing JavaScript function. Creates a new version automatically (increments version number). You can update body, description, args, or any combination. Use change_summary to document what changed. Previous versions are preserved and can be viewed with list_function_versions.', {
         name: z.string(),
         description: z.string().optional(),
         args: z.array(z.object({
@@ -537,11 +564,11 @@ export function createUnifiedMcpServer(
       }, context),
 
       /**
-       * Permanently deletes a CraftScript function (and all stored versions).
+       * Permanently deletes a JavaScript function (and all stored versions).
        * @remarks Input: `{ name: string }`.
        * @returns `{ ok: true, name, deleted: true }` or not_found errors.
        */
-      loggingTool('delete_craftscript_function', 'Permanently delete a CraftScript function and ALL its version history. This cannot be undone. Use with caution.', {
+      loggingTool('delete_craftscript_function', 'Permanently delete a JavaScript function and ALL its version history. This cannot be undone. Use with caution.', {
         name: z.string()
       }, async ({ name }) => {
         const { ColonyDatabase } = await import('../database/ColonyDatabase.js');
@@ -562,11 +589,11 @@ export function createUnifiedMcpServer(
       }, context),
 
       /**
-       * Lists every CraftScript function owned by this bot with metadata.
+       * Lists every JavaScript function owned by this bot with metadata.
        * @remarks Input: `{}` (none).
        * @returns JSON `{ ok: true, functions: [...] }` sorted alphabetically.
        */
-      loggingTool('list_craftscript_functions', 'List all custom CraftScript functions created by this bot. Returns name, description, args, current_version, and timestamps for each function. Use this to discover available functions before calling them in CraftScript.', {}, async () => {
+      loggingTool('list_craftscript_functions', 'List all custom JavaScript functions created by this bot. Returns name, description, args, current_version, and timestamps for each function. Use this to discover available functions before calling them in JavaScript scripts.', {}, async () => {
         const { ColonyDatabase } = await import('../database/ColonyDatabase.js');
         const colonyDb = ColonyDatabase.getInstance();
         const db = colonyDb.getDb();
@@ -594,11 +621,11 @@ export function createUnifiedMcpServer(
       }, context),
 
       /**
-       * Fetches the latest version of a specific CraftScript function.
+       * Fetches the latest version of a specific JavaScript function.
        * @remarks Input: `{ name: string }`.
        * @returns JSON `{ ok: true, function: {...} }` or `not_found`.
        */
-      loggingTool('get_craftscript_function', 'Get complete details of a specific CraftScript function including its current body, args, description, and version info. Use this to inspect a function before editing or to understand what it does.', {
+      loggingTool('get_craftscript_function', 'Get complete details of a specific JavaScript function including its current body, args, description, and version info. Use this to inspect a function before editing or to understand what it does.', {
         name: z.string()
       }, async ({ name }) => {
         const { ColonyDatabase } = await import('../database/ColonyDatabase.js');
@@ -634,11 +661,11 @@ export function createUnifiedMcpServer(
       }, context),
 
       /**
-       * Lists version history entries for a CraftScript function.
+       * Lists version history entries for a JavaScript function.
        * @remarks Input: `{ name: string, limit?: number }`.
        * @returns JSON `{ ok: true, versions: [...] }` ordered newest first.
        */
-      loggingTool('list_function_versions', 'List complete version history of a CraftScript function. Returns all versions with their body, args, timestamps, who created them, and change summaries. Useful for understanding how a function evolved or reverting to previous logic. Versions ordered newest first.', {
+      loggingTool('list_function_versions', 'List complete version history of a JavaScript function. Returns all versions with their body, args, timestamps, who created them, and change summaries. Useful for understanding how a function evolved or reverting to previous logic. Versions ordered newest first.', {
         name: z.string(),
         limit: z.number().optional()
       }, async ({ name, limit = 10 }) => {
@@ -777,6 +804,110 @@ export function createUnifiedMcpServer(
         return { content: [{ type: 'text', text: 'Memory updated successfully' }] };
       }, context),
 
+      // Todo/Task management tools
+      /**
+       * Updates the bot's todo list for task tracking and progress visibility.
+       * @remarks Input: `{ todos: Array<{content: string, activeForm: string, status: 'pending'|'in_progress'|'completed'}> }`.
+       * @returns Confirmation message.
+       */
+      loggingTool('write_todo', 'Update bot todo list for task tracking. Todos must have "content" (imperative form like "Build house"), "activeForm" (present continuous like "Building house"), and "status" ("pending"|"in_progress"|"completed"). Exactly ONE task should be in_progress at a time. Use this to break down complex goals and show progress.', {
+        todos: z.array(z.object({
+          content: z.string().min(1).describe('Task description in imperative form (e.g., "Navigate to base")'),
+          activeForm: z.string().min(1).describe('Task description in present continuous form (e.g., "Navigating to base")'),
+          status: z.enum(['pending', 'in_progress', 'completed']).describe('Task status')
+        }))
+      }, async ({ todos }) => {
+        // Validate exactly one in_progress task
+        const inProgressCount = todos.filter(t => t.status === 'in_progress').length;
+        if (inProgressCount > 1) {
+          return { content: [{ type: 'text', text: 'Error: Only one task can be in_progress at a time' }], isError: true };
+        }
+
+        return { content: [{ type: 'text', text: JSON.stringify({ ok: true, todos, count: todos.length, completed: todos.filter(t => t.status === 'completed').length }) }] };
+      }, context),
+
+      // Visual/Screenshot tools
+      /**
+       * Take a visual screenshot of the bot's surroundings without prismarine viewer.
+       * Generates a PNG image from voxel data showing either top-down or first-person view.
+       * @remarks Input: `{ viewMode?, width?, height?, scale?, yLevel? }`.
+       * @returns File path to generated PNG image that Claude can view.
+       */
+      loggingTool('take_screenshot', 'Capture visual screenshot of surroundings (topdown or firstperson view). Returns image file path for viewing. Use topdown for navigation/planning, firstperson for what bot "sees".', {
+        viewMode: z.enum(['topdown', 'firstperson']).optional().describe('View mode: topdown (map view) or firstperson (what bot sees). Default: topdown'),
+        width: z.number().optional().describe('Width in blocks (default: 32)'),
+        height: z.number().optional().describe('Height in blocks (default: 32)'),
+        scale: z.number().optional().describe('Pixels per block (default: 16)'),
+        yLevel: z.number().optional().describe('Y level for topdown view (default: bot Y position)')
+      }, async (params) => {
+        try {
+          const bot = minecraftBot.getBot();
+          const imagePath = await captureVoxelScreenshot(bot, params);
+          return {
+            content: [
+              { type: 'text', text: `Screenshot saved to: ${imagePath}` },
+              { type: 'image', source: { type: 'path', path: imagePath } }
+            ]
+          };
+        } catch (e: any) {
+          return { content: [{ type: 'text', text: `Screenshot failed: ${e.message}` }], isError: true };
+        }
+      }, context),
+
+      /**
+       * Generate ASCII art representation of surroundings for quick text-based view.
+       * @remarks Input: `{ radius? }`.
+       * @returns ASCII art map with @ marking bot position.
+       */
+      loggingTool('get_ascii_view', 'Get ASCII art top-down view of surroundings. Quick text alternative to screenshot.', {
+        radius: z.number().optional().describe('Radius in blocks (default: 8)')
+      }, async ({ radius }) => {
+        try {
+          const bot = minecraftBot.getBot();
+          const ascii = generateASCIIView(bot, radius);
+          return { content: [{ type: 'text', text: ascii }] };
+        } catch (e: any) {
+          return { content: [{ type: 'text', text: `ASCII view failed: ${e.message}` }], isError: true };
+        }
+      }, context),
+
+      loggingTool('debug_pathfinder', 'Debug pathfinder configuration - shows climbables, scaffolding status, and block properties for debugging navigation issues.', {}, async () => {
+        try {
+          const bot = minecraftBot.getBot();
+          const movements = (bot as any).pathfinder?.movements;
+          if (!movements) {
+            return { content: [{ type: 'text', text: JSON.stringify({ error: 'No pathfinder movements found' }) }], isError: true };
+          }
+
+          const scaffoldingId = bot.registry.blocksByName.scaffolding?.id;
+          const result: any = {
+            scaffolding_id: scaffoldingId,
+            climbables_count: movements.climbables.size,
+            climbables: Array.from(movements.climbables),
+            has_scaffolding: scaffoldingId ? movements.climbables.has(scaffoldingId) : false,
+          };
+
+          // Check scaffolding block if bot is standing on/near one
+          const botPos = bot.entity.position.floored();
+          const scaffoldBlock = bot.blockAt(botPos.offset(0, 1, 0));
+          if (scaffoldBlock?.name === 'scaffolding') {
+            const blockInfo = movements.getBlock(botPos, 0, 1, 0);
+            result.scaffolding_above = {
+              block_type_id: scaffoldBlock.type,
+              in_climbables: movements.climbables.has(scaffoldBlock.type),
+              climbable: blockInfo?.climbable,
+              safe: blockInfo?.safe,
+              physical: blockInfo?.physical,
+              boundingBox: scaffoldBlock.boundingBox
+            };
+          }
+
+          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+        } catch (e: any) {
+          return { content: [{ type: 'text', text: JSON.stringify({ error: e.message, stack: e.stack }) }], isError: true };
+        }
+      }, context),
+
       // Blueprint tools
       /**
        * Lists blueprint metadata (name, description, counts) stored on disk.
@@ -854,11 +985,11 @@ export function createUnifiedMcpServer(
   });
   if (!server.manifest) server.manifest = { name: 'minecraft', tools: [
     { name: 'send_chat' }, { name: 'get_position' }, { name: 'get_status' }, { name: 'get_inventory' }, { name: 'get_vox' }, { name: 'affordances' },
-    { name: 'nearest' }, { name: 'block_info' }, { name: 'look_at_map' }, { name: 'look_at_map_4' }, { name: 'look_at_map_5' },
+    { name: 'nearest' }, { name: 'block_info' }, { name: 'look_at_map' }, { name: 'look_at_map_4' }, { name: 'look_at_map_5' }, { name: 'look_at_map_image' },
     { name: 'craftscript_start' }, { name: 'craftscript_status' }, { name: 'craftscript_cancel' }, { name: 'craftscript_trace' },
     { name: 'create_craftscript_function' }, { name: 'edit_craftscript_function' }, { name: 'delete_craftscript_function' },
     { name: 'list_craftscript_functions' }, { name: 'get_craftscript_function' }, { name: 'list_function_versions' },
-    { name: 'get_memory' }, { name: 'update_memory' },
+    { name: 'get_memory' }, { name: 'update_memory' }, { name: 'write_todo' }, { name: 'debug_pathfinder' },
     { name: 'list_blueprints' }, { name: 'create_blueprint' }, { name: 'update_blueprint' }, { name: 'remove_blueprint' }, { name: 'get_blueprint' }, { name: 'instantiate_blueprint' }
   ] };
   return server;
