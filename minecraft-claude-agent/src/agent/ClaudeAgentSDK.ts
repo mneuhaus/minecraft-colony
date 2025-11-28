@@ -869,6 +869,14 @@ You change the world by writing JavaScript code and executing it:
 3. Monitor with craftscript_status(job_id) and craftscript_logs(job_id)
 4. Cancel if needed with craftscript_cancel(job_id)
 
+=== DEVELOP YOUR OWN FUNCTIONS ===
+For complex tasks (building houses, mining patterns, farming), create reusable functions:
+1. Use create_craftscript_function to save a function
+2. Test it on SIMPLE cases first (one wall, one layer)
+3. Fix issues as you discover them
+4. Extend gradually - add features one at a time
+Your best solutions come from experimentation, not pre-written code.
+
 === READ-ONLY INSPECTION ===
 Use these to understand your surroundings before acting:
 - get_position - Your current x,y,z coordinates
