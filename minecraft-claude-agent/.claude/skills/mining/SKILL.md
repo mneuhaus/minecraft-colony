@@ -1,12 +1,12 @@
 ---
 name: mining
-description: Mine blocks and gather resources like stone, coal, iron, and other minerals. Use for underground excavation and tunnel creation.
-allowed-tools: find_block, get_block_info, dig_block, break_block_and_wait, collect_nearby_items, get_position, move_to_position, look_at, list_inventory, find_item, equip_item, place_block, build_pillar, descend_pillar_safely, send_chat, send_bot_message, check_reachable
+description: This skill should be used for mining blocks and gathering resources like stone, coal, iron, and other minerals using JavaScript. Uses dig(), goto(), find_blocks() for mining automation.
+allowed-tools: get_position, get_status, get_vox, look_at_map, craftscript_start, craftscript_status, craftscript_logs
 ---
 
 # Mining Skill – Resource Gathering and Excavation
 
-This skill teaches you how to mine blocks safely and efficiently to gather resources.
+This skill teaches you how to mine blocks safely and efficiently to gather resources using JavaScript.
 
 ## Movement Physics (CRITICAL)
 
@@ -22,41 +22,59 @@ This skill teaches you how to mine blocks safely and efficiently to gather resou
 - Never dig straight down into unknown space (could fall into lava or void)
 - Create safe paths by digging strategically and moving through cleared spaces
 
-## Available Tools
+## JavaScript Commands
 
-### Block Discovery (NEW)
-- **find_block(blockType, maxDistance, count)** – Find blocks by type (stone, coal_ore, iron_ore, etc.), returns coordinates and distances sorted by proximity
-- **get_block_info(x, y, z)** – Get detailed info about a block (type, hardness, tool requirements, reachability)
-- **check_reachable(x, y, z)** – Verify if block is within mining reach (~4.5 blocks)
+All mining actions use JavaScript executed via `craftscript_start(script)`.
+
+### Block Discovery
+```javascript
+find_blocks("iron_ore", 32, 10);        // Find up to 10 iron ore within 32 blocks
+get_block(x, y, z);                     // Get block info at position
+block_is(x, y, z, "coal_ore");          // Check if block is specific type
+is_air(x, y, z);                        // Check if position is air
+can_see_block(x, y, z);                 // Check line of sight to block
+```
 
 ### Mining Operations
+```javascript
+await dig(x, y, z);                     // Mine block (auto-equips best tool)
+await pickup_blocks(10);                // Collect dropped items within radius
+```
 
-**CRITICAL: Always use break_block_and_wait for mining resources!**
-- **break_block_and_wait(x, y, z)** – ✅ **Use this!** Mines block, waits for drops, auto-collects items. Best for all resource gathering.
-- **dig_block(x, y, z)** – ❌ Only breaks blocks, does NOT collect items. Don't use for mining resources!
-- **collect_nearby_items(item_types, radius)** – Pick up dropped items if you accidentally used dig_block
+**Mining Pattern Example:**
+```javascript
+// Find and mine iron ore
+const ores = find_blocks("iron_ore", 32, 10);
+console.log(`Found ${ores.length} iron ore blocks`);
 
-**Why break_block_and_wait is essential:**
-When mining ores, stone, or any resource, the item drops on the ground. If you use dig_block, the item drops but you won't auto-collect it. You'll lose your resources! Always use break_block_and_wait to ensure proper collection.
+for (const ore of ores) {
+  await goto(ore.x, ore.y, ore.z, { tolerance: 2 });
+  await dig(ore.x, ore.y, ore.z);
+}
+
+await pickup_blocks(15);
+console.log("Mining complete!");
+```
 
 ### Movement & Position
-- **get_position()** – Know your current coordinates before starting
-- **move_to_position(x, y, z, range)** – Navigate to mining location
-- **look_at(x, y, z)** – Face the block you want to mine
+```javascript
+await goto(x, y, z);                    // Navigate to position
+await goto(x, y, z, { tolerance: 2 });  // Get within 2 blocks
+await look_at(x, y, z);                 // Face position
+```
 
 ### Tool Management
-- **list_inventory()** – Check available tools and inventory space
-- **find_item(name)** – Locate pickaxes and other tools in inventory
-- **equip_item(item_name, destination)** – Equip appropriate mining tool
+```javascript
+has_item("iron_pickaxe");               // Check if pickaxe in inventory
+await equip("iron_pickaxe");            // Equip tool
+await craft("stone_pickaxe", 1, true);  // Craft new pickaxe
+```
 
 ### Building & Safety
-- **place_block(x, y, z, block_type)** – Place blocks for safety (bridges, pillars)
-- **build_pillar(height)** – Build up quickly when mining upward
-- **descend_pillar_safely()** – Safely descend after building up
-
-### Communication
-- **send_chat(message)** – Communicate status and progress
-- **send_bot_message(recipient, message, priority)** – Notify other bots of findings
+```javascript
+await place("cobblestone", x, y, z);    // Place block (bridges, pillars)
+await build_up("cobblestone");          // Jump-place for vertical building
+```
 
 ## Mining Workflow
 

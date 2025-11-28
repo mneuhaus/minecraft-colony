@@ -1,12 +1,12 @@
 ---
-name: javascript-scripting
-description: Write safe, powerful JavaScript scripts to control the Minecraft bot with full world awareness, crafting capabilities, and reusable custom functions. Use read-only queries for planning, then execute precise actions with comprehensive logging. ALL movement and block interaction must be done through JavaScript scripts - do NOT use nav or other direct tools.
-allowed-tools: craftscript_start, craftscript_status, craftscript_cancel, get_vox, block_info, affordances, get_topography, send_chat, get_position, get_inventory, create_craftscript_function, edit_craftscript_function, list_craftscript_functions, get_craftscript_function, list_function_versions, delete_craftscript_function
+name: javascript
+description: This skill should be used for ALL bot control. Write standard JavaScript (ES2023) with async/await. Provides goto() with SimplePathfinder, dig(), place(), craft(), container management, and world queries. Execute via craftscript_start, monitor via craftscript_status/logs.
+allowed-tools: craftscript_start, craftscript_status, craftscript_cancel, craftscript_logs, get_vox, block_info, affordances, get_topography, send_chat, get_position, get_inventory, create_craftscript_function, edit_craftscript_function, list_craftscript_functions, get_craftscript_function, list_function_versions, delete_craftscript_function
 ---
 
-# JavaScript Bot Scripting – Complete Guide
+# JavaScript Bot Control
 
-Write standard JavaScript (ES2023) with async/await to control the Minecraft bot. **New capabilities**: World awareness (blocks, entities, players), crafting system, and persistent custom functions!
+Write **standard JavaScript (ES2023)** with async/await to control the Minecraft bot. This is real JavaScript - not a custom language. Features: world awareness, crafting, persistent custom functions.
 
 ## Quick Start
 
@@ -72,10 +72,11 @@ await dig(x, y, z);
 ### ⛏️ Block Interaction
 
 ```javascript
-await dig(x, y, z)              // Mine block (auto-equips best tool)
-await place(blockId, x, y, z)   // Place block (finds reference block)
-await build_up(blockId)         // Jump and place block below to build up 1 block
-await equip(itemId)             // Equip item to hand
+await dig(x, y, z)                          // Mine block (auto-equips best tool)
+await place(blockId, x, y, z)               // Place block (finds reference block)
+await build_up(blockId)                     // Jump and place block below (pillar jump)
+await build_scaffolding(x, y, z, height)    // Build scaffolding tower at position
+await equip(itemId)                         // Equip item to hand
 ```
 
 **Examples:**
@@ -89,11 +90,14 @@ await place("torch", 100, 65, 50);
 // Build up one block (pillar jump)
 await build_up("dirt");
 
+// Build scaffolding tower (for climbing)
+await build_scaffolding(100, 64, 50, 10);  // 10-block tall scaffolding
+
 // Equip a pickaxe
 await equip("iron_pickaxe");
 ```
 
-**Note:** For descending, use `goto()` - pathfinder will automatically drop down up to 8 blocks if safe.
+**Note:** `goto()` uses SimplePathfinder which supports climbing scaffolding and ladders. It will also drop down up to 3 blocks if safe.
 
 ### 💼 Inventory & Items
 
@@ -598,7 +602,7 @@ console.log("Back on ground!");
 
 ## Available Globals
 
-**Actions:** goto, look_at, dig, place, build_up, equip, pickup_blocks, toss, open_container, deposit, withdraw, close_container, craft, wait
+**Actions:** goto, look_at, dig, place, build_up, build_scaffolding, equip, pickup_blocks, toss, open_container, deposit, withdraw, close_container, craft, wait
 
 **Queries:** is_air, block_is, get_block, find_blocks, can_see_block, get_nearest_entity, get_entities, get_players, has_item, get_recipes, can_craft
 

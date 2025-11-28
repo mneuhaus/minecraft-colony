@@ -1,7 +1,7 @@
 ---
 name: navigation
-description: Navigate the world using tools and JavaScript scripts. Philosophy over procedures.
-allowed-tools: get_position, get_status, get_vox, look_at_map, look_at_map_4, look_at_map_5, look_at_map_image, craftscript_start, craftscript_status, craftscript_logs
+description: This skill should be used for navigating the Minecraft world. Uses JavaScript with goto() and SimplePathfinder for scaffolding/ladder support.
+allowed-tools: get_position, get_status, get_vox, look_at_map, look_at_map_image, craftscript_start, craftscript_status, craftscript_logs
 ---
 
 # The Zen of Minecraft Navigation
@@ -9,7 +9,7 @@ allowed-tools: get_position, get_status, get_vox, look_at_map, look_at_map_4, lo
 Simple is better than complex.
 Explicit is better than implicit.
 
-Tools reveal the world.
+MCP Tools reveal the world.
 JavaScript changes the world.
 
 Inspect before you act.
@@ -18,19 +18,33 @@ Monitor after you act.
 
 ## Core Principles
 
-**Read-only tools reveal the world:**
+**Read-only MCP tools reveal the world:**
 - `get_position()` → where you are (x, y, z)
 - `get_status()` → comprehensive snapshot (position, 3x3 vox, inventory, nearby players/items)
 - `get_vox(radius)` → detailed voxel data around you (exact block information)
 - `look_at_map(radius)` → ASCII map overview (quick orientation)
-- `look_at_map_4(radius)` → 4x zoom ASCII map (medium range)
-- `look_at_map_5(radius)` → 5x zoom ASCII map (long range)
-- `look_at_map_image(radius)` → rendered map image (visual confirmation of symmetry, shape, gaps, misplaced blocks)
+- `look_at_map_image(radius)` → rendered map image (visual confirmation of symmetry, shape, gaps)
 
 **JavaScript changes the world:**
 - Write script with `await goto(x, y, z)`
 - Execute with `craftscript_start(script)`
 - Monitor with `craftscript_status(job_id)` and `craftscript_logs(job_id)`
+
+## Pathfinding System
+
+Navigation uses a dual-pathfinder approach:
+
+1. **SimplePathfinder** (default, preferred)
+   - Custom A* implementation with proper scaffolding/ladder support
+   - Block classification: solid, passable, climbable, danger, liquid
+   - Handles: walking, jumping, dropping (up to 3 blocks), climbing scaffolding/ladders
+   - Falls back to mineflayer-pathfinder if no path found
+
+2. **mineflayer-pathfinder** (fallback)
+   - Standard Minecraft pathfinding
+   - Used when SimplePathfinder can't find a path
+
+You can force the fallback pathfinder: `await goto(x, y, z, { simple: false })`
 
 ## Movement Physics (Critical)
 

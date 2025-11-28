@@ -1,24 +1,33 @@
 ---
 name: crafting
-description: Craft tools, items, and equipment. Smelt ores and cook food using furnaces. Essential for tool progression and self-sufficiency.
-allowed-tools: craft_item, smelt_item, check_inventory, send_chat, send_bot_message, read_bot_messages
+description: This skill should be used for crafting tools, items, and equipment using JavaScript. Covers the craft() function for 2x2 and 3x3 recipes, tool tier progression, and recipe queries.
+allowed-tools: get_position, get_status, get_inventory, craftscript_start, craftscript_status, craftscript_logs
 ---
 
-# Crafting Skill – Item Creation and Smelting
+# Crafting Skill – Item Creation via JavaScript
 
-This skill teaches you how to craft items using crafting tables, smelt ores in furnaces, and progress through Minecraft's tool tiers for maximum efficiency.
+Use JavaScript executed via `craftscript_start(script)` for all crafting operations.
 
-## Available Tools
+## JavaScript Commands
 
-### Crafting
-- **craft_item(item_name, count)** – craft items using inventory grid or crafting table
-- **smelt_item(item_name, count, fuel)** – smelt ores, cook food, process items in furnace
+### Recipe Queries (instant, read-only)
+```javascript
+get_recipes("iron_pickaxe");            // Get available recipes for item
+can_craft("iron_pickaxe", 1);           // Check if craftable with current inventory
+has_item("iron_ingot");                 // Check inventory for materials
+```
 
-### Support
-- **check_inventory()** – view current inventory contents and counts
-- **send_chat(message)** – communicate crafting status
-- **send_bot_message(recipient, message, priority)** – request materials from other bots
-- **read_bot_messages()** – receive crafting requests
+### Crafting Operations
+```javascript
+await craft("stick", 4);                // Craft using 2x2 inventory grid
+await craft("iron_pickaxe", 1, true);   // Craft using 3x3 crafting table
+```
+
+### Finding Crafting Tables
+```javascript
+find_blocks("crafting_table", 32, 1);   // Find nearby crafting table
+await goto(x, y, z, { tolerance: 2 });  // Navigate to crafting table
+```
 
 ## Core Crafting Concepts
 
@@ -52,78 +61,69 @@ Minecraft tools follow a progression system. Each tier is faster and more durabl
 
 ### 1. Starting From Scratch (Wood → Stone → Iron)
 
-**Step 1: Wood Tools** (first 2 minutes of gameplay)
-```
-# Punch 4 logs, craft planks
-craft_item(item_name="oak_planks", count=16)
+**Step 1: Wood Tools**
+```javascript
+// Punch logs first (use dig() on oak_log), then craft planks
+await craft("oak_planks", 16);
 
-# Craft crafting table
-craft_item(item_name="crafting_table", count=1)
+// Craft crafting table
+await craft("crafting_table", 1);
 
-# Place crafting table nearby (using building tools)
+// Place crafting table (using place() command)
+await place("crafting_table", x, y, z);
 
-# Craft sticks
-craft_item(item_name="stick", count=8)
+// Craft sticks
+await craft("stick", 8);
 
-# Craft wooden pickaxe (PRIORITY!)
-craft_item(item_name="wooden_pickaxe", count=1)
+// Craft wooden pickaxe (PRIORITY!) - needs crafting table
+await craft("wooden_pickaxe", 1, true);
 
-# Craft wooden axe (faster wood gathering)
-craft_item(item_name="wooden_axe", count=1)
-```
-
-**Step 2: Stone Tools** (next 5 minutes)
-```
-# Mine 11 cobblestone with wooden pickaxe
-# (3 for furnace, 8 for stone tools)
-
-# Craft furnace
-craft_item(item_name="furnace", count=1)
-
-# Craft stone pickaxe IMMEDIATELY
-craft_item(item_name="stone_pickaxe", count=1)
-
-# Craft stone axe
-craft_item(item_name="stone_axe", count=1)
-
-# Craft stone sword (for defense)
-craft_item(item_name="stone_sword", count=1)
-
-# Craft stone shovel (faster digging)
-craft_item(item_name="stone_shovel", count=1)
+// Craft wooden axe (faster wood gathering)
+await craft("wooden_axe", 1, true);
 ```
 
-**Step 3: Iron Tools** (after finding iron ore)
+**Step 2: Stone Tools**
+```javascript
+// After mining 11+ cobblestone with wooden pickaxe:
+
+// Craft furnace (3x3 recipe)
+await craft("furnace", 1, true);
+
+// Craft stone pickaxe IMMEDIATELY
+await craft("stone_pickaxe", 1, true);
+
+// Craft stone tools
+await craft("stone_axe", 1, true);
+await craft("stone_sword", 1, true);
+await craft("stone_shovel", 1, true);
 ```
-# Mine iron ore with stone pickaxe (requires Y < 64)
-# Need minimum 3 iron ore (1 for pickaxe, rest for other tools)
 
-# Smelt iron ore → iron ingots
-smelt_item(item_name="raw_iron", count=3, fuel="coal")
-# OR if you have iron_ore from older version:
-smelt_item(item_name="iron_ore", count=3, fuel="coal")
+**Step 3: Iron Tools**
+```javascript
+// After smelting iron ore in furnace:
 
-# Craft iron pickaxe FIRST (unlock diamonds!)
-craft_item(item_name="iron_pickaxe", count=1)
+// Craft iron pickaxe FIRST (unlock diamonds!)
+await craft("iron_pickaxe", 1, true);
 
-# Continue iron tool progression:
-craft_item(item_name="iron_sword", count=1)
-craft_item(item_name="iron_axe", count=1)
-craft_item(item_name="iron_shovel", count=1)
+// Continue iron tool progression
+await craft("iron_sword", 1, true);
+await craft("iron_axe", 1, true);
+await craft("iron_shovel", 1, true);
 ```
 
 ### 2. Bulk Crafting
 
 When crafting multiple items:
-```
-# Craft 16 torches at once
-craft_item(item_name="torch", count=16)
+```javascript
+// Craft 16 torches at once
+await craft("torch", 16);
 
-# Smelt a full stack of iron
-smelt_item(item_name="raw_iron", count=64, fuel="coal")
+// Craft multiple tools for backup
+await craft("iron_pickaxe", 3, true);
 
-# Craft multiple tools for backup
-craft_item(item_name="iron_pickaxe", count=3)
+// Craft building materials
+await craft("oak_planks", 64);
+await craft("stick", 32);
 ```
 
 **Benefits**:
@@ -131,113 +131,80 @@ craft_item(item_name="iron_pickaxe", count=3)
 - Efficient material usage
 - Better for mass production
 
-### 3. Smelting Ores
+### 3. Smelting Note
 
-**Common Smeltable Ores**:
-```
-# Iron (most common, most useful)
-smelt_item(item_name="raw_iron", count=32, fuel="coal")
-# Output: 32 iron_ingot
+**Important**: Smelting is not yet available as a JavaScript command. To smelt ores:
+1. Find or craft a furnace: `await craft("furnace", 1, true)`
+2. Place the furnace: `await place("furnace", x, y, z)`
+3. Manually interact with furnace (future feature)
 
-# Gold (for powered rails, golden apples)
-smelt_item(item_name="raw_gold", count=8, fuel="coal")
-# Output: 8 gold_ingot
+For now, focus on crafting recipes that don't require smelted materials, or pre-smelt materials manually.
 
-# Copper (for lightning rods, spyglass - Minecraft 1.17+)
-smelt_item(item_name="raw_copper", count=16, fuel="coal")
-# Output: 16 copper_ingot
-```
-
-**Smelting Other Materials**:
-```
-# Cobblestone → Stone (for building)
-smelt_item(item_name="cobblestone", count=64)
-
-# Sand → Glass (for windows)
-smelt_item(item_name="sand", count=32)
-
-# Raw food → Cooked food (restore more hunger)
-smelt_item(item_name="raw_beef", count=10)
-# Output: 10 cooked_beef (4 hunger vs 1.5 for raw)
-```
-
-### 4. Fuel Management
-
-The `smelt_item` tool auto-selects fuel if not specified:
-
-**Fuel Efficiency** (items smelted per fuel):
-1. **Coal Block**: 80 items (most efficient!)
-2. **Blaze Rod**: 12 items
-3. **Coal/Charcoal**: 8 items
-4. **Dried Kelp Block**: 20 items
-5. **Log**: 1.5 items
-6. **Planks**: 1.5 items
-7. **Stick**: 0.5 items (worst - avoid!)
-
-**Pro Tips**:
-- Use coal for ores (common, efficient)
-- Use logs/planks for food (less valuable fuel)
-- Craft coal blocks for mass smelting (9 coal → 1 coal block = 80 items)
-- Kelp farms provide renewable fuel
-
-### 5. Essential Crafting Recipes
+### 4. Essential Crafting Recipes
 
 **Survival Essentials**:
-```
-# Torches (light, prevent mob spawns)
-craft_item(item_name="torch", count=64)
-# Requires: 1 coal/charcoal + 1 stick each
+```javascript
+// Torches (light, prevent mob spawns) - 1 coal + 1 stick each
+await craft("torch", 64);
 
-# Chest (storage)
-craft_item(item_name="chest", count=8)
-# Requires: 8 planks each
+// Chest (storage) - 8 planks each
+await craft("chest", 8, true);
 
-# Bed (skip night, set spawn)
-craft_item(item_name="white_bed", count=1)
-# Requires: 3 wool + 3 planks
+// Bed (skip night, set spawn) - 3 wool + 3 planks
+await craft("white_bed", 1, true);
 
-# Bucket (water transport, milk collection)
-craft_item(item_name="bucket", count=3)
-# Requires: 3 iron ingots each
+// Bucket (water transport) - 3 iron ingots each
+await craft("bucket", 3, true);
 ```
 
 **Tool Maintenance**:
-```
-# Always have backup tools!
-craft_item(item_name="iron_pickaxe", count=2)
+```javascript
+// Always have backup tools!
+await craft("iron_pickaxe", 2, true);
 
-# Or carry materials to craft on the go:
-# Keep 3 iron ingots + 2 sticks in inventory
+// Check if you can craft replacement
+if (can_craft("iron_pickaxe", 1)) {
+  await craft("iron_pickaxe", 1, true);
+}
 ```
 
 ## Advanced Crafting Techniques
 
 ### Crafting Table Proximity
 
-The `craft_item` tool automatically finds nearby crafting tables:
+The `craft()` command with `true` as third parameter automatically finds nearby crafting tables:
 - Searches within 32 blocks
 - Uses closest available table
-- Falls back to 2×2 inventory if recipe allows
+- Fails if no crafting table found for 3x3 recipes
 
 **Best Practice**:
-```
-# Place crafting table at base central location
-# All bots can share one crafting table
-# Or place tables near work areas (mine entrance, farm, etc.)
+```javascript
+// Find crafting table
+const tables = find_blocks("crafting_table", 32, 1);
+if (tables.length === 0) {
+  // Place one if you have it
+  if (has_item("crafting_table")) {
+    const pos = bot.entity.position;
+    await place("crafting_table", pos.x + 1, pos.y, pos.z);
+  }
+}
 ```
 
 ### Material Preparation
 
-Before crafting, ensure you have materials:
-```
-# Check current inventory
-check_inventory()
+Before crafting, verify materials via MCP tools:
+```javascript
+// Check if craftable (uses inventory check)
+if (can_craft("iron_pickaxe", 1)) {
+  await craft("iron_pickaxe", 1, true);
+} else {
+  console.log("Missing materials for iron pickaxe");
+}
 
-# Request materials from another bot if needed
-send_bot_message("SammelBot", "Need 16 iron ingots for tools", "normal")
-
-# Wait for delivery
-read_bot_messages()
+// Check specific items
+if (has_item("iron_ingot") && has_item("stick")) {
+  await craft("iron_sword", 1, true);
+}
 ```
 
 ### Efficient Progression Path
@@ -254,171 +221,86 @@ read_bot_messages()
 9. Shield (defense)
 10. Chest (storage)
 
-## Multi-Bot Crafting Scenarios
-
-### Scenario 1: Division of Labor
-
-```
-# GräberBot mines ores
-GräberBot: Mining 64 iron ore at coordinates (X, Y, Z)
-
-# HandelBot collects and smelts
-HandelBot:
-1. read_bot_messages() → Get pickup coordinates
-2. Navigate to mine
-3. Collect 64 raw_iron
-4. Return to base
-5. smelt_item(item_name="raw_iron", count=64, fuel="coal")
-6. send_bot_message("BauBot", "64 iron ingots smelted, ready for crafting", "normal")
-
-# BauBot crafts tools
-BauBot:
-1. read_bot_messages() → Iron ingots available
-2. craft_item(item_name="iron_pickaxe", count=5)
-3. craft_item(item_name="iron_axe", count=3)
-4. send_chat("Tool production complete: 5 pickaxes, 3 axes")
-```
-
-### Scenario 2: Emergency Tool Crafting
-
-```
-# SammelBot breaks pickaxe while mining
-SammelBot:
-1. check_inventory() → Verify materials: 3 iron, 2 sticks ✓
-2. craft_item(item_name="iron_pickaxe", count=1)
-3. send_chat("Crafted replacement pickaxe, resuming mining")
-
-# OR if no materials:
-SammelBot:
-1. send_bot_message("BauBot", "URGENT: Need iron pickaxe, mine is at (X, Y, Z)", "high")
-2. Wait at safe location
-```
-
-### Scenario 3: Mass Production
-
-```
-# Base needs 100 torches, 20 chests, 10 tools
-
-HandelBot (coordinator):
-1. send_bot_message("BauBot", "Craft 10 iron pickaxes", "normal")
-2. send_bot_message("SammelBot", "Craft 100 torches", "normal")
-
-BauBot:
-1. smelt_item(item_name="raw_iron", count=30)  # 30 iron for 10 pickaxes
-2. craft_item(item_name="iron_pickaxe", count=10)
-3. send_bot_message("HandelBot", "10 pickaxes ready", "normal")
-
-SammelBot:
-1. craft_item(item_name="torch", count=100)
-2. craft_item(item_name="chest", count=20)
-3. send_bot_message("HandelBot", "Torches and chests ready", "normal")
-```
-
 ## Common Crafting Recipes
 
 ### Tools (Tier Templates)
 
 All tools follow same pattern, just different materials:
 
-**Pickaxe** (mine stone/ore):
-```
-craft_item(item_name="<material>_pickaxe", count=1)
-# Materials: wooden, stone, iron, diamond, netherite
-# Recipe: 3 material + 2 sticks
-```
+```javascript
+// Pickaxe (mine stone/ore) - 3 material + 2 sticks
+await craft("wooden_pickaxe", 1, true);  // or stone_, iron_, diamond_
+await craft("stone_pickaxe", 1, true);
+await craft("iron_pickaxe", 1, true);
+await craft("diamond_pickaxe", 1, true);
 
-**Axe** (chop wood fast):
-```
-craft_item(item_name="<material>_axe", count=1)
-# Recipe: 3 material + 2 sticks
-```
+// Axe (chop wood) - 3 material + 2 sticks
+await craft("iron_axe", 1, true);
 
-**Sword** (combat):
-```
-craft_item(item_name="<material>_sword", count=1)
-# Recipe: 2 material + 1 stick
-```
+// Sword (combat) - 2 material + 1 stick
+await craft("iron_sword", 1, true);
 
-**Shovel** (dig dirt/sand/gravel):
-```
-craft_item(item_name="<material>_shovel", count=1)
-# Recipe: 1 material + 2 sticks
-```
+// Shovel (dig dirt/sand) - 1 material + 2 sticks
+await craft("iron_shovel", 1, true);
 
-**Hoe** (till farmland):
-```
-craft_item(item_name="<material>_hoe", count=1)
-# Recipe: 2 material + 2 sticks
+// Hoe (till farmland) - 2 material + 2 sticks
+await craft("iron_hoe", 1, true);
 ```
 
 ### Building Blocks
 
-```
-# Planks from logs
-craft_item(item_name="oak_planks", count=64)
-# Variants: spruce, birch, jungle, acacia, dark_oak
+```javascript
+// Planks from logs (2x2)
+await craft("oak_planks", 64);  // spruce, birch, jungle, acacia, dark_oak
 
-# Sticks from planks
-craft_item(item_name="stick", count=64)
+// Sticks from planks (2x2)
+await craft("stick", 64);
 
-# Crafting table
-craft_item(item_name="crafting_table", count=1)
+// Crafting table - 4 planks (2x2)
+await craft("crafting_table", 1);
 
-# Furnace
-craft_item(item_name="furnace", count=1)
+// Furnace - 8 cobblestone (3x3)
+await craft("furnace", 1, true);
 
-# Chest (storage)
-craft_item(item_name="chest", count=8)
+// Chest - 8 planks (3x3)
+await craft("chest", 8, true);
 ```
 
 ### Utility Items
 
-```
-# Torches (light)
-craft_item(item_name="torch", count=64)
-# Requires coal/charcoal + sticks
+```javascript
+// Torches - coal/charcoal + sticks
+await craft("torch", 64);
 
-# Bucket (water transport)
-craft_item(item_name="bucket", count=3)
-# Requires 3 iron ingots each
+// Bucket - 3 iron ingots (3x3)
+await craft("bucket", 3, true);
 
-# Shears (sheep, leaves)
-craft_item(item_name="shears", count=1)
-# Requires 2 iron ingots
+// Shears - 2 iron ingots (2x2)
+await craft("shears", 1);
 
-# Ladder (vertical movement)
-craft_item(item_name="ladder", count=16)
-# Requires 7 sticks
+// Ladder - 7 sticks (3x3)
+await craft("ladder", 16, true);
 
-# Boat (water travel - very fast!)
-craft_item(item_name="oak_boat", count=1)
-# Requires 5 planks
+// Boat - 5 planks (3x3)
+await craft("oak_boat", 1, true);
 ```
 
 ## Troubleshooting
 
 **"Cannot craft X - no recipe found"**:
-- Item might be uncraftable (must find/mine)
-- Check item name spelling (use underscores: "iron_pickaxe" not "iron pickaxe")
+- Check item name spelling (use underscores: `"iron_pickaxe"` not `"iron pickaxe"`)
+- Use `get_recipes("item_name")` to see available recipes
 - Some items require special conditions (brewing, enchanting, etc.)
 
-**"Error: Recipe requires a crafting table"**:
-- Move within 32 blocks of crafting table
-- Or place a new crafting table: `craft_item(item_name="crafting_table", count=1)`
+**"Crafting failed - no crafting table nearby"**:
+- Pass `true` as third parameter only for 3x3 recipes
+- Find table: `find_blocks("crafting_table", 32, 1)`
+- Place one: `await place("crafting_table", x, y, z)`
 
-**"Failed to craft - missing required materials"**:
-- Run `check_inventory()` to see what you have
-- Request materials: `send_bot_message("SammelBot", "Need 3 iron ingots", "normal")`
+**"Missing required materials"**:
+- Use `can_craft("item_name", 1)` to check before crafting
+- Use `has_item("iron_ingot")` to check specific items
 - Gather missing materials using mining/farming skills
-
-**"No furnace found within 32 blocks"**:
-- Move closer to furnace
-- Or craft one: `craft_item(item_name="furnace", count=1)` and place it
-
-**"No fuel found in inventory"**:
-- Mine coal (Y < 64, common in caves)
-- Or use wood/planks as fuel (less efficient)
-- Or create charcoal: `smelt_item(item_name="oak_log", count=8, fuel="oak_planks")`
 
 ## Integration with Other Skills
 
@@ -434,53 +316,55 @@ craft_item(item_name="oak_boat", count=1)
 ✅ **Do:**
 - Craft tools in increasing tier order (wood → stone → iron → diamond)
 - Always craft a pickaxe FIRST when reaching new tier (unlocks next tier)
-- Smelt ore in batches (more efficient)
 - Keep backup tools in inventory or storage
-- Use coal for fuel when smelting ores
-- Check inventory before crafting to verify materials
+- Use `can_craft()` before crafting to verify materials
+- Place crafting table near work areas (mine entrance, base, etc.)
 
 ❌ **Don't:**
 - Don't craft wood/stone tools after getting iron (waste of materials)
-- Don't use sticks as furnace fuel (very inefficient: 0.5 items per stick)
-- Don't smelt one item at a time (slow and inefficient)
 - Don't forget to craft a crafting table early (needed for most recipes)
 - Don't craft items you don't need (inventory space is limited)
+- Don't forget the third parameter `true` for 3x3 recipes
 
 ## Example Tasks
 
 **Task: "Craft an iron pickaxe"**
-```
-1. check_inventory() → Verify: 3 iron ingots + 2 sticks
-2. craft_item(item_name="iron_pickaxe", count=1)
-3. send_chat("Crafted iron pickaxe, ready to mine diamonds!")
-```
-
-**Task: "Smelt all raw iron in inventory"**
-```
-1. check_inventory() → Count raw_iron
-2. smelt_item(item_name="raw_iron", count=<amount>)  # Uses auto fuel selection
-3. send_chat("Smelted <amount> iron ingots")
+```javascript
+// First check if we have materials
+if (can_craft("iron_pickaxe", 1)) {
+  await craft("iron_pickaxe", 1, true);
+  console.log("Crafted iron pickaxe, ready to mine diamonds!");
+} else {
+  console.log("Need 3 iron ingots + 2 sticks");
+}
 ```
 
 **Task: "Prepare for diamond mining expedition"**
-```
-1. craft_item(item_name="iron_pickaxe", count=3)  # Backups!
-2. craft_item(item_name="iron_sword", count=1)  # Combat
-3. craft_item(item_name="torch", count=64)  # Light caves
-4. craft_item(item_name="ladder", count=32)  # Vertical movement
-5. check_inventory() → Verify food supplies
-6. send_chat("Ready for diamond mining: 3 pickaxes, sword, 64 torches")
+```javascript
+// Craft backup tools and supplies
+await craft("iron_pickaxe", 3, true);  // Backups!
+await craft("iron_sword", 1, true);    // Combat
+await craft("torch", 64);               // Light caves
+await craft("ladder", 32, true);        // Vertical movement
+
+console.log("Ready for diamond mining: 3 pickaxes, sword, 64 torches");
 ```
 
-**Task: "Set up furnace smelting station"**
-```
-1. craft_item(item_name="furnace", count=4)  # Multiple furnaces
-2. Place furnaces in a row (using building skill)
-3. smelt_item(item_name="raw_iron", count=64)  # Furnace 1
-4. smelt_item(item_name="raw_gold", count=16)  # Furnace 2
-5. smelt_item(item_name="cobblestone", count=64)  # Furnace 3
-6. smelt_item(item_name="raw_beef", count=20)  # Furnace 4
-7. send_chat("Smelting station operational: processing ores and food")
+**Task: "Quick crafting session"**
+```javascript
+// Craft planks from logs
+await craft("oak_planks", 32);
+
+// Craft sticks
+await craft("stick", 16);
+
+// Craft torches
+await craft("torch", 32);
+
+// Craft storage
+await craft("chest", 4, true);
+
+console.log("Basic supplies crafted!");
 ```
 
 ## When NOT to Use This Skill

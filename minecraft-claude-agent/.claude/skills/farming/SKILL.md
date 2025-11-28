@@ -1,46 +1,62 @@
 ---
 name: farming
-description: Plant and harvest crops, breed animals, and manage renewable food sources. Complete farming toolkit including tilling soil, breeding animals, collecting wool, milking cows, and using bone meal to accelerate growth.
-allowed-tools: get_position, move_to_position, look_at, list_inventory, find_item, find_entity, dig_block, break_block_and_wait, place_block, collect_nearby_items, find_plantable_ground, place_sapling, wait_for_saplings, send_chat, send_bot_message, till_soil, feed_entity, shear_sheep, milk_cow, use_bone_meal
+description: This skill should be used for planting and harvesting crops, breeding animals, and managing renewable food sources using JavaScript. Uses goto(), dig(), place(), and find_blocks() for farming automation.
+allowed-tools: get_position, get_status, get_vox, look_at_map, craftscript_start, craftscript_status, craftscript_logs
 ---
 
 # Farming Skill – Sustainable Resource Production
 
 This skill teaches you how to farm crops, breed animals, and create renewable resource systems.
 
-## Available Tools
+## JavaScript Commands
+
+All farming actions use JavaScript executed via `craftscript_start(script)`.
 
 ### Movement & Navigation
-- **get_position()** – know your current coordinates.
-- **move_to_position(x, y, z, range)** – navigate to farm location.
-- **look_at(x, y, z)** – face blocks/animals you're interacting with.
-
-### Inventory & Items
-- **list_inventory()** – check for seeds, food, and tools.
-- **find_item(name)** – locate specific items like seeds, wheat, carrots.
-- **collect_nearby_items(item_types, radius)** – gather harvested items.
+```javascript
+await goto(x, y, z);                    // Navigate to position
+await goto(x, y, z, { tolerance: 3 });  // Get within 3 blocks
+await look_at(x, y, z);                 // Face a position
+```
 
 ### Block Interaction
-- **dig_block(x, y, z)** – harvest crops quickly.
-- **break_block_and_wait(x, y, z)** – harvest and ensure item collection.
-- **place_block(x, y, z, block_type)** – place farmland, crops, or fences.
-- **till_soil(x, y, z)** – convert dirt/grass to farmland (requires hoe in inventory).
+```javascript
+await dig(x, y, z);                     // Break/harvest block
+await place("wheat", x, y, z);          // Place crop/block
+await place("farmland", x, y, z);       // Place farmland (creative mode)
+```
 
-### Entity Interaction
-- **find_entity(entityType, maxDistance)** – locate animals (cow, pig, sheep, chicken).
-- **feed_entity(entity_type, food_item, max_distance)** – feed animals to breed them or speed up baby growth.
-- **shear_sheep(max_distance)** – shear sheep to collect 1-3 wool blocks (requires shears in inventory).
-- **milk_cow(max_distance)** – milk cows to get milk buckets (requires empty bucket in inventory).
-- **use_bone_meal(x, y, z)** – use bone meal on crops/plants to accelerate growth.
+### Block Queries (instant, read-only)
+```javascript
+find_blocks("wheat", 32, 100);          // Find blocks by type
+get_block(x, y, z);                     // Get block info
+is_air(x, y, z);                        // Check if air
+block_is(x, y, z, "wheat");             // Check block type
+```
 
-### Tree Farming
-- **find_plantable_ground(x, y, z, radius)** – find suitable dirt for planting trees.
-- **place_sapling(x, y, z, sapling_type)** – plant tree saplings.
-- **wait_for_saplings(seconds)** – wait for saplings to potentially grow.
+### Inventory Queries
+```javascript
+has_item("wheat_seeds");                // Check if item exists
+// Use get_inventory MCP tool for full inventory list
+```
 
-### Communication
-- **send_chat(message)** – communicate farming status.
-- **send_bot_message(recipient, message, priority)** – coordinate with other bots.
+### Item Collection
+```javascript
+await pickup_blocks(10);                // Collect nearby dropped items
+```
+
+### Entity Queries
+```javascript
+get_nearest_entity("cow");              // Find nearest entity by type
+get_entities("sheep", 50);              // Find all sheep within 50 blocks
+get_players();                          // Find nearby players
+```
+
+### Crafting
+```javascript
+await craft("bread", 1);                // Craft without table
+await craft("cake", 1, true);           // Craft with crafting table
+```
 
 ## Crop Farming
 
@@ -373,34 +389,50 @@ Example:
    send_bot_message("SammelBot", "Animal pen ready at (200, 64, 150)", "normal")
 ```
 
-## Limitations & Workarounds
+## JavaScript Functions for Farming
 
-### Current Tool Limitations
+Farming uses these JavaScript commands:
 
-**Not Yet Implemented:**
-- ❌ Tilling dirt to create farmland (requires hoe)
-- ❌ Feeding animals for breeding
-- ❌ Shearing sheep for wool
-- ❌ Milking cows for milk
-- ❌ Using bone meal to accelerate crop growth
-- ❌ Detecting crop growth stage programmatically
-
-**Workarounds:**
-- Manual tilling: Ask user to till farmland, then bot plants seeds
-- Creative mode: Use `place_block(x, y, z, "farmland")` directly
-- Animal breeding: Ask user to breed manually, bot manages pens
-- Focus on crops that drop items (wheat, carrots, potatoes)
-
-### Future Tool Ideas
-
-To enable full farming automation, these tools would be helpful:
+**Movement & Navigation:**
+```javascript
+await goto(x, y, z);             // Navigate to position
+await goto(x, y, z, { tolerance: 3 }); // Get within 3 blocks
 ```
-- till_soil(x, y, z): Convert dirt to farmland
-- feed_entity(entityId, itemName): Feed animals for breeding
-- shear_sheep(entityId): Shear sheep for wool
-- milk_cow(entityId): Milk cow with bucket
-- use_bone_meal(x, y, z): Accelerate crop growth
-- get_block_state(x, y, z): Check crop growth stage
+
+**Block Interaction:**
+```javascript
+await dig(x, y, z);              // Harvest crop/break block
+await place("wheat", x, y, z);   // Plant crop on farmland
+```
+
+**Queries (instant, read-only):**
+```javascript
+find_blocks("wheat", 32, 100);   // Find wheat within 32 blocks
+get_block(x, y, z);              // Get block info at position
+is_air(x, y, z);                 // Check if position is air
+has_item("wheat_seeds");         // Check inventory
+```
+
+**Collection:**
+```javascript
+await pickup_blocks(10);         // Collect dropped items within 10 blocks
+```
+
+**Example - Harvest Wheat Farm:**
+```javascript
+// Find all wheat blocks
+const wheat = find_blocks("wheat", 32, 100);
+console.log(`Found ${wheat.length} wheat blocks`);
+
+// Harvest each one
+for (const pos of wheat) {
+  await goto(pos.x, pos.y, pos.z, { tolerance: 2 });
+  await dig(pos.x, pos.y, pos.z);
+}
+
+// Collect drops
+await pickup_blocks(15);
+console.log("Harvest complete!");
 ```
 
 ## Example Farming Tasks

@@ -4,3 +4,15 @@ logs/
 .env
 *.log
 .DS_Store
+
+# Database files
+*.db
+colony.db
+
+# Lock files
+bun.lock
+
+# Temporary planning docs
+CRAFTSCRIPT_FUNCTIONS_UPGRADE.md
+ENHANCED_LOGGING_PLAN.md
+MINEFLAYER_API_ANALYSIS.md
