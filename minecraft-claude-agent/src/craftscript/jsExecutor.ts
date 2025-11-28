@@ -1467,6 +1467,17 @@ export class JavaScriptExecutor {
         return !block || block.name === 'air';
       },
 
+      // Position (read-only, safe)
+      get_position: () => {
+        const pos = bot.entity.position;
+        return {
+          x: Math.floor(pos.x),
+          y: Math.floor(pos.y),
+          z: Math.floor(pos.z),
+          exact: { x: pos.x, y: pos.y, z: pos.z }
+        };
+      },
+
       block_is: (x: number, y: number, z: number, id: string) => {
         x = Math.floor(x);
         y = Math.floor(y);
@@ -1522,6 +1533,31 @@ export class JavaScriptExecutor {
           const distB = botPos.distanceTo(new Vec3(b.x, b.y, b.z));
           return distA - distB;
         });
+      },
+
+      find_nearest_block: (blockId: string, maxDistance: number = 32) => {
+        blockId = blockId.replace('minecraft:', '');
+        const maxDist = Math.min(maxDistance, 128);
+        const botPos = bot.entity.position.floored();
+        let nearest: { x: number; y: number; z: number; distance: number } | null = null;
+
+        for (let y = botPos.y - maxDist; y <= botPos.y + maxDist; y++) {
+          for (let x = botPos.x - maxDist; x <= botPos.x + maxDist; x++) {
+            for (let z = botPos.z - maxDist; z <= botPos.z + maxDist; z++) {
+              const pos = new Vec3(x, y, z);
+              const dist = botPos.distanceTo(pos);
+              if (dist > maxDist) continue;
+              if (nearest && dist >= nearest.distance) continue;
+
+              const block = bot.blockAt(pos);
+              if (block && block.name === blockId) {
+                nearest = { x, y, z, distance: dist };
+              }
+            }
+          }
+        }
+
+        return nearest;
       },
 
       can_see_block: (x: number, y: number, z: number) => {
