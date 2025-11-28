@@ -140,18 +140,43 @@ await build_up("cobblestone");          // Jump-place for vertical building
 7. Place torches every 8 blocks for lighting (survival mode)
 ```
 
-**Mining Downward (Staircase):**
+**Mining Downward (2-Wide Staircase) - THE ONLY SAFE WAY:**
+
+NEVER dig straight down! You will:
+- Fall into lava and die
+- Fall into caves and die
+- Get stuck with no way back up
+
+Instead, always dig a **2-block-wide staircase**:
+
+```javascript
+// 2-wide staircase going down (X direction)
+// Start at Y=64, go down to Y=50
+const startX = 100;
+const startZ = 50;
+
+for (let y = 64; y >= 50; y--) {
+  const x = startX + (64 - y);  // Move forward as we go down
+
+  // Dig 2 blocks wide (for safety and to fit through)
+  await dig(x, y, startZ);
+  await dig(x, y, startZ + 1);
+
+  // Also clear headroom
+  await dig(x, y + 1, startZ);
+  await dig(x, y + 1, startZ + 1);
+
+  // Move down
+  await goto(x, y, startZ);
+
+  console.log(`Level Y=${y} cleared`);
+}
 ```
-NEVER dig straight down (you could fall into lava or caves)!
-Instead, create a staircase:
-1. Dig one block at your feet (creating empty space)
-2. Move down into that empty space (now standing one block lower)
-3. Dig diagonally downward (one block forward, one block down)
-4. Move through the cleared space to the new position
-5. Repeat in a spiral or straight pattern
-6. This creates safe stairs you can climb back up
-Note: You're always moving through EMPTY SPACE left by broken blocks, never moving "into" solid blocks
-```
+
+Why 2-wide?
+- You can walk back up easily
+- You can see lava before you step in it
+- You have room to escape if something goes wrong
 
 **Mining Upward (Pillar):**
 ```
