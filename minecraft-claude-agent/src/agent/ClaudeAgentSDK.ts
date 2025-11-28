@@ -378,6 +378,9 @@ export class ClaudeAgentSDK {
         this.conversationHistory = this.conversationHistory.slice(-10);
       }
 
+      // Compact large tool outputs in older messages to save context
+      this.compactOldToolOutputs(3);
+
       logger.debug('Sending request to Claude Agent SDK');
       logClaudeCall(JSON.stringify(this.conversationHistory).length);
 
@@ -543,6 +546,8 @@ export class ClaudeAgentSDK {
                   speaker: this.botName,
                   role: 'assistant',
                 });
+                // Persist assistant text to SQL for history
+                try { if (this.currentSessionId) this.memoryStore.addActivity(this.currentSessionId, 'assistant_text', textContent.trim(), {}); } catch {}
               }
 
               // Detect common provider/billing errors and surface them clearly
@@ -1031,6 +1036,67 @@ ${chatContext}
     }
     if (this.conversationHistory.length > limit) {
       this.conversationHistory = this.conversationHistory.slice(-limit);
+    }
+  }
+
+  /**
+   * Compact large tool outputs in older messages to save context space.
+   * Keeps the last `keepRecent` messages intact, compacts older ones.
+   */
+  private compactOldToolOutputs(keepRecent: number = 3): void {
+    const historyLen = this.conversationHistory.length;
+    if (historyLen <= keepRecent) return;
+
+    // Patterns that indicate large, context-heavy tool outputs
+    const compactPatterns: Array<{ pattern: RegExp; replacement: string }> = [
+      // Voxel data (get_vox output)
+      {
+        pattern: /```(?:json)?\s*\{[\s\S]*?"voxels"[\s\S]*?\}[\s\S]*?```/gi,
+        replacement: '[VOX DATA COMPACTED - use get_vox() for current data]'
+      },
+      // ASCII maps (look_at_map output)
+      {
+        pattern: /```\s*(?:Map|[─│┌┐└┘├┤┬┴┼█▓▒░●○◆◇■□▲△▼▽◄►☐☑☒✓✗✔✘⬛⬜🟫🟩🟦🟨🟥🟪🟧⬆⬇⬅➡↑↓←→\s\n\r\.\,\:\;\!\?\@\#\$\%\^\&\*\(\)\-\_\+\=\[\]\{\}\|\\\<\>\/\~\`]{50,})[\s\S]*?```/gi,
+        replacement: '[MAP DATA COMPACTED - use look_at_map() for current view]'
+      },
+      // Large coordinate lists
+      {
+        pattern: /\[(?:\s*\{\s*"?x"?\s*:\s*-?\d+\s*,\s*"?y"?\s*:\s*-?\d+\s*,\s*"?z"?\s*:\s*-?\d+\s*\}\s*,?\s*){10,}\]/gi,
+        replacement: '[COORDINATE LIST COMPACTED - contained 10+ positions]'
+      },
+      // Large block data arrays
+      {
+        pattern: /\[(?:\s*\{\s*"?(?:name|block|type)"?\s*:[\s\S]*?\}\s*,?\s*){20,}\]/gi,
+        replacement: '[BLOCK DATA COMPACTED - contained 20+ blocks]'
+      },
+      // Inventory snapshots (more than 10 items detailed)
+      {
+        pattern: /(?:Inventory|Items)[\s\S]{0,50}?(?:\n\s*-\s*\w+[\s\S]*?){10,}/gi,
+        replacement: '[INVENTORY SNAPSHOT COMPACTED - use get_inventory() for current]'
+      },
+    ];
+
+    // Only process messages older than keepRecent
+    const compactUntil = historyLen - keepRecent;
+
+    for (let i = 0; i < compactUntil; i++) {
+      const msg = this.conversationHistory[i];
+      if (!msg.content) continue;
+
+      let content = msg.content;
+      let wasCompacted = false;
+
+      for (const { pattern, replacement } of compactPatterns) {
+        const newContent = content.replace(pattern, replacement);
+        if (newContent !== content) {
+          content = newContent;
+          wasCompacted = true;
+        }
+      }
+
+      if (wasCompacted) {
+        this.conversationHistory[i] = { ...msg, content };
+      }
     }
   }
 
