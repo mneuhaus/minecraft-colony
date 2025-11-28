@@ -194,6 +194,18 @@ export function createDashboardApp(botManager: BotManager) {
     }
   });
 
+  // Context usage stats for sidebar
+  app.get('/api/bots/:name/context', (c) => {
+    try {
+      const name = c.req.param('name');
+      const stats = botManager.getContextStats(name);
+      if (!stats) return c.json({ ok: false, error: 'not_running' }, 404);
+      return c.json({ ok: true, ...stats });
+    } catch (error: any) {
+      return c.json({ ok: false, error: error.message }, 500);
+    }
+  });
+
   // Serve screenshot images
   app.get('/api/screenshot', async (c) => {
     try {

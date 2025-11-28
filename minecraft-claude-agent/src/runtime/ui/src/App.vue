@@ -99,6 +99,9 @@
                     </n-text>
                   </div>
 
+                  <!-- Context Usage -->
+                  <SidebarContext />
+
                   <!-- Map View -->
                   <n-collapse arrow-placement="right" style="margin-top: 12px;">
                     <n-collapse-item title="Map View" name="map">
@@ -236,6 +239,7 @@ import SidebarTodos from './components/SidebarTodos.vue';
 import SidebarMissions from './components/SidebarMissions.vue';
 import SidebarMap from './components/SidebarMap.vue';
 import SidebarSkills from './components/SidebarSkills.vue';
+import SidebarContext from './components/SidebarContext.vue';
 import CraftscriptModal from './components/CraftscriptModal.vue';
 import CraftscriptDetails from './pages/CraftscriptDetails.vue';
 import { deriveJobIdFromEvent } from './utils/craftscriptJob';

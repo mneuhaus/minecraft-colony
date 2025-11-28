@@ -232,6 +232,15 @@ export class BotManager extends EventEmitter {
   /**
    * Get bot status (for dashboard API)
    */
+  /**
+   * Get context usage stats for a bot
+   */
+  public getContextStats(name: string): { currentBytes: number; maxBytes: number; messageCount: number; percentage: number } | null {
+    const instance = this.bots.get(name);
+    if (!instance) return null;
+    return instance.claudeAgent.getContextStats();
+  }
+
   public getBotStatus(name: string): BotStatus | null {
     const instance = this.bots.get(name);
     if (!instance) {

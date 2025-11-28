@@ -1023,6 +1023,25 @@ ${chatContext}
     }
   }
 
+  /**
+   * Get context usage statistics for monitoring
+   */
+  public getContextStats(): { currentBytes: number; maxBytes: number; messageCount: number; percentage: number } {
+    const currentBytes = JSON.stringify(this.conversationHistory).length;
+    // Claude's context window is ~200k tokens, roughly 800k chars.
+    // But we keep only 10 messages, so practical limit is much lower.
+    // Use 100KB as effective max for conversation history
+    const maxBytes = 100_000;
+    const percentage = Math.round((currentBytes / maxBytes) * 100);
+
+    return {
+      currentBytes,
+      maxBytes,
+      messageCount: this.conversationHistory.length,
+      percentage: Math.min(percentage, 100)
+    };
+  }
+
   private isRequestTooLargeText(value?: string | null): boolean {
     if (!value) return false;
     const normalized = value.toLowerCase();
