@@ -30,6 +30,11 @@ Monitor after you act.
 - Execute with `craftscript_start(script)`
 - Monitor with `craftscript_status(job_id)` and `craftscript_logs(job_id)`
 
+**JavaScript query functions (in scripts):**
+- `get_position()` → { x, y, z, exact: { x, y, z } }
+- `find_nearest_block(blockId, maxDist)` → { x, y, z, distance } or null
+- `find_blocks(blockId, maxDist, count)` → array sorted by distance
+
 ## Movement Physics (Critical)
 
 You stand **ON** blocks, not **IN** them.

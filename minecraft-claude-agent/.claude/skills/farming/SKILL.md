@@ -25,9 +25,11 @@ await place("wheat", x, y, z);          // Place crop/block
 await place("farmland", x, y, z);       // Place farmland (creative mode)
 ```
 
-### Block Queries (instant, read-only)
+### Position & Block Queries (instant, read-only)
 ```javascript
-find_blocks("wheat", 32, 100);          // Find blocks by type
+get_position();                         // Get your position { x, y, z, exact }
+find_blocks("wheat", 32, 100);          // Find blocks by type (sorted by distance)
+find_nearest_block("wheat", 32);        // Find single nearest block { x, y, z, distance }
 get_block(x, y, z);                     // Get block info
 is_air(x, y, z);                        // Check if air
 block_is(x, y, z, "wheat");             // Check block type

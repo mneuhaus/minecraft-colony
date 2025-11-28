@@ -26,9 +26,11 @@ This skill teaches you how to mine blocks safely and efficiently to gather resou
 
 All mining actions use JavaScript executed via `craftscript_start(script)`.
 
-### Block Discovery
+### Position & Block Discovery
 ```javascript
-find_blocks("iron_ore", 32, 10);        // Find up to 10 iron ore within 32 blocks
+get_position();                         // Get your position { x, y, z, exact }
+find_blocks("iron_ore", 32, 10);        // Find up to 10 iron ore within 32 blocks (sorted by distance)
+find_nearest_block("iron_ore", 32);     // Find single nearest block { x, y, z, distance }
 get_block(x, y, z);                     // Get block info at position
 block_is(x, y, z, "coal_ore");          // Check if block is specific type
 is_air(x, y, z);                        // Check if position is air
@@ -56,10 +58,9 @@ await pickup_blocks(15);
 console.log("Mining complete!");
 ```
 
-### Movement & Position
+### Movement
 ```javascript
-await goto(x, y, z);                    // Navigate to position
-await goto(x, y, z);  // Get within 2 blocks
+await goto(x, y, z);                    // Navigate to exact position
 await look_at(x, y, z);                 // Face position
 ```
 

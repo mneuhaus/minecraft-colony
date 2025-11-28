@@ -23,10 +23,12 @@ await craft("stick", 4);                // Craft using 2x2 inventory grid
 await craft("iron_pickaxe", 1, true);   // Craft using 3x3 crafting table
 ```
 
-### Finding Crafting Tables
+### Position & Finding Crafting Tables
 ```javascript
-find_blocks("crafting_table", 32, 1);   // Find nearby crafting table
-await goto(x, y, z);  // Navigate to crafting table
+get_position();                         // Get your position { x, y, z, exact }
+find_blocks("crafting_table", 32, 1);   // Find nearby crafting tables (sorted by distance)
+find_nearest_block("crafting_table", 32); // Find single nearest table { x, y, z, distance }
+await goto(x, y, z);                    // Navigate to crafting table
 ```
 
 ## Core Crafting Concepts
