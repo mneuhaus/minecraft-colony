@@ -48,7 +48,7 @@ const ores = find_blocks("iron_ore", 32, 10);
 console.log(`Found ${ores.length} iron ore blocks`);
 
 for (const ore of ores) {
-  await goto(ore.x, ore.y, ore.z, { tolerance: 2 });
+  await goto(ore.x, ore.y, ore.z);
   await dig(ore.x, ore.y, ore.z);
 }
 
@@ -59,7 +59,7 @@ console.log("Mining complete!");
 ### Movement & Position
 ```javascript
 await goto(x, y, z);                    // Navigate to position
-await goto(x, y, z, { tolerance: 2 });  // Get within 2 blocks
+await goto(x, y, z);  // Get within 2 blocks
 await look_at(x, y, z);                 // Face position
 ```
 

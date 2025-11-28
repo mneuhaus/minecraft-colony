@@ -26,7 +26,7 @@ await craft("iron_pickaxe", 1, true);   // Craft using 3x3 crafting table
 ### Finding Crafting Tables
 ```javascript
 find_blocks("crafting_table", 32, 1);   // Find nearby crafting table
-await goto(x, y, z, { tolerance: 2 });  // Navigate to crafting table
+await goto(x, y, z);  // Navigate to crafting table
 ```
 
 ## Core Crafting Concepts

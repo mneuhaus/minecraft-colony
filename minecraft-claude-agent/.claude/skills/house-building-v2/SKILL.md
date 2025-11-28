@@ -44,7 +44,7 @@ const corners = [
 
 for (const corner of corners) {
   // Walk on the previous layer (or ground for first layer)
-  await goto(corner.x, wallY, corner.z, { tolerance: 1 });
+  await goto(corner.x, wallY, corner.z);
 
   // Place blocks around you (not where you stand!)
   // ... place logic depends on wall direction

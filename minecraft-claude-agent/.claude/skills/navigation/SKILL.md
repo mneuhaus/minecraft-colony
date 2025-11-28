@@ -84,7 +84,7 @@ West = Negative X
 
 **2. Act (use JavaScript):**
 ```javascript
-await goto(100, 64, -50, { tolerance: 3 });
+await goto(100, 64, -50);
 console.log("Arrived at target");
 ```
 
@@ -96,21 +96,14 @@ console.log("Arrived at target");
 
 **Basic movement:**
 ```javascript
-await goto(x, y, z);                    // Move to position (default tolerance: 1)
-await goto(x, y, z, { tolerance: 3 });  // Move within 3 blocks
-```
-
-**Safe navigation:**
-```javascript
-await goto(100, 64, 50, { tolerance: 5 });
-console.log("Arrived");
+await goto(x, y, z);              // Move to exact position
 ```
 
 **Staged travel (long distance):**
 ```javascript
 // Break into waypoints
-await goto(50, 64, 0, { tolerance: 5 });
-await goto(100, 64, 0, { tolerance: 5 });
+await goto(50, 64, 0);
+await goto(100, 64, 0);
 console.log("Completed journey");
 ```
 
@@ -118,8 +111,7 @@ console.log("Completed journey");
 
 **Return home:**
 ```javascript
-// Home at (0, 64, 0)
-await goto(0, 64, 0, { tolerance: 3 });
+await goto(0, 64, 0);
 ```
 
 **Explore north 100 blocks:**
@@ -127,20 +119,20 @@ First use `get_position()` tool, then:
 ```javascript
 // If current position is (50, 64, 100)
 // North is negative Z, so target is (50, 64, 0)
-await goto(50, 64, 0, { tolerance: 5 });
+await goto(50, 64, 0);
 ```
 
 **Meet another player:**
 First use `get_status()` tool to find player position, then:
 ```javascript
 // If player is at (75, 64, -30)
-await goto(75, 64, -30, { tolerance: 3 });
+await goto(75, 64, -30);
 ```
 
 ## Troubleshooting
 
 **Can't reach target:**
-- Increase tolerance: `await goto(x, y, z, { tolerance: 10 })`
+- Navigate in smaller steps
 - Navigate in stages (intermediate waypoints)
 - Check Y-level (might be underground)
 
@@ -174,7 +166,7 @@ Each skill has its purpose.
 
 **Task: Go to (100, 64, -50)**
 ```javascript
-await goto(100, 64, -50, { tolerance: 3 });
+await goto(100, 64, -50);
 console.log("Arrived at destination");
 ```
 
@@ -182,16 +174,16 @@ console.log("Arrived at destination");
 First use `get_status()` tool to examine surroundings, then:
 ```javascript
 // If safe to proceed
-await goto(100, 64, -50, { tolerance: 5 });
+await goto(100, 64, -50);
 ```
 
 **Task: Multi-stage journey**
 ```javascript
 // Stage 1
-await goto(50, 64, 0, { tolerance: 5 });
+await goto(50, 64, 0);
 
 // Stage 2
-await goto(100, 64, -50, { tolerance: 5 });
+await goto(100, 64, -50);
 
 console.log("Journey complete");
 ```

@@ -14,8 +14,7 @@ All farming actions use JavaScript executed via `craftscript_start(script)`.
 
 ### Movement & Navigation
 ```javascript
-await goto(x, y, z);                    // Navigate to position
-await goto(x, y, z, { tolerance: 3 });  // Get within 3 blocks
+await goto(x, y, z);                    // Navigate to exact position
 await look_at(x, y, z);                 // Face a position
 ```
 
@@ -396,7 +395,7 @@ Farming uses these JavaScript commands:
 **Movement & Navigation:**
 ```javascript
 await goto(x, y, z);             // Navigate to position
-await goto(x, y, z, { tolerance: 3 }); // Get within 3 blocks
+await goto(x, y, z); // Get within 3 blocks
 ```
 
 **Block Interaction:**
@@ -426,7 +425,7 @@ console.log(`Found ${wheat.length} wheat blocks`);
 
 // Harvest each one
 for (const pos of wheat) {
-  await goto(pos.x, pos.y, pos.z, { tolerance: 2 });
+  await goto(pos.x, pos.y, pos.z);
   await dig(pos.x, pos.y, pos.z);
 }
 

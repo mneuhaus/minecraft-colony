@@ -904,7 +904,7 @@ Use these to understand your surroundings before acting:
 In your craftscript_start scripts, you can use:
 
 Movement:
-  await goto(x, y, z, { tolerance: 2 })  // Navigate to position
+  await goto(x, y, z)                     // Navigate to exact position
   await look_at(x, y, z)                  // Face a direction
 
 Block interaction:

@@ -50,24 +50,21 @@ All action commands are **async functions** - always use `await`.
 ### 🚶 Movement & Navigation
 
 ```javascript
-await goto(x, y, z, opts)       // Navigate to coordinates
-  // opts: { tolerance: 1 }     // How close to get (default: 1 block)
-
+await goto(x, y, z)             // Navigate to EXACT position (default)
 await look_at(x, y, z)          // Aim at coordinates
 ```
 
 **Examples:**
 ```javascript
-// Navigate to coordinates
+// Navigate to exact coordinates
 await goto(100, 64, 50);
-
-// Get close to a position (within 3 blocks)
-await goto(x, y, z, { tolerance: 3 });
 
 // Look at a block before interacting
 await look_at(x, y, z);
 await dig(x, y, z);
 ```
+
+**Important:** goto() navigates to the EXACT position. Don't navigate TO a block you want to place - navigate NEXT to it!
 
 ### ⛏️ Block Interaction
 
@@ -561,7 +558,7 @@ if (!dirtItem || dirtItem.count < targetHeight) {
 const hillTop = { x: 150, y: 80, z: 200 };
 console.log(`Navigating to hilltop at y=${hillTop.y}`);
 
-await goto(hillTop.x, hillTop.y, hillTop.z, { tolerance: 2 });
+await goto(hillTop.x, hillTop.y, hillTop.z);
 console.log("Reached hilltop!");
 
 // Do something at the top...
@@ -571,7 +568,7 @@ await place("banner", hillTop.x, hillTop.y, hillTop.z);
 const groundLevel = { x: 145, y: 64, z: 195 };
 console.log("Returning to ground level...");
 
-await goto(groundLevel.x, groundLevel.y, groundLevel.z, { tolerance: 2 });
+await goto(groundLevel.x, groundLevel.y, groundLevel.z);
 console.log("Back on ground!");
 
 // Note: Pathfinder can drop up to 8 blocks safely

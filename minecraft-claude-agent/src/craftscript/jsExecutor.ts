@@ -332,7 +332,7 @@ export class JavaScriptExecutor {
       goto: async (x: number, y: number, z: number, opts: any = {}) => {
         checkAbort();
         const t0 = Date.now();
-        const tolerance = opts.tolerance ?? opts.tol ?? 1;
+        const tolerance = opts.tolerance ?? opts.tol ?? 0; // Default: exact position (no tolerance)
         const useSimple = opts.simple !== false; // Default to SimplePathfinder
         const from = { x: bot.entity.position.x, y: bot.entity.position.y, z: bot.entity.position.z };
         const to = { x, y, z };
