@@ -23,6 +23,7 @@ import ToolCraftScriptStatus from './ToolCraftScriptStatus.vue';
 import ToolCraftScriptFunction from './ToolCraftScriptFunction.vue';
 import ToolCraftScriptLogs from './ToolCraftScriptLogs.vue';
 import ToolScreenshot from './ToolScreenshot.vue';
+import ToolAsciiView from './ToolAsciiView.vue';
 
 const props = defineProps<{ item: any }>();
 const normalized = computed(() => {
@@ -44,7 +45,7 @@ const title = computed(()=> humanTitle(toolName.value));
 
 const key = computed(()=> {
   const n = toolName.value.toLowerCase();
-  if (n === 'todowrite') return 'todo';
+  if (n === 'todowrite' || n === 'write_todo') return 'todo';
   // Match both prefixed (mcp__minecraft__*) and unprefixed tool names
   if (/^craftscript_step$/.test(n)) return 'craftscript_step';
   if (/^craftscript_status$/.test(n)) return 'craftscript_status';
@@ -86,7 +87,7 @@ const toolComponent = computed(()=> ({
   memory: ToolMemory,
   inventory: ToolInventory,
   screenshot: ToolScreenshot,
-  ascii_view: ToolGeneric, // ASCII view uses generic display
+  ascii_view: ToolAsciiView,
   generic: ToolGeneric,
 }[key.value] || ToolGeneric));
 </script>

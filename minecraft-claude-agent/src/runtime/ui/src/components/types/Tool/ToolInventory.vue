@@ -120,13 +120,23 @@ function formatItemName(name: string): string {
 </script>
 
 <style scoped>
-.inv-chip {
-  padding: 2px 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.inventory-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.inventory-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.inventory-stats {
+  display: flex;
+  gap: 12px;
+}
+.stat {
+  font-size: 12px;
+  opacity: 0.7;
 }
 .inventory-grid {
   display: grid;

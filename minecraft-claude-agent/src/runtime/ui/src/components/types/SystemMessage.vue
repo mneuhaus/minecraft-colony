@@ -1,16 +1,18 @@
 <template>
   <div class="system-block">
     <p class="system-text">{{ message }}</p>
-    <button
+    <n-button
       v-if="jobId"
-      class="system-btn"
+      size="tiny"
+      quaternary
       @click="openDetail"
-    >View CraftScript</button>
+    >View CraftScript</n-button>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { NButton } from 'naive-ui';
 import { useRouter } from 'vue-router';
 import { deriveJobIdFromEvent } from '../../utils/craftscriptJob';
 
@@ -46,13 +48,6 @@ function openDetail() {
   line-height: 1.6;
   opacity: 0.9;
   flex: 1;
-}
-.system-btn {
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: transparent;
-  color: var(--color-accent);
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 13px;
+  margin: 0;
 }
 </style>

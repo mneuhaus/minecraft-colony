@@ -58,25 +58,27 @@
         />
       </div>
 
-      <!-- Footer: Reference (left, clickable) + Time (right) -->
+      <!-- Footer: Time always visible, Reference only when expanded -->
       <template #footer>
-        <div v-show="isExpanded">
-          <n-space justify="space-between" align="center" class="footer-content">
-            <n-button
-              text
-              size="tiny"
-              class="reference-button"
-              @click="copyReference"
-            >
-              <n-text depth="3" :size="11" style="font-family: monospace;">
-                {{ identityLabel }}
-              </n-text>
-            </n-button>
-            <n-text depth="3" :size="11" class="time-text">
-              {{ time }}
+        <n-space justify="space-between" align="center" class="footer-content" :class="{ 'footer-collapsed': !isExpanded }">
+          <n-button
+            v-show="isExpanded"
+            text
+            size="tiny"
+            class="reference-button"
+            @click="copyReference"
+          >
+            <n-text depth="3" :size="11" style="font-family: monospace;">
+              {{ identityLabel }}
             </n-text>
-          </n-space>
-        </div>
+          </n-button>
+          <n-text v-show="!isExpanded" depth="3" :size="11" class="time-text">
+            <!-- Spacer for alignment when collapsed -->
+          </n-text>
+          <n-text depth="3" :size="11" class="time-text">
+            {{ time }}
+          </n-text>
+        </n-space>
       </template>
     </n-card>
   </div>
@@ -430,5 +432,11 @@ onUnmounted(() => {
 
 .reference-button:hover {
   opacity: 1;
+}
+
+.footer-collapsed {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
 }
 </style>

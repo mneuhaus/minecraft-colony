@@ -83,14 +83,15 @@ function connectWebSocket() {
     try {
       const message = JSON.parse(event.data);
 
-      // Look for write_todo tool calls
-      if (message.type === 'tool' && message.details?.tool_name === 'write_todo') {
+      // Look for write_todo tool calls (payload is the new format, details was old)
+      const payload = message.payload || message.details;
+      if (message.type === 'tool' && payload?.tool_name === 'write_todo') {
         console.log('Received write_todo message:', message);
 
         // Try multiple locations for todos
-        const input = message.details?.input;
-        const paramsSum = message.details?.params_summary;
-        const output = message.details?.output;
+        const input = payload?.input;
+        const paramsSum = payload?.params_summary;
+        const output = payload?.output;
 
         let newTodos = null;
 

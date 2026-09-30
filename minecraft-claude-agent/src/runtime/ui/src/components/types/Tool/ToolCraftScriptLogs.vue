@@ -80,13 +80,17 @@
               </span>
             </div>
             <div v-else class="trace-generic">
-              {{ JSON.stringify(entry.data) }}
+              <span class="trace-cmd" v-if="entry.data?.cmd">{{ entry.data.cmd }}:</span>
+              <span class="trace-detail">{{ formatTraceData(entry.data) }}</span>
             </div>
           </div>
 
           <!-- Fallback for unknown kinds -->
           <div v-else class="entry-unknown">
-            {{ JSON.stringify(entry.data) }}
+            <div v-for="(val, key) in entry.data" :key="key" class="unknown-row">
+              <span class="unknown-key">{{ key }}:</span>
+              <span class="unknown-val">{{ formatValue(val) }}</span>
+            </div>
           </div>
 
           <div v-if="getVoxSegments(entry).length" class="entry-vox">
@@ -178,6 +182,36 @@ function formatLogArgs(args: any[]): string {
     if (typeof a === 'boolean') return String(a);
     return JSON.stringify(a);
   }).join(' ');
+}
+
+function formatValue(val: any): string {
+  if (val === null || val === undefined) return '—';
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number') return String(val);
+  if (typeof val === 'boolean') return val ? '✓' : '✗';
+  if (Array.isArray(val) && val.length <= 3 && val.every(v => typeof v === 'number')) {
+    return `(${val.join(', ')})`;
+  }
+  if (Array.isArray(val)) return `[${val.length} items]`;
+  if (typeof val === 'object') {
+    const keys = Object.keys(val);
+    if (keys.length <= 3) {
+      return keys.map(k => `${k}: ${formatValue(val[k])}`).join(', ');
+    }
+    return `{${keys.length} props}`;
+  }
+  return String(val);
+}
+
+function formatTraceData(data: any): string {
+  if (!data) return '—';
+  const { cmd, ...rest } = data;
+  const keys = Object.keys(rest);
+  if (keys.length === 0) return '';
+  if (keys.length === 1 && keys[0] === 'args') {
+    return formatLogArgs(rest.args);
+  }
+  return keys.map(k => `${k}=${formatValue(rest[k])}`).join(' ');
 }
 
 function getVoxTarget(data: any) {
@@ -351,6 +385,12 @@ async function viewTrace() {
 .step-meta { display: flex; gap: 8px; opacity: 0.65; font-size: 13px; }
 .step-error { color: var(--color-danger); margin-top: 4px; }
 .entry-trace { font-family: 'Courier New', monospace; font-size: 14px; }
+.trace-cmd { font-weight: 600; color: var(--color-accent); margin-right: 6px; }
+.trace-detail { opacity: 0.85; }
+.entry-unknown { display: flex; flex-direction: column; gap: 2px; }
+.unknown-row { display: flex; gap: 8px; }
+.unknown-key { font-weight: 600; opacity: 0.7; min-width: 80px; }
+.unknown-val { font-family: 'Courier New', monospace; }
 .entry-vox { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
 .vox-path { border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 6px; }
 .vox-path__meta { display: flex; gap: 8px; align-items: center; font-size: 12px; opacity: 0.85; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
